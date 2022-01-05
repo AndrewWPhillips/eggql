@@ -1,8 +1,8 @@
 package handler_test
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"github.com/andrewwphillips/eggql/internal/handler"
 	"net/http"
 	"net/http/httptest"
@@ -64,7 +64,6 @@ var (
 	real          = 1.73205 // must be var not const so we can take it's address
 	ptrData       = struct{ F *float64 }{&real}
 	funcData      = struct{ Message func() string }{func() string { return "hi" }}
-	errorFuncData = struct{ Value func() (int, error) }{func() (int, error) { return 0, errors.New("resolver func error") }}
 	nestedData    = struct{ N struct{ P, Q bool } }{struct{ P, Q bool }{true, false}}
 	stringIntData = struct {
 		M string
@@ -90,6 +89,14 @@ var (
 	}{func(parm inputParam2FieldType) string { return parm.S + strconv.FormatFloat(parm.F, 'g', 10, 64) }}
 	interfaceData = struct{ A D }{D{B{4}, "fff"}}
 	interfaceFunc = struct{ A func() D }{func() D { return D{B{5}, "ggg"} }}
+
+	contextFunc  = struct{ Value func(context.Context) int }{func(ctx context.Context) int { return 100 }}
+	contextFunc1 = struct {
+		Dbl func(context.Context, int) int `graphql:",params(v)"`
+	}{func(ctx context.Context, i int) int { return 100 + 2*i }}
+	contextFunc2 = struct {
+		F func(context.Context, int, string) string `graphql:",params(i,s)"`
+	}{func(ctx context.Context, i int, s string) string { return strconv.Itoa(i) + s }}
 )
 
 // JsonObject is what json.Unmarshaller produces when it decodes a JSON object.  Not that we use a type alias here,
@@ -168,6 +175,12 @@ var happyData = map[string]struct {
 		JsonObject{"a": JsonObject{"c": 4.0, "e": "fff"}}},
 	"InterfaceFunc": {interfaceSchema, interfaceFunc, `{ a { c e } }`, "",
 		JsonObject{"a": JsonObject{"c": 5.0, "e": "ggg"}}},
+	"Context0": {intSchema, contextFunc, `{ value }`, "",
+		JsonObject{"value": float64(100)}},
+	"Context1": {paramSchema, contextFunc1, `{ dbl(v:1) }`, "",
+		JsonObject{"dbl": float64(102)}},
+	"Context2": {param2ArgSchema, contextFunc2, `{ f(i:3,s:\"abc\") }`, "",
+		JsonObject{"f": "3abc"}},
 }
 
 func TestQuery(t *testing.T) {

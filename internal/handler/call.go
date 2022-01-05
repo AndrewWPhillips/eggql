@@ -60,7 +60,7 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, t ref
 		}
 
 		// Now convert the "raw" value into the expected Go parameter type
-		if args[baseArg+n], err = op.getValue(t.In(baseArg+n), argument.Name, fieldInfo.Enums[n-baseArg], rawValue); err != nil {
+		if args[baseArg+n], err = op.getValue(t.In(baseArg+n), argument.Name, fieldInfo.Enums[n], rawValue); err != nil {
 			return
 		}
 	}
@@ -267,41 +267,6 @@ func (op *gqlOperation) getStruct(t reflect.Type, name string, m map[string]inte
 	}
 	return r, nil
 }
-
-/*
-func (op *gqlOperation) getStruct(t reflect.Type, name string, m map[string]interface{}) (reflect.Value, error) {
-	if t.Kind() != reflect.Struct {
-		return reflect.Value{}, fmt.Errorf("argument %q is not an GraphQL INPUT type", name)
-	}
-
-	// Create an instance of the struct and fill in the fields that we were given
-	r := reflect.New(t).Elem()
-	for fieldName, value := range m {
-		// Get the field of the Go struct using capitalised (exported) field name
-		//  (The GraphQL argument name is the (exported) struct field name with a lowercase 1st character - so
-		//  we need to capitalise the 1st letter of name to get the Go struct field name)
-		first, n := utf8.DecodeRuneInString(fieldName)
-		if first == utf8.RuneError {
-			return reflect.Value{}, fmt.Errorf("field %q of variable %q is not valid non-empty UTF8 string", fieldName, name)
-		}
-		goField := r.FieldByName(string(unicode.ToUpper(first)) + fieldName[n:])
-		if !goField.IsValid() {
-			return reflect.Value{}, fmt.Errorf("field %q of variable %q is not a field name of the GraphQL INPUT type", fieldName, name)
-		}
-
-		// TODO call field.Get to get enum name
-		//goField.Set(reflect.ValueOf(value))  TODO: remove
-		// Get the field value as the type of the Go structs field
-		v, err := op.getValue(goField.Type(), fieldName, "TODO", value)
-		if err != nil {
-			return reflect.Value{}, fmt.Errorf("converting field %q of variable %q: %w", fieldName, name, err)
-		}
-
-		goField.Set(v)
-	}
-	return r, nil
-}
-*/
 
 // getList converts a list of values from a GraphQL variable or literal into a Go slice
 // Parameters
