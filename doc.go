@@ -1,4 +1,4 @@
-// Package eggql allows you to easily build a GraphQl server is Go.
+// Package eggql allows you to easily build a GraphQl server in Go.
 // (EGGQL might be an acronym for Easy Go Graph Query Language.)
 
 // It's easy because you don't have to worry about schemas and
