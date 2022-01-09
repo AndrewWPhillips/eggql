@@ -13,7 +13,7 @@ import (
 // all the GraphQL enums that are used with the queries. The next 3 parameters are
 // Go structs that are used to generate the GraphQL query, mutation,
 // and subscription.  The types of these parameters are used to generate a
-// GraphQL schema (including metadata in the "graphql tag) whereas the actual value
+// GraphQL schema (including metadata in the "graphql" tag) whereas the actual value
 // of these parameters are the GraphQL "resolvers" used to obtain query results.
 func MustRun(q ...interface{}) http.Handler {
 	return handler.New(schema.MustBuild(q...), q...)
