@@ -57,8 +57,8 @@ func Build(enums map[string][]string, qms ...interface{}) (string, error) {
 	if err := validateEnums(enums); err != nil {
 		return "", err
 	}
-	builder := &strings.Builder{}    // where the (text) schema is generated
-	schemaTypes := make(schemaTypes) // all generated GraphQL types
+	builder := &strings.Builder{}   // where the (text) schema is generated
+	schemaTypes := newSchemaTypes() // all generated GraphQL types
 
 	// Create the "schema" clause of the schema document with query name etc
 	builder.Grow(256) // Even simple schemas are at least this big
@@ -114,8 +114,8 @@ func Build(enums map[string][]string, qms ...interface{}) (string, error) {
 
 	// Work out space needed for the types and get a list of names to sort
 	objectsLength := 0
-	names := make([]string, 0, len(schemaTypes))
-	for k, obj := range schemaTypes {
+	names := make([]string, 0, len(schemaTypes.declaration))
+	for k, obj := range schemaTypes.declaration {
 		objectsLength += len(obj) + 1
 		names = append(names, k)
 	}
@@ -124,7 +124,7 @@ func Build(enums map[string][]string, qms ...interface{}) (string, error) {
 	// Add the GraphQL type to the schema
 	sort.Strings(names) // we need to always output the types in the same order (eg for consistency in tests)
 	for _, name := range names {
-		builder.WriteString(schemaTypes[name])
+		builder.WriteString(schemaTypes.declaration[name])
 	}
 
 	// Work out how much space the enums will need and grow the string builder

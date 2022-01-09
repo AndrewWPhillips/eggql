@@ -1,5 +1,7 @@
 package schema
 
+// schemaTypes.go contains the schema Type which accumulates all the GraphQL type to be added to the schema
+
 import (
 	"fmt"
 	"github.com/andrewwphillips/eggql/internal/field"
@@ -10,22 +12,43 @@ import (
 	"unicode/utf8"
 )
 
-// schemaTypes stores all the types of the schema indexed by the type name
-type schemaTypes map[string]string
+// schema stores all the types of the schema accumulated so far
+type schema struct {
+	declaration map[string]string         // store the text declaration of all types generated
+	used        map[reflect.Type]struct{} // tracks which types (structs) we have seen (mainly to handle recursive data structures)
+}
+
+// newSchemaTypes initialises an instance of the schemaTypes (by making the map)
+func newSchemaTypes() schema {
+	return schema{
+		declaration: make(map[string]string),
+		used:        make(map[reflect.Type]struct{}),
+	}
+}
 
 // add creates a GraphQL object (type) declaration as a string to be added to the schema and
 // adds it to the map (using the type name as the key) avoiding adding the same type twice
 // Parameters:
-//  name = preferred name for the type or an empty string to use the Go type name from t
+//  name = preferred name for the type (if an empty string the Go type name is used)
 //  t = the Go type used to generate the GraphQL type declaration
 //  enums = enums map (just used to make sure an enum name is valid)
 //  inputType = "type" for a GraphQL object or "input" for an input type
-func (s schemaTypes) add(name string, t reflect.Type, enums map[string][]string, inputType string) error {
+func (s schema) add(name string, t reflect.Type, enums map[string][]string, inputType string) error {
+	if name == "" {
+		name = t.Name()
+	}
 	// follow indirection(s) and function return(s)
 	for k := t.Kind(); k == reflect.Ptr || k == reflect.Func || k == reflect.Array || k == reflect.Slice; k = t.Kind() {
 		switch k {
-		case reflect.Ptr, reflect.Array, reflect.Slice:
+		case reflect.Ptr:
 			t = t.Elem() // follow indirection
+		case reflect.Array, reflect.Slice:
+			if len(name) < 2 || name[0] != '[' || name[len(name)-1] != ']' {
+				panic("Type name for list should be in square brackets")
+			}
+			name = name[1 : len(name)-1]
+
+			t = t.Elem() // element type
 		case reflect.Func:
 			// TODO convert panic (function has no return type) to a returned error
 			t = t.Out(0) // get 1st return value (panics if nothing is returned)
@@ -34,18 +57,12 @@ func (s schemaTypes) add(name string, t reflect.Type, enums map[string][]string,
 	if t.Kind() != reflect.Struct {
 		return nil // ignore it if not a struct (this is *not* an error situation)
 	}
-	if name == "" {
-		name = t.Name()
+	// Check if we have already processed (or started processing) this type
+	if _, ok := s.used[t]; ok {
+		// TODO: return error (or allow??) using the same struct for multiple GraphQL types (object, input, interface)
+		return nil
 	}
-	// Check that a different type with this name is not already in the schema
-	if existing, ok := s[name]; ok {
-		// We already have processed this type, but we need to check that it is not used to generate
-		// both a GraphQL "object" type and an "input" type
-		if !strings.HasPrefix(existing, inputType) {
-			return fmt.Errorf("same name (%s) used for different types (object, input, interface)", name)
-		}
-		return nil // don't generate the same type again
-	}
+	s.used[t] = struct{}{}
 
 	// Get all the resolvers from the exported struct fields
 	resolvers, interfaces, err := s.getResolvers(t, enums, inputType)
@@ -53,7 +70,7 @@ func (s schemaTypes) add(name string, t reflect.Type, enums map[string][]string,
 		return err // TODO add more info to error
 	}
 
-	// Work out how much string space we need for the resolvers etc
+	// Work out how much string space we need for the resolvers etc.
 	// AND get a sorted list of resolver keys so resolvers are always written in the same order
 	required := len(inputType) + 1 + len(name) + len(openString) + len(closeString)
 	if len(interfaces) > 0 {
@@ -96,14 +113,14 @@ func (s schemaTypes) add(name string, t reflect.Type, enums map[string][]string,
 	builder.WriteString(closeString)
 
 	// Check for use of the same name for different objects
-	if existing, ok := s[name]; ok {
+	if existing, ok := s.declaration[name]; ok {
 		if builder.String() != existing {
 			// Somehow we have the different objects with the same name
 			return fmt.Errorf("same name (%s) used for multiple objects", name)
 		}
 	}
-	s[name] = builder.String()
-	if required < len(s[name]) {
+	s.declaration[name] = builder.String()
+	if required < len(s.declaration[name]) {
 		panic("string buffer was not big enough (TODO: remove this)")
 	}
 	return nil
@@ -118,9 +135,9 @@ func (s schemaTypes) add(name string, t reflect.Type, enums map[string][]string,
 //  inputType = "type" for a GraphQL object or "input" for an input type
 // Returns:
 //  map of resolvers: key is the resolver name; value is the rest of the GraphQL resolver declaration
-//  slice of interfaces: names of the interfaces (from embedded anon struct) that the type implements
+//  names of GraphQL interface(s) that the type implements (using Go embedded structs)
 //  error: non-nil if something went wrong
-func (s schemaTypes) getResolvers(t reflect.Type, enums map[string][]string, inputType string) (r map[string]string, iface []string, err error) {
+func (s schema) getResolvers(t reflect.Type, enums map[string][]string, inputType string) (r map[string]string, iface []string, err error) {
 	r = make(map[string]string)
 
 	for i := 0; i < t.NumField(); i++ {
@@ -138,6 +155,11 @@ func (s schemaTypes) getResolvers(t reflect.Type, enums map[string][]string, inp
 			return
 		}
 		if fieldInfo.Embedded {
+			// Add struct to our collection as an "interface"
+			if err = s.add(f.Name, f.Type, enums, gqlInterfaceType); err != nil {
+				return // TODO: add more info to err
+			}
+
 			// Handled embedded struct as GraphQL "interface"
 			resolvers, interfaces, err2 := s.getResolvers(f.Type, enums, inputType)
 			if err2 != nil {
@@ -154,10 +176,6 @@ func (s schemaTypes) getResolvers(t reflect.Type, enums map[string][]string, inp
 			// TODO: do we need to check for duplicate interface names?
 			iface = append(iface, interfaces...)
 			iface = append(iface, f.Name)
-			// Add the interface type to our collection
-			if err = s.add(f.Name, f.Type, enums, gqlInterfaceType); err != nil {
-				return // TODO: add more info to err
-			}
 			continue
 		}
 
@@ -222,7 +240,7 @@ func validateEnum(s string, enums map[string][]string) error {
 
 // getParams creates the list of GraphQL parameters for a resolver function
 // For struct parameters it also adds the corresponding GraphQL "input" type.
-func (s schemaTypes) getParams(name string, t reflect.Type, enums map[string][]string, fieldInfo *field.Info) (string, error) {
+func (s schema) getParams(name string, t reflect.Type, enums map[string][]string, fieldInfo *field.Info) (string, error) {
 	const paramStart, paramSep, paramEnd = "(", ", ", ")"
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem() // follow indirection
@@ -272,7 +290,7 @@ func (s schemaTypes) getParams(name string, t reflect.Type, enums map[string][]s
 			if fieldInfo.Defaults[paramNum] != "" {
 				ok := false
 				if isList {
-					// Get list as comma-separated sgtring without enclosing square brackets
+					// Get list as comma-separated string without enclosing square brackets
 					defaults := fieldInfo.Defaults[paramNum]
 					if len(defaults) < 2 || defaults[0] != '[' || defaults[len(defaults)-1] != ']' {
 						panic("Invalid enum default list:" + defaults)
