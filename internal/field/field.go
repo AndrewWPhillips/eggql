@@ -37,11 +37,12 @@ type Info struct {
 var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
 var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
-// Get checks if a field in a Go struct is exported and, if so, returns the GraphQL field info. incl.
-// the GQL field name, derived from the Go field name (with 1st char lower-cased) or taken from the tag (metadata)
-// If the field is not exported an empty string is returned.
+// Get checks if a field in a Go struct is exported and, if so, returns the GraphQL field info. incl. the
+// GQL field name, derived from the Go field name (with 1st char lower-cased) or taken from the tag (metadata).
 // It also returns other stuff like whether the result is nullable and GraphQL parameters (and default
 // parameter values) if the resolver is a function.
+// An error may be returned e.g. for malformed metadata, or a resolver function returning multiple values.
+// If the field is not exported nil is returned, but no error.
 func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 	if f.PkgPath != "" {
 		return // unexported field
@@ -126,7 +127,7 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 
 // GetTagInfo extracts GraphQL field name and type info from the field's tag (if any)
 // If the tag just contains a dash (-) then nil is returned (no error).  If the tag string is empty
-// (eg. if no tag was supplied) then the returned Info is not nil but the Name field is empty.
+// (e.g. if no tag was supplied) then the returned Info is not nil but the Name field is empty.
 func GetTagInfo(tag string) (*Info, error) {
 	if tag == "-" {
 		return nil, nil
@@ -185,7 +186,7 @@ func GetTagInfo(tag string) (*Info, error) {
 		//	fieldInfo.Defaults = list
 		//	continue
 		//}
-		return nil, fmt.Errorf("unknown option %q in GraphQL tag %q\n", part, tag)
+		return nil, fmt.Errorf("unknown option %q in GraphQL tag %q", part, tag)
 	}
 	return fieldInfo, nil
 }

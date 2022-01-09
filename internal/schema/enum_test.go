@@ -12,7 +12,7 @@ type (
 	QueryUnit struct {
 		E int `graphql:":Unit"`
 	}
-	QueryList struct {
+	QueryListE struct {
 		E []int `graphql:":[Unit]"`
 	}
 	QueryNamed struct {
@@ -44,8 +44,8 @@ var enumData = map[string]struct {
 }{
 	"Unit": {data: QueryUnit{}, enums: unitEnum,
 		expected: "schema{ query:QueryUnit } type QueryUnit{ e: Unit! } enum Unit { FOOT METER }"},
-	"List": {data: QueryList{}, enums: unitEnum,
-		expected: "schema{ query:QueryList } type QueryList{ e: [Unit]! } enum Unit { FOOT METER }"},
+	"List": {data: QueryListE{}, enums: unitEnum,
+		expected: "schema{ query:QueryListE } type QueryListE{ e: [Unit]! } enum Unit { FOOT METER }"},
 	"Named": {data: QueryNamed{}, enums: unitEnum,
 		expected: "schema{ query:QueryNamed } type QueryNamed{ name: Unit! } enum Unit { FOOT METER }"},
 	"Param": {data: QueryParam{}, enums: unitEnum,

@@ -25,6 +25,8 @@ type (
 	QueryNested     struct{ Str QueryString }
 	QueryTypeReuse  struct{ Q1, Q2 QueryString }
 	QueryPtr        struct{ Ptr QueryInt }
+	QueryList       struct{ List []int }
+	QueryList2      struct{ List []QueryString }
 	QueryAnonNested struct{ Anon struct{ B byte } } // anon type - should use field name as "type" name
 
 	QueryNullable struct {
@@ -64,6 +66,9 @@ type (
 	QueryInputAnon struct {
 		F func(struct{ J int }) bool `graphql:",params(anon)"`
 	}
+	QueryRecurse struct {
+		P *QueryRecurse // recursive data structure: P is (ptr to) type of enclosed struct
+	}
 
 	IInt struct{ I int }
 	M1   struct {
@@ -78,12 +83,32 @@ type (
 		A M1
 		B M2
 	}
+	IRecurse struct {
+		B *QueryIfaceRecurse
+	}
+	QueryIfaceRecurse struct {
+		IRecurse
+	}
+	IRecurseList struct {
+		List *[]QueryIRecurseList
+	}
+	QueryIRecurseList struct {
+		IRecurseList
+	}
+	IRecurseList2 struct {
+		List *[]IRecurseList2
+	}
+	QueryIRecurseList2 struct {
+		IRecurseList2
+	}
 )
 
 var testData = map[string]struct {
 	data     interface{}
 	expected string
 }{
+	"List":      {QueryList{}, "schema{ query:QueryList } type QueryList{ list:[Int]! }"},
+	"List2":     {QueryList2{}, "schema{query:QueryList2} type QueryList2{list:[QueryString]!} type QueryString{m:String!}"},
 	"Empty":     {QueryEmpty{}, "schema{ query:QueryEmpty } type QueryEmpty{}"},
 	"String":    {QueryString{}, "schema{ query:QueryString } type QueryString{ m:String! }"},
 	"Int":       {QueryInt{}, "schema{ query:QueryInt } type QueryInt{ i:Int! }"},
@@ -118,8 +143,15 @@ var testData = map[string]struct {
 		"input InputInt{ i:Int! } type QueryInputParam{ f(in: InputInt!): Int! }"},
 	"InputAnon": {QueryInputAnon{}, "schema{ query: QueryInputAnon }" +
 		"input Anon{ j:Int! } type QueryInputAnon{ f(anon: Anon!): Boolean! }"},
+	"Recurse": {QueryRecurse{}, "schema{ query:QueryRecurse } type QueryRecurse{ p:QueryRecurse }"},
 	"Interface": {QueryInterface{},
 		"schema{query:QueryInterface} interface IInt{i:Int!} type M1 implements IInt{i:Int! s:String!} type M2 implements IInt{b:Boolean! i:Int!} type QueryInterface{a:M1! b:M2!}"},
+	"IfaceRecurse": {QueryIfaceRecurse{},
+		"schema{query:QueryIfaceRecurse} interface IRecurse{b:QueryIfaceRecurse} type QueryIfaceRecurse implements IRecurse{b:QueryIfaceRecurse}"},
+	"IRecurseList": {QueryIRecurseList{},
+		"schema{query:QueryIRecurseList} interface IRecurseList{list:[QueryIRecurseList]} type QueryIRecurseList implements IRecurseList{list:[QueryIRecurseList]}"},
+	"IRecurseList2": {QueryIRecurseList2{},
+		"schema{query:QueryIRecurseList2} interface IRecurseList2{list:[IRecurseList2]} type QueryIRecurseList2 implements IRecurseList2{list:[IRecurseList2]}"},
 }
 
 func TestBuildSchema(t *testing.T) {

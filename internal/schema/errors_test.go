@@ -80,9 +80,13 @@ type (
 	QueryBadDefaultBoolean struct {
 		E3 func(bool) int `graphql:"e3,params(b=1)"` // 1 is not a valid Boolean
 	}
-	QueryDupeField struct {
+	QueryDupeField1 struct {
 		M1 string `graphql:"m"`
 		M2 string `graphql:"m"`
+	}
+	QueryDupeField2 struct {
+		Dupe   func() int // generated name is "dupe"
+		Field2 bool       `graphql:"dupe"`
 	}
 	Embedded   struct{ M string }
 	QueryDupe1 struct {
@@ -110,7 +114,7 @@ var errorData = map[string]struct {
 }{
 	"NonStruct":       {1, nil, "must be struct"},
 	"BadType":         {struct{ C complex128 }{}, nil, "unhandled type"},
-	"DupeQuery":       {struct{ Q Query }{}, nil, "same name"},
+	"DupeQuery":       {struct{ Q Query }{}, nil, "same name"}, // two different types with same name "Query"
 	"NoArgs":          {QueryNoArgs{}, nil, "no params"},
 	"TooFewArgs":      {QueryTooFewArgs{}, nil, "argument count"},
 	"TooManyArgs":     {QueryTooManyArgs{}, nil, "argument count"},
@@ -138,7 +142,8 @@ var errorData = map[string]struct {
 	"BadDefaultInt":   {QueryBadDefaultInt{}, nil, "default value"},
 	"BadDefaultFloat": {QueryBadDefaultFloat{}, nil, "default value"},
 	"BadDefaultBool":  {QueryBadDefaultBoolean{}, nil, "default value"},
-	"DupeField":       {QueryDupeField{}, nil, "same name"},
+	"DupeField1":      {QueryDupeField1{}, nil, "same name"},
+	"DupeField2":      {QueryDupeField2{}, nil, "same name"},
 	"DupeEmbedded1":   {QueryDupe1{}, nil, "same name"},
 	"DupeEmbedded2":   {QueryDupe2{}, nil, "same name"},
 

@@ -23,7 +23,10 @@ import (
 //   fieldInfo - contains the parameter names and defaults obtained from the Go field metadata
 func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, t reflect.Type, v reflect.Value,
 	fieldInfo *field.Info) (tReturn reflect.Type, vReturn reflect.Value, err error) {
-
+	if v.IsNil() {
+		err = fmt.Errorf("function for %q is not implemented (nil)", astField.Name)
+		return
+	}
 	args := make([]reflect.Value, t.NumIn()) // list of arguments for the function call
 	baseArg := 0                             // index of 1st query resolver argument (== 1 if function call needs ctx, else == 0)
 
