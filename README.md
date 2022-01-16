@@ -70,8 +70,7 @@ and you should get a response like this:
 {
     "data": {
         "random": 5
-    },
-    "errors": null
+    }
 }
 ```
 
@@ -93,8 +92,7 @@ Each time you click the **Send** button in Postman you should see a new number b
 {
     "data": {
         "random": 467
-    },
-    "errors": null
+    }
 }
 ```
 
@@ -200,5 +198,4 @@ func main() {
 ```
 
 Note that there are further ways to increase the robustness of your server, that I won't cover here, such as adding a ReadTimeout, graceful server shutdown, etc.  These are covered in Go HTTP tutorials found with a simple Google search.
-
 

@@ -24,10 +24,11 @@ type (
 	// gqlResult contains the result (or errors) of the request to be encoded in JSON
 	gqlResult struct {
 		Data   map[string]interface{} `json:"data,omitempty"`
-		Errors gqlerror.List          `json:"errors"`
+		Errors gqlerror.List          `json:"errors,omitempty"`
 	}
 )
 
+// Execute parses and runs the request and returns the result
 func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 	// First analyse and validate the query string
 	query, pgqlError := parser.ParseQuery(&ast.Source{
