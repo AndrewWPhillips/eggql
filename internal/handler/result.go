@@ -57,7 +57,7 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 				r[astType.Alias] = value
 				continue
 			}
-			// TODO return error if not found
+			// TODO return error if not found (note: nil is currently returned when a field is excluded by directive)
 		case *ast.FragmentSpread:
 			if fragments, err := op.GetSelections(ctx, astType.Definition.SelectionSet, q); err != nil {
 				return nil, err
@@ -72,6 +72,11 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 	return r, nil
 }
 
+// FindSelection scans a struct for a match (exported field with name matching the ast.Field)
+// It probably should never return an error unless there is a bug since schema validation should avoid any problems.
+// It may return nil (even when error is nil) if
+//  a) no matching field was found (which may occur for embedded structs since the field may be matched in the main struct)
+//  b) the field was excluded based on a directive
 func (op *gqlOperation) FindSelection(ctx context.Context, t reflect.Type, v reflect.Value, astField *ast.Field) (interface{}, error) {
 	var i int
 	// Check all the (exported) fields of the struct for a match to astField.Name
@@ -110,13 +115,22 @@ func (op *gqlOperation) FindSelection(ctx context.Context, t reflect.Type, v ref
 // Resolvers are often dynamic (where the resolver is a Go function) in which case the function is called to get the
 // value (including lists and nested queries).
 // Returns:
-//   A scalar (stored in the interface{}), a nested query (returned as a map[string]interface{}), or a list (returned as a []interface{}).
+//   If the 2nd return value (type error) is not nil then the 1st return value is not defined, otherwise it is a value
+//   (returned in an interface{} type) of
+//   * a scalar - integer, float, boolean, string
+//   * a nested query - returned as a map[string]interface{}
+//   * a list - returned as a []interface{}).
+//   * nil - if no value is to be provided
 // Parameters:
 //   ctx = a Go context that could expire at any time
 //   field = a query or sub-query - a field of a GraphQL object
 //   t,v = the type and value of the resolver (field of Go struct)
 //   fieldInfo = metadata for the resolver (eg parameter name) obtained from the struct field tag
 func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, t reflect.Type, v reflect.Value, fieldInfo *field.Info) (interface{}, error) {
+	if op.directiveBypass(astField) {
+		// TODO return a special value so that scan of fields stops
+		return nil, nil
+	}
 	if t.Kind() == reflect.Func {
 		var err error
 		// For function fields, we have to call it to get the resolver value to use
@@ -139,7 +153,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, t refl
 			// TODO: check if ctx has expired here
 			if value, err2 := op.resolve(ctx, astField, t.Elem(), v.Index(i), fieldInfo); err2 != nil {
 				return nil, err2
-			} else {
+			} else if value != nil {
 				results = append(results, value)
 			}
 		}
@@ -177,4 +191,23 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, t refl
 	}
 
 	return v.Interface(), nil
+}
+
+func (op *gqlOperation) directiveBypass(astField *ast.Field) bool {
+	for _, d := range astField.Directives {
+		if d.Name != "skip" && d.Name != "include" {
+			continue // panic("Unexpected directive")
+		}
+		reverse := d.Name == "skip"
+		for _, arg := range d.Arguments {
+			if arg.Name == "if" {
+				if rawValue, err := arg.Value.Value(op.variables); err != nil {
+					panic(err)
+				} else if b, ok := rawValue.(bool); ok {
+					return b == reverse
+				}
+			}
+		}
+	}
+	return false
 }
