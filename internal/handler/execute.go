@@ -4,6 +4,8 @@ package handler
 
 import (
 	"context"
+	"fmt"
+	"github.com/dolmen-go/jsonmap"
 	"github.com/vektah/gqlparser/ast"
 	"github.com/vektah/gqlparser/gqlerror"
 	"github.com/vektah/gqlparser/parser"
@@ -23,8 +25,9 @@ type (
 
 	// gqlResult contains the result (or errors) of the request to be encoded in JSON
 	gqlResult struct {
-		Data   map[string]interface{} `json:"data,omitempty"`
-		Errors gqlerror.List          `json:"errors,omitempty"`
+		//Data   map[string]interface{} `json:"data,omitempty"`
+		Data   jsonmap.Ordered `json:"data,omitempty"`
+		Errors gqlerror.List   `json:"errors,omitempty"`
 	}
 )
 
@@ -45,7 +48,8 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 		return
 	}
 
-	r.Data = make(map[string]interface{})
+	// Now process the operation(s)
+	r.Data.Data = make(map[string]interface{})
 	for _, operation := range query.Operations {
 		// TODO: check if ctx has expired?
 		op := gqlOperation{enums: g.h.enums}
@@ -58,7 +62,7 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 			}
 		}
 
-		var result map[string]interface{}
+		var result jsonmap.Ordered
 		var err error
 		switch operation.Operation {
 		case ast.Query:
@@ -67,7 +71,8 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 			op.isMutation = true // TODO: run queries (but not mutations) in separate Go routines
 			result, err = op.GetSelections(ctx, operation.SelectionSet, g.h.mData)
 		case ast.Subscription:
-			//panic("TODO")
+			r.Errors = append(r.Errors, &gqlerror.Error{Message: "TODO: subscriptions not yet implemented"})
+			return
 		default:
 			panic("unexpected")
 		}
@@ -80,9 +85,22 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 			})
 			return
 		}
-		for k, v := range result {
-			// TODO check if k is already in use?
-			r.Data[k] = v
+		//for k, v := range result {
+		//	r.Data[k] = v
+		//}
+		for _, k := range result.Order {
+			if _, ok := r.Data.Data[k]; ok {
+				r.Errors = append(r.Errors, &gqlerror.Error{
+					Message:    fmt.Sprintf("resolver %q in %s has duplicate name", k, operation.Name),
+					Extensions: map[string]interface{}{"operation": operation.Name},
+				})
+				return
+			}
+			r.Data.Data[k] = result.Data[k]
+		}
+		r.Data.Order = append(r.Data.Order, result.Order...)
+		if len(r.Data.Order) != len(r.Data.Data) {
+			panic("map and slice in the jsonmap.Ordered should be the same size")
 		}
 	}
 	return

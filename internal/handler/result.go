@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/andrewwphillips/eggql/internal/field"
+	"github.com/dolmen-go/jsonmap"
 	"github.com/vektah/gqlparser/ast"
 	"reflect"
 )
@@ -19,17 +20,17 @@ type (
 	}
 )
 
-// GetSelections resolves the selections in a query by finding the corresponding resolver
-// Returns:
-//   It returns a map and/or a list of errors.  The returned map contains an entry for each selection, where the map "key"
-//   is the name of the entry/resolver and the value is a scalar value (stored in an interface}), a nested map
-//   (ie a map[string]interface{}) if the resolver returns a nested struct, or a slice (ie []interface{}) if the
-//   resolver returned a slice or array.
+// GetSelections resolves the selections in a query by finding and evaluating the corresponding resolver(s)
+// Returns a jsonmap.Ordered (a map of values and a slice that remembers the order they were added) that contains an
+//     entry for each selection, where the map "key" is the name of the entry/resolver and the value is:
+//     a) scalar value (stored in an interface})
+//     b) a nested jsonmap.Ordered if the resolver is a nested struct
+//     c) a slice (ie []interface{}) if the resolver is a slice or array.
 // Parameters:
 //   ctx = a Go context that could expire at any time
 //   set = list of selections from a GraphQL query to be resolved
 //   q = Go struct whose (exported) fields are the resolvers
-func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, q interface{}) (map[string]interface{}, error) {
+func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, q interface{}) (jsonmap.Ordered, error) {
 	// Get the struct that contains the resolvers that we can use
 	t := reflect.TypeOf(q)
 	v := reflect.ValueOf(q)
@@ -39,10 +40,13 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 	}
 	if t.Kind() != reflect.Struct { // struct = 25
 		// bug since we should have checked this when building the scehma
-		panic("We can only search for a query field within a struct") // TODO
+		panic("We can only search for a query field within a struct") // TODO return error?
 	}
 
-	r := make(map[string]interface{})
+	result := jsonmap.Ordered{
+		Data:  make(map[string]interface{}),
+		Order: make([]string, 0, len(set)),
+	}
 
 	// resolve each (sub)query
 	for _, s := range set {
@@ -50,26 +54,36 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 		switch astType := s.(type) {
 		case *ast.Field:
 			// Find and execute the "resolver" in the struct (or recursively in embedded structs)
-			if value, err := op.FindSelection(ctx, t, v, astType); err != nil {
-				return nil, err
-			} else if value != nil {
-				// TODO check that entry does not already exist
-				r[astType.Alias] = value
-				continue
+			value, err := op.FindSelection(ctx, t, v, astType)
+			if err != nil {
+				return result, err
 			}
-			// TODO return error if not found (note: nil is currently returned when a field is excluded by directive)
-		case *ast.FragmentSpread:
-			if fragments, err := op.GetSelections(ctx, astType.Definition.SelectionSet, q); err != nil {
-				return nil, err
-			} else {
-				for k, v := range fragments {
-					// TODO check if k is already in use?
-					r[k] = v
+			if value != nil {
+				key := astType.Alias // name used as map key
+				if _, ok := result.Data[key]; ok {
+					return result, fmt.Errorf("resolver %q in %s has duplicate name", key, astType.Name)
 				}
+				result.Data[key] = value
+				result.Order = append(result.Order, key)
 			}
+			// else TODO return error if not found (note: nil is currently returned when a field is excluded by directive)
+		case *ast.FragmentSpread:
+			fragments, err := op.GetSelections(ctx, astType.Definition.SelectionSet, q)
+			if err != nil {
+				return result, err
+			}
+			// Add the entries found in the fragment (in the order they were found)
+			for _, key := range fragments.Order {
+				// check if a selection with this name is already present
+				if _, ok := result.Data[key]; ok {
+					return result, fmt.Errorf("resolver %q in fragment %s has duplicate name", key, astType.Name)
+				}
+				result.Data[key] = fragments.Data[key]
+			}
+			result.Order = append(result.Order, fragments.Order...)
 		}
 	}
-	return r, nil
+	return result, nil
 }
 
 // FindSelection scans a struct for a match (exported field with name matching the ast.Field)
@@ -111,16 +125,13 @@ func (op *gqlOperation) FindSelection(ctx context.Context, t reflect.Type, v ref
 	return nil, nil // indicate that astField.Name was not found
 }
 
-// resolve calls a resolver given a query to obtain the results of the query
-// Resolvers are often dynamic (where the resolver is a Go function) in which case the function is called to get the
-// value (including lists and nested queries).
-// Returns:
-//   If the 2nd return value (type error) is not nil then the 1st return value is not defined, otherwise it is a value
-//   (returned in an interface{} type) of
+// resolve calls a resolver given a query to obtain the results of the query (incl. listed and nested queries)
+// Resolvers are often dynamic (where the resolver is a Go function) in which case the function is called to get the value.
+// Returns a value (or an error) where the value (returned in an interface{} type) is:
 //   * a scalar - integer, float, boolean, string
-//   * a nested query - returned as a map[string]interface{}
+//   * a nested query - returned as a jsonmap.Ordered
 //   * a list - returned as a []interface{}).
-//   * nil - if no value is to be provided
+//   * nil - if no value is to be provided (eg due to "skip" directive on the field)
 // Parameters:
 //   ctx = a Go context that could expire at any time
 //   field = a query or sub-query - a field of a GraphQL object
@@ -193,6 +204,8 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, t refl
 	return v.Interface(), nil
 }
 
+// directiveBypass handles field directives - just standard "skip" and "include" for now
+// Returns: true if a directive indicates the field is not to be processed
 func (op *gqlOperation) directiveBypass(astField *ast.Field) bool {
 	for _, d := range astField.Directives {
 		if d.Name != "skip" && d.Name != "include" {

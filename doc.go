@@ -41,7 +41,6 @@ package eggql
 
 // TODO:
 // object param with an enum field
-// return response elements in same order as query
 // GraphQL parallel execution of queries (but not mutations)
 // allow map to return a list where key = a field (default name ID)
 // make a map generate a list with the map key as the ID
@@ -50,7 +49,6 @@ package eggql
 // add Date (extension) type
 // null handling and non-nullability
 // unions
-// directives
 // introspection
 // subscriptions
 // more systematic error handling
