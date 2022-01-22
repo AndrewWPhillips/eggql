@@ -29,16 +29,13 @@ type (
 // Parameters:
 //   ctx = a Go context that could expire at any time
 //   set = list of selections from a GraphQL query to be resolved
-//   q = Go struct whose (exported) fields are the resolvers
-func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, q interface{}) (jsonmap.Ordered, error) {
+//   v = value of Go struct whose (exported) fields are the resolvers
+func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, v reflect.Value) (jsonmap.Ordered, error) {
 	// Get the struct that contains the resolvers that we can use
-	t := reflect.TypeOf(q)
-	v := reflect.ValueOf(q)
-	for t.Kind() == reflect.Ptr {
-		t = t.Elem() // follow indirection
-		v = v.Elem()
+	for v.Type().Kind() == reflect.Ptr {
+		v = v.Elem() // follow indirection
 	}
-	if t.Kind() != reflect.Struct { // struct = 25
+	if v.Type().Kind() != reflect.Struct { // struct = 25
 		// bug since we should have checked this when building the scehma
 		panic("We can only search for a query field within a struct") // TODO return error?
 	}

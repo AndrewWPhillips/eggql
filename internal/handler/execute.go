@@ -10,6 +10,7 @@ import (
 	"github.com/vektah/gqlparser/gqlerror"
 	"github.com/vektah/gqlparser/parser"
 	"github.com/vektah/gqlparser/validator"
+	"reflect"
 )
 
 type (
@@ -62,20 +63,20 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 			}
 		}
 
-		var result jsonmap.Ordered
-		var err error
+		var v reflect.Value // value of the root query or mutation
 		switch operation.Operation {
 		case ast.Query:
-			result, err = op.GetSelections(ctx, operation.SelectionSet, g.h.qData)
+			v = reflect.ValueOf(g.h.qData)
 		case ast.Mutation:
 			op.isMutation = true // TODO: run queries (but not mutations) in separate Go routines
-			result, err = op.GetSelections(ctx, operation.SelectionSet, g.h.mData)
+			v = reflect.ValueOf(g.h.mData)
 		case ast.Subscription:
 			r.Errors = append(r.Errors, &gqlerror.Error{Message: "TODO: subscriptions not yet implemented"})
 			return
 		default:
 			panic("unexpected")
 		}
+		result, err := op.GetSelections(ctx, operation.SelectionSet, v)
 
 		// TODO: don't stop on 1st error but record all errors to save the client debug time
 		if err != nil {
@@ -85,9 +86,6 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 			})
 			return
 		}
-		//for k, v := range result {
-		//	r.Data[k] = v
-		//}
 		for _, k := range result.Order {
 			if _, ok := r.Data.Data[k]; ok {
 				r.Errors = append(r.Errors, &gqlerror.Error{
