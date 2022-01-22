@@ -33,7 +33,7 @@ const (
 	default2Schema         = "type Query { f(i: Int! = 87, s: String! = \"ijk\"): String! }"
 	inputParamSchema       = "type Query { inputQuery(param: inputType!): Int! } input inputType { field: String! }"
 	inputParam2FieldSchema = "type Query { q(p: R!): String! } input R{s:String! f:Float!}"
-	interfaceSchema        = "type Query { a: D! } interface B { c: Int! } type D implements B { c: Int! e: String! }"
+	interfaceSchema        = "type Query { a: D! } interface X { x1: Int! } type D implements X { x1: Int! e: String! }"
 )
 
 type (
@@ -43,12 +43,15 @@ type (
 	}
 	QueryName struct{ B byte }
 
-	// B is embedded in D to implement a GraphQL interface
-	B struct {
-		C int
+	// X and Y are embedded in other structs to implement a GraphQL interfaces X and Y
+	X struct {
+		X1 int
+	}
+	Y struct {
+		Y1 bool
 	}
 	D struct {
-		B
+		X
 		E string
 	}
 )
@@ -87,8 +90,9 @@ var (
 	inputParam2FieldData = struct {
 		Q func(inputParam2FieldType) string `graphql:",params(p)"`
 	}{func(parm inputParam2FieldType) string { return parm.S + strconv.FormatFloat(parm.F, 'g', 10, 64) }}
-	interfaceData = struct{ A D }{D{B{4}, "fff"}}
-	interfaceFunc = struct{ A func() D }{func() D { return D{B{5}, "ggg"} }}
+	interfaceData  = struct{ A D }{D{X{4}, "fff"}}
+	interfaceFunc  = struct{ A func() D }{func() D { return D{X{5}, "ggg"} }}
+	inlineFragFunc = struct{ A func() interface{} }{func() interface{} { return D{X{1}, "e in d"} }}
 
 	contextFunc  = struct{ Value func(context.Context) int }{func(ctx context.Context) int { return 100 }}
 	contextFunc1 = struct {
@@ -171,10 +175,13 @@ var happyData = map[string]struct {
 		JsonObject{"two": 2.0, "six": 6.0}},
 	"Fragment": {nestedSchema, nestedData, `{n1: n {...f} n2: n {...f}} fragment f on N {p}`, "",
 		JsonObject{"n1": JsonObject{"p": true}, "n2": JsonObject{"p": true}}},
-	"Interface": {interfaceSchema, interfaceData, `{ a { c e } }`, "",
-		JsonObject{"a": JsonObject{"c": 4.0, "e": "fff"}}},
-	"InterfaceFunc": {interfaceSchema, interfaceFunc, `{ a { c e } }`, "",
-		JsonObject{"a": JsonObject{"c": 5.0, "e": "ggg"}}},
+	"Interface": {interfaceSchema, interfaceData, `{ a { x1 e } }`, "",
+		JsonObject{"a": JsonObject{"x1": 4.0, "e": "fff"}}},
+	"InterfaceFunc": {interfaceSchema, interfaceFunc, `{ a { x1 e } }`, "",
+		JsonObject{"a": JsonObject{"x1": 5.0, "e": "ggg"}}},
+	"InlineFrag": {interfaceSchema, inlineFragFunc, `{ a { ... on D { e } } }`, "",
+		JsonObject{"a": JsonObject{"e": "e in d"}}},
+
 	"Context0": {intSchema, contextFunc, `{ value }`, "",
 		JsonObject{"value": float64(100)}},
 	"Context1": {paramSchema, contextFunc1, `{ dbl(v:1) }`, "",
