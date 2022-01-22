@@ -48,6 +48,7 @@ package eggql
 // ext. types
 // add Date (extension) type
 // null handling and non-nullability
+// inline fragments on interface type
 // unions
 // introspection
 // subscriptions

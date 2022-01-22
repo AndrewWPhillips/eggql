@@ -48,10 +48,15 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 	// resolve each (sub)query
 	for _, s := range set {
 		// TODO: check if ctx has expired here
+
+		var fragments jsonmap.Ordered
+		var fragErr error
+		var fragName string
+
 		switch astType := s.(type) {
 		case *ast.Field:
 			// Find and execute the "resolver" in the struct (or recursively in embedded structs)
-			value, err := op.FindSelection(ctx, t, v, astType)
+			value, err := op.FindSelection(ctx, astType, v)
 			if err != nil {
 				return result, err
 			}
@@ -64,21 +69,29 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 				result.Order = append(result.Order, key)
 			}
 			// else TODO return error if not found (note: nil is currently returned when a field is excluded by directive)
+			continue // the rest of the loop only applies to fragments
+
+		case *ast.InlineFragment:
+			fragments, fragErr = op.GetSelections(ctx, astType.SelectionSet, v)
+			fragName = "on " + astType.TypeCondition
+
 		case *ast.FragmentSpread:
-			fragments, err := op.GetSelections(ctx, astType.Definition.SelectionSet, q)
-			if err != nil {
-				return result, err
-			}
-			// Add the entries found in the fragment (in the order they were found)
-			for _, key := range fragments.Order {
-				// check if a selection with this name is already present
-				if _, ok := result.Data[key]; ok {
-					return result, fmt.Errorf("resolver %q in fragment %s has duplicate name", key, astType.Name)
-				}
-				result.Data[key] = fragments.Data[key]
-			}
-			result.Order = append(result.Order, fragments.Order...)
+			fragments, fragErr = op.GetSelections(ctx, astType.Definition.SelectionSet, v)
+			fragName = astType.Name
 		}
+
+		if fragErr != nil {
+			return result, fragErr
+		}
+		// Add the entries found in the fragment (in the order they were found)
+		for _, key := range fragments.Order {
+			// check if a selection with this name is already present
+			if _, ok := result.Data[key]; ok {
+				return result, fmt.Errorf("resolver %q in fragment %s has duplicate name", key, fragName)
+			}
+			result.Data[key] = fragments.Data[key]
+		}
+		result.Order = append(result.Order, fragments.Order...)
 	}
 	return result, nil
 }
@@ -146,14 +159,13 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 			return nil, err
 		}
 	}
-	for t.Kind() == reflect.Ptr {
-		t = t.Elem() // follow indirection
-		v = v.Elem()
+	for v.Type().Kind() == reflect.Ptr || v.Type().Kind() == reflect.Interface {
+		v = v.Elem() // follow indirection
 	}
 
 	switch v.Type().Kind() {
 	case reflect.Struct:
-		return op.GetSelections(ctx, astField.SelectionSet, v.Interface()) // returns map of interface{} as an interface{}
+		return op.GetSelections(ctx, astField.SelectionSet, v) // returns map of interface{} as an interface{}
 
 	case reflect.Slice, reflect.Array:
 		var results []interface{}
