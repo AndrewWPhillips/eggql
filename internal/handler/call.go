@@ -21,14 +21,13 @@ import (
 //   t - the type of the Go function
 //   v - the reflection "value" of the Go function's return value
 //   fieldInfo - contains the parameter names and defaults obtained from the Go field metadata
-func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, t reflect.Type, v reflect.Value,
-	fieldInfo *field.Info) (tReturn reflect.Type, vReturn reflect.Value, err error) {
+func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info) (vReturn reflect.Value, err error) {
 	if v.IsNil() {
 		err = fmt.Errorf("function for %q is not implemented (nil)", astField.Name)
 		return
 	}
-	args := make([]reflect.Value, t.NumIn()) // list of arguments for the function call
-	baseArg := 0                             // index of 1st query resolver argument (== 1 if function call needs ctx, else == 0)
+	args := make([]reflect.Value, v.Type().NumIn()) // list of arguments for the function call
+	baseArg := 0                                    // index of 1st query resolver argument (== 1 if function call needs ctx, else == 0)
 
 	if fieldInfo.HasContext {
 		args[0] = reflect.ValueOf(ctx)
@@ -63,7 +62,7 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, t ref
 		}
 
 		// Now convert the "raw" value into the expected Go parameter type
-		if args[baseArg+n], err = op.getValue(t.In(baseArg+n), argument.Name, fieldInfo.Enums[n], rawValue); err != nil {
+		if args[baseArg+n], err = op.getValue(v.Type().In(baseArg+n), argument.Name, fieldInfo.Enums[n], rawValue); err != nil {
 			return
 		}
 	}
@@ -81,7 +80,7 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, t ref
 					if err != nil {
 						panic(err)
 					}
-					args[n], err = op.getValue(t.In(n), defArg.Name, fieldInfo.Enums[n-baseArg], tmp)
+					args[n], err = op.getValue(v.Type().In(n), defArg.Name, fieldInfo.Enums[n-baseArg], tmp)
 					if err != nil {
 						panic(err)
 					}
@@ -106,16 +105,15 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, t ref
 		if len(out) != 2 {
 			panic("resolver should have an error return")
 		}
-		//t := out[1].Type()
-		//if t.Kind() != reflect.Interface || !t.Implements(errorType) {
+		//typ := out[1].Type()
+		//if typ.Kind() != reflect.Interface || !typ.Implements(errorType) {
 		//	panic("a resolver function's 2nd return value must be a Go error")
 		//}
 		if iface := out[1].Interface(); iface != nil {
 			err = iface.(error) // return error from the call
 		}
 	}
-	// TODO get rid of 1st (reflect.Type) return as it is in reflect.Value
-	return out[0].Type(), out[0], err
+	return out[0], err
 }
 
 /*

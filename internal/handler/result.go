@@ -91,12 +91,12 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 // It may return nil (even when error is nil) if
 //  a) no matching field was found (which may occur for embedded structs since the field may be matched in the main struct)
 //  b) the field was excluded based on a directive
-func (op *gqlOperation) FindSelection(ctx context.Context, t reflect.Type, v reflect.Value, astField *ast.Field) (interface{}, error) {
+func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, v reflect.Value) (interface{}, error) {
 	var i int
 	// Check all the (exported) fields of the struct for a match to astField.Name
-	for i = 0; i < t.NumField(); i++ {
+	for i = 0; i < v.Type().NumField(); i++ {
 		// TODO: check if ctx has expired here
-		tField := t.Field(i)
+		tField := v.Type().Field(i)
 		vField := v.Field(i)
 		fieldInfo, err := field.Get(&tField)
 		if err != nil {
@@ -107,7 +107,7 @@ func (op *gqlOperation) FindSelection(ctx context.Context, t reflect.Type, v ref
 		}
 		// Recursively check fields of embedded struct
 		if fieldInfo.Embedded {
-			if value, err := op.FindSelection(ctx, tField.Type, vField, astField); err != nil {
+			if value, err := op.FindSelection(ctx, astField, vField); err != nil {
 				return nil, err
 			} else if value != nil {
 				return value, nil // found it
@@ -115,7 +115,7 @@ func (op *gqlOperation) FindSelection(ctx context.Context, t reflect.Type, v ref
 		}
 		if fieldInfo.Name == astField.Name {
 			// resolver found so use it
-			if value, err := op.resolve(ctx, astField, tField.Type, vField, fieldInfo); err != nil {
+			if value, err := op.resolve(ctx, astField, vField, fieldInfo); err != nil {
 				return nil, err
 			} else {
 				return value, nil
@@ -134,18 +134,18 @@ func (op *gqlOperation) FindSelection(ctx context.Context, t reflect.Type, v ref
 //   * nil - if no value is to be provided (eg due to "skip" directive on the field)
 // Parameters:
 //   ctx = a Go context that could expire at any time
-//   field = a query or sub-query - a field of a GraphQL object
-//   t,v = the type and value of the resolver (field of Go struct)
+//   astField = a query or sub-query - a field of a GraphQL object
+//   v = value of the resolver (field of Go struct)
 //   fieldInfo = metadata for the resolver (eg parameter name) obtained from the struct field tag
-func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, t reflect.Type, v reflect.Value, fieldInfo *field.Info) (interface{}, error) {
+func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info) (interface{}, error) {
 	if op.directiveBypass(astField) {
 		// TODO return a special value so that scan of fields stops
 		return nil, nil
 	}
-	if t.Kind() == reflect.Func {
+	if v.Type().Kind() == reflect.Func {
 		var err error
 		// For function fields, we have to call it to get the resolver value to use
-		if t, v, err = op.fromFunc(ctx, astField, t, v, fieldInfo); err != nil {
+		if v, err = op.fromFunc(ctx, astField, v, fieldInfo); err != nil {
 			return nil, err
 		}
 	}
@@ -154,7 +154,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, t refl
 		v = v.Elem()
 	}
 
-	switch t.Kind() {
+	switch v.Type().Kind() {
 	case reflect.Struct:
 		return op.GetSelections(ctx, astField.SelectionSet, v.Interface()) // returns map of interface{} as an interface{}
 
@@ -162,7 +162,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, t refl
 		var results []interface{}
 		for i := 0; i < v.Len(); i++ {
 			// TODO: check if ctx has expired here
-			if value, err2 := op.resolve(ctx, astField, t.Elem(), v.Index(i), fieldInfo); err2 != nil {
+			if value, err2 := op.resolve(ctx, astField, v.Index(i), fieldInfo); err2 != nil {
 				return nil, err2
 			} else if value != nil {
 				results = append(results, value)
