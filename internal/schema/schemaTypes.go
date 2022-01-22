@@ -14,15 +14,15 @@ import (
 
 // schema stores all the types of the schema accumulated so far
 type schema struct {
-	declaration map[string]string         // store the text declaration of all types generated
-	used        map[reflect.Type]struct{} // tracks which types (structs) we have seen (mainly to handle recursive data structures)
+	declaration map[string]string       // store the text declaration of all types generated
+	usedAs      map[reflect.Type]string // tracks which types (structs) we have seen (mainly to handle recursive data structures)
 }
 
 // newSchemaTypes initialises an instance of the schemaTypes (by making the map)
 func newSchemaTypes() schema {
 	return schema{
 		declaration: make(map[string]string),
-		used:        make(map[reflect.Type]struct{}),
+		usedAs:      make(map[reflect.Type]string),
 	}
 }
 
@@ -57,12 +57,14 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, inpu
 	if t.Kind() != reflect.Struct {
 		return nil // ignore it if not a struct (this is *not* an error situation)
 	}
-	// Check if we have already processed (or started processing) this type
-	if _, ok := s.used[t]; ok {
-		// TODO: return error (or allow??) using the same struct for multiple GraphQL types (object, input, interface)
-		return nil
+	// Check if we have already seen this struct
+	if previousType, ok := s.usedAs[t]; ok {
+		if previousType != inputType {
+			return fmt.Errorf("can't use %q for different GraphQL types (%s and %s)", name, previousType, inputType)
+		}
+		return nil // already done
 	}
-	s.used[t] = struct{}{}
+	s.usedAs[t] = inputType
 
 	// Get all the resolvers from the exported struct fields
 	resolvers, interfaces, err := s.getResolvers(t, enums, inputType)
