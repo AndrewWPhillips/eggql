@@ -77,14 +77,14 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, inpu
 	required := len(inputType) + 1 + len(name) + len(openString) + len(closeString)
 	if len(interfaces) > 0 {
 		required += len(implementsString)
-		for _, iface := range resolvers {
+		for _, iface := range interfaces {
 			required += 1 + len(iface)
 		}
 	}
 	keys := make([]string, 0, len(resolvers))
 	for k, v := range resolvers {
 		keys = append(keys, k)
-		required += 5 + len(k) + len(v)
+		required += 3 + len(k) + len(v)
 	}
 	sort.Strings(keys)
 
@@ -122,8 +122,8 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, inpu
 		}
 	}
 	s.declaration[name] = builder.String()
-	if required < len(s.declaration[name]) {
-		panic("string buffer was not big enough (TODO: remove this)")
+	if required != len(s.declaration[name]) {
+		panic("string buffer size was incorrect (TODO: remove this)")
 	}
 	return nil
 }
@@ -219,7 +219,11 @@ func (s schema) getResolvers(t reflect.Type, enums map[string][]string, inputTyp
 		r[fieldInfo.Name] = params + ":" + typeName + endStr
 
 		// Also add nested struct types (if any) to our collection
-		if err = s.add(typeName, f.Type, enums, inputType); err != nil {
+		nestedType := inputType
+		if nestedType == gqlInterfaceType {
+			nestedType = gqlObjectType // a field inside an embedded struct is not itself treated as an interface
+		}
+		if err = s.add(typeName, f.Type, enums, nestedType); err != nil {
 			return
 		}
 	}
