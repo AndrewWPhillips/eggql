@@ -97,6 +97,12 @@ type (
 		M string
 		Embedded
 	}
+	IRecurseList2 struct {
+		List *[]IRecurseList2 // can't use IRecurseList2 as interface and object
+	}
+	QueryIRecurseList2 struct {
+		IRecurseList2
+	}
 )
 
 var (
@@ -122,7 +128,7 @@ var errorData = map[string]struct {
 	"Return0":         {QueryReturn0{}, nil, "must return a value"},
 	"Return2":         {QueryReturn2{}, nil, "must be error type"},
 	"Return3":         {QueryReturn3{}, nil, "returns too many values"},
-	"ObjectInput":     {QueryObjectAndInput{}, nil, "same name"},
+	"ObjectInput":     {QueryObjectAndInput{}, nil, "different GraphQL types"},
 	"UnknownOption":   {QueryBadOption{}, nil, "unknown option"},
 	"BadParam1":       {QueryBadParam1{}, nil, "not a valid name"},
 	"BadParam2":       {QueryBadParam2{}, nil, "unmatched left bracket"},
@@ -146,6 +152,7 @@ var errorData = map[string]struct {
 	"DupeField2":      {QueryDupeField2{}, nil, "same name"},
 	"DupeEmbedded1":   {QueryDupe1{}, nil, "same name"},
 	"DupeEmbedded2":   {QueryDupe2{}, nil, "same name"},
+	"ObjectInterface": {QueryIRecurseList2{}, nil, "different GraphQL types"},
 
 	// TODO: test defaults errors: input, list
 }

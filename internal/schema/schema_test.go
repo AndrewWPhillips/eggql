@@ -95,12 +95,6 @@ type (
 	QueryIRecurseList struct {
 		IRecurseList
 	}
-	IRecurseList2 struct {
-		List *[]IRecurseList2
-	}
-	QueryIRecurseList2 struct {
-		IRecurseList2
-	}
 )
 
 var testData = map[string]struct {
@@ -150,8 +144,6 @@ var testData = map[string]struct {
 		"schema{query:QueryIfaceRecurse} interface IRecurse{b:QueryIfaceRecurse} type QueryIfaceRecurse implements IRecurse{b:QueryIfaceRecurse}"},
 	"IRecurseList": {QueryIRecurseList{},
 		"schema{query:QueryIRecurseList} interface IRecurseList{list:[QueryIRecurseList]} type QueryIRecurseList implements IRecurseList{list:[QueryIRecurseList]}"},
-	"IRecurseList2": {QueryIRecurseList2{},
-		"schema{query:QueryIRecurseList2} interface IRecurseList2{list:[IRecurseList2]} type QueryIRecurseList2 implements IRecurseList2{list:[IRecurseList2]}"},
 }
 
 func TestBuildSchema(t *testing.T) {
