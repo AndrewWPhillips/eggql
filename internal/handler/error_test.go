@@ -62,8 +62,9 @@ func TestErrors(t *testing.T) {
 
 		// Decode the JSON response
 		var result struct {
-			Data   interface{}
-			Errors []struct{ Message string }
+			Data map[string]interface{} `json:"data,omitempty"`
+			//Data   interface{}                `json:",omitempty"`
+			Errors []struct{ Message string } `json:",omitempty"`
 		}
 		//json.Unmarshal(writer.Body.Bytes(), &result)
 		decoder := json.NewDecoder(writer.Body)
@@ -73,7 +74,7 @@ func TestErrors(t *testing.T) {
 		}
 
 		// Check that the resulting GraphQL result (error and data)
-		Assertf(t, result.Data == nil, "%12s: Expected no data and got %v", name, result.Data)
+		Assertf(t, len(result.Data) == 0, "%12s: Expected no data and got %v", name, result.Data)
 		Assertf(t, result.Errors[0].Message == testData.expError, "%12s: Expected error %q, got %v", name, testData.expError, result.Errors)
 	}
 }
