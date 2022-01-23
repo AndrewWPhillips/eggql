@@ -59,7 +59,15 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, inpu
 	}
 	// Check if we have already seen this struct
 	if previousType, ok := s.usedAs[t]; ok {
-		if previousType != inputType {
+		if previousType == gqlObjectType && inputType == gqlInterfaceType {
+			// switch type of declaration from "type" to "interface"
+			s.usedAs[t] = gqlInterfaceType
+			if decl, ok := s.declaration[name]; ok {
+				s.declaration[name] = gqlInterfaceType + strings.TrimPrefix(decl, gqlObjectType)
+			}
+		} else if previousType == gqlInterfaceType && inputType == gqlObjectType {
+			// nothing required here
+		} else if previousType != inputType {
 			return fmt.Errorf("can't use %q for different GraphQL types (%s and %s)", name, previousType, inputType)
 		}
 		return nil // already done
@@ -144,6 +152,13 @@ func (s schema) getResolvers(t reflect.Type, enums map[string][]string, inputTyp
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
+		if f.Name == "_" && f.Type.Kind() == reflect.Struct {
+			// A struct with name "_" is just included for its type (for implementing GraphQL interfaces)
+			if err = s.add("", f.Type, enums, gqlObjectType); err != nil {
+				return
+			}
+			continue
+		}
 		fieldInfo, err2 := field.Get(&f)
 		if err2 != nil {
 			err = fmt.Errorf("%w getting field %q", err2, f.Name)

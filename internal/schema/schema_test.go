@@ -95,6 +95,24 @@ type (
 	QueryIRecurseList struct {
 		IRecurseList
 	}
+
+	// Person and Droid structs have an embedded Character -> in GraphQL schema Person and Droid implement the Character interface
+	Person struct {
+		Character   // a person is a character
+		Personality string
+	}
+	Droid struct {
+		Character       // a droid is a character
+		PrimaryFunction string
+	}
+	Character struct {
+		Friends []*Character
+		Name    string
+	}
+	QueryInterface2 struct {
+		Hero Character
+		_    Person // this is the only way for the schema builder to know about the Person type
+	}
 )
 
 var testData = map[string]struct {
@@ -144,6 +162,9 @@ var testData = map[string]struct {
 		"schema{query:QueryIfaceRecurse} interface IRecurse{b:QueryIfaceRecurse} type QueryIfaceRecurse implements IRecurse{b:QueryIfaceRecurse}"},
 	"IRecurseList": {QueryIRecurseList{},
 		"schema{query:QueryIRecurseList} interface IRecurseList{list:[QueryIRecurseList]} type QueryIRecurseList implements IRecurseList{list:[QueryIRecurseList]}"},
+	"Interface2": {QueryInterface2{},
+		"schema{query:QueryInterface2} interface Character {name:String! friends:[Character]!} type Person " +
+			" implements Character{name:String! friends:[Character]! personality:String!} type QueryInterface2{hero:Character!}"},
 }
 
 func TestBuildSchema(t *testing.T) {
