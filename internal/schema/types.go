@@ -10,7 +10,7 @@ import (
 // it's the element type in square brackets, and for functions the (1st) return type.
 // For types that cannot be used or are not handled (yet) it returns an error - eg. a
 // func that does not return a single value (or a value and an error).
-// For anonymous types (no name) it returns an empty string (no error).
+// For anonymous types (no name) or where the type is unknown it returns "" (no error).
 func getTypeName(t reflect.Type) (string, error) {
 	switch t.Kind() {
 	case reflect.Bool:
@@ -37,11 +37,13 @@ func getTypeName(t reflect.Type) (string, error) {
 		}
 		return "[" + elemType + "]", nil
 	case reflect.Func:
-		// Get first return type of the func and check (if present) that the 2nd is an error
+		// For functions the (1st) return type is the type of the resolver
 		if t.NumOut() == 0 { // help caller fix their defect by returning an error instead of panicking
 			return "", errors.New("resolver functions must return a value: " + t.Name())
 		}
 		return getTypeName(t.Out(0))
+	case reflect.Interface:
+		return "", nil // functions returning an GraphQL "interface" type return a Go interface{} but we can't tell the type here
 	default:
 		return "", errors.New("unhandled type " + t.Name())
 	}
