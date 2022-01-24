@@ -19,8 +19,8 @@ import (
 //   return value - field name may be followed by "=<name>" where <name> is the enum name
 //   argument - each argument name in a "params" section may be followed by "=<name>"
 type Info struct {
-	Name string // field name for use in GraphQL queries - based on metadata (tag) or Go struct field name
-	Enum string // name of enum - must be for field of int type (or function returning an int type)
+	Name        string // field name for use in GraphQL queries - based on metadata (tag) or Go struct field name
+	GQLTypeName string // name of enum - must be for field of int type (or function returning an int type)
 	//ReturnType reflect.Type // Go field type or func return type
 
 	// The following are for function resolvers only
@@ -111,14 +111,11 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 		}
 	}
 
-	if fieldInfo.Enum != "" {
+	if fieldInfo.GQLTypeName != "" {
 		// For enums the resolver function must return a Go integral type or list thereof
 		kind := t.Kind()
 		if kind == reflect.Slice || kind == reflect.Array {
 			kind = t.Elem().Kind()
-		}
-		if kind < reflect.Int || kind > reflect.Uintptr {
-			return nil, errors.New("resolver with enum type must be an integer field " + f.Name)
 		}
 	}
 
@@ -142,7 +139,7 @@ func GetTagInfo(tag string) (*Info, error) {
 			// Check for enum by splitting on a colon (:)
 			if subParts := strings.Split(part, ":"); len(subParts) > 1 {
 				fieldInfo.Name = subParts[0]
-				fieldInfo.Enum = subParts[1]
+				fieldInfo.GQLTypeName = subParts[1]
 			} else {
 				fieldInfo.Name = part
 			}

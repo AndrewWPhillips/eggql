@@ -180,7 +180,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 		return results, nil // returns slice of interface{} as an interface{}
 	}
 	// If enum or enum list get the integer index and look up the enum value
-	if enumName := fieldInfo.Enum; enumName != "" {
+	if enumName := fieldInfo.GQLTypeName; enumName != "" {
 		if len(enumName) > 2 && enumName[0] == '[' && enumName[len(enumName)-1] == ']' {
 			enumName = enumName[1 : len(enumName)-1]
 		}

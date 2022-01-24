@@ -259,7 +259,7 @@ func (op *gqlOperation) getStruct(t reflect.Type, name string, m map[string]inte
 		if !goField.IsValid() {
 			return reflect.Value{}, fmt.Errorf("field %q of %q is not a field name of the GraphQL INPUT type", fieldInfo.Name, name)
 		}
-		v, err := op.getValue(goField.Type(), fieldInfo.Name, fieldInfo.Enum, m[fieldInfo.Name])
+		v, err := op.getValue(goField.Type(), fieldInfo.Name, fieldInfo.GQLTypeName, m[fieldInfo.Name])
 		if err != nil {
 			return reflect.Value{}, fmt.Errorf("converting field %q of %q: %w", fieldInfo.Name, name, err)
 		}

@@ -203,13 +203,13 @@ func (s schema) getResolvers(t reflect.Type, enums map[string][]string, inputTyp
 			return
 		}
 		// Get the resolver return type
-		if fieldInfo.Enum != "" {
-			if err = validateEnum(fieldInfo.Enum, enums); err != nil {
-				err = fmt.Errorf("type of resolver %q was not found: %w", fieldInfo.Name, err)
-				return
-			}
-		}
-		typeName := fieldInfo.Enum
+		//if fieldInfo.GQLTypeName != "" {
+		//	if err = validateEnum(fieldInfo.GQLTypeName, enums); err != nil {
+		//		err = fmt.Errorf("type of resolver %q was not found: %w", fieldInfo.Name, err)
+		//		return
+		//	}
+		//}
+		typeName := fieldInfo.GQLTypeName
 		if typeName == "" {
 			typeName, err = getTypeName(f.Type)
 			if err != nil {
