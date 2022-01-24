@@ -18,7 +18,7 @@ type schema struct {
 	usedAs      map[reflect.Type]string // tracks which types (structs) we have seen (mainly to handle recursive data structures)
 }
 
-// newSchemaTypes initialises an instance of the schemaTypes (by making the map)
+// newSchemaTypes initialises an instance of the schemaTypes (by making the maps)
 func newSchemaTypes() schema {
 	return schema{
 		declaration: make(map[string]string),
@@ -147,12 +147,12 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, inpu
 //  map of resolvers: key is the resolver name; value is the rest of the GraphQL resolver declaration
 //  names of GraphQL interface(s) that the type implements (using Go embedded structs)
 //  error: non-nil if something went wrong
-func (s schema) getResolvers(t reflect.Type, enums map[string][]string, inputType string) (r map[string]string, iface []string, err error) {
+func (s schema) getResolvers(t reflect.Type, enums map[string][]string, gqlType string) (r map[string]string, iface []string, err error) {
 	r = make(map[string]string)
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if f.Name == "_" && f.Type.Kind() == reflect.Struct {
+		if f.Name == "_" {
 			// A struct with name "_" is just included for its type (for implementing GraphQL interfaces)
 			if err = s.add("", f.Type, enums, gqlObjectType); err != nil {
 				return
@@ -178,7 +178,7 @@ func (s schema) getResolvers(t reflect.Type, enums map[string][]string, inputTyp
 			}
 
 			// Handled embedded struct as GraphQL "interface"
-			resolvers, interfaces, err2 := s.getResolvers(f.Type, enums, inputType)
+			resolvers, interfaces, err2 := s.getResolvers(f.Type, enums, gqlType)
 			if err2 != nil {
 				return nil, nil, err2 // TODO: add more info to err
 			}
@@ -203,12 +203,12 @@ func (s schema) getResolvers(t reflect.Type, enums map[string][]string, inputTyp
 			return
 		}
 		// Get the resolver return type
-		//if fieldInfo.GQLTypeName != "" {
-		//	if err = validateEnum(fieldInfo.GQLTypeName, enums); err != nil {
-		//		err = fmt.Errorf("type of resolver %q was not found: %w", fieldInfo.Name, err)
-		//		return
-		//	}
-		//}
+		if fieldInfo.GQLTypeName != "" {
+			if err = s.validateTypeName(fieldInfo.GQLTypeName, enums); err != nil {
+				err = fmt.Errorf("type of resolver %q was not found: %w", fieldInfo.Name, err)
+				return
+			}
+		}
 		typeName := fieldInfo.GQLTypeName
 		if typeName == "" {
 			typeName, err = getTypeName(f.Type)
@@ -234,7 +234,7 @@ func (s schema) getResolvers(t reflect.Type, enums map[string][]string, inputTyp
 		r[fieldInfo.Name] = params + ":" + typeName + endStr
 
 		// Also add nested struct types (if any) to our collection
-		nestedType := inputType
+		nestedType := gqlType
 		if nestedType == gqlInterfaceType {
 			nestedType = gqlObjectType // a field inside an embedded struct is not itself treated as an interface
 		}
@@ -245,18 +245,23 @@ func (s schema) getResolvers(t reflect.Type, enums map[string][]string, inputTyp
 	return
 }
 
-// validateEnum checks that a type name is a valid enum or enum list
-// TODO: allow for and validate any type not just enums
-func validateEnum(s string, enums map[string][]string) error {
+// validateTypeName checks that a type name is a valid enum or object type
+func (s schema) validateTypeName(typeName string, enums map[string][]string) error {
 	// if it's a list get the element type
-	if len(s) > 2 && s[0] == '[' && s[len(s)-1] == ']' {
-		s = s[1 : len(s)-1]
+	if len(typeName) > 2 && typeName[0] == '[' && typeName[len(typeName)-1] == ']' {
+		typeName = typeName[1 : len(typeName)-1]
 	}
-	// Make sure it's a valid enum type
-	if _, ok := enums[s]; !ok {
-		return fmt.Errorf("enum %q was not found", s)
+	// First check if it's an enum type
+	if _, ok := enums[typeName]; ok {
+		return nil
 	}
-	return nil
+	// Check if it's an object type seen already
+	if _, ok := s.declaration[typeName]; ok {
+		return nil
+	}
+	// TODO check scalar types?
+
+	return fmt.Errorf("type %q was not found", typeName)
 }
 
 // getParams creates the list of GraphQL parameters for a resolver function
