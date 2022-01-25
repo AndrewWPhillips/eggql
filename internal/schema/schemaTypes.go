@@ -34,7 +34,8 @@ func newSchemaTypes() schema {
 //  enums = enums map (just used to make sure an enum name is valid)
 //  inputType = "type" for a GraphQL object or "input" for an input type
 func (s schema) add(name string, t reflect.Type, enums map[string][]string, inputType string) error {
-	if name == "" {
+	needName := name == ""
+	if needName {
 		name = t.Name()
 	}
 	// follow indirection(s) and function return(s)
@@ -43,20 +44,27 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, inpu
 		case reflect.Ptr:
 			t = t.Elem() // follow indirection
 		case reflect.Array, reflect.Slice:
-			if len(name) < 2 || name[0] != '[' || name[len(name)-1] != ']' {
-				panic("Type name for list should be in square brackets")
+			if !needName {
+				// Get the element type name from with the square brackets
+				if len(name) < 2 || name[0] != '[' || name[len(name)-1] != ']' {
+					panic("Type name for list should be in square brackets")
+				}
+				name = name[1 : len(name)-1]
 			}
-			name = name[1 : len(name)-1]
 
 			t = t.Elem() // element type
 		case reflect.Func:
 			// TODO convert panic (function has no return type) to a returned error
 			t = t.Out(0) // get 1st return value (panics if nothing is returned)
 		}
+		if needName {
+			name = t.Name()
+		}
 	}
 	if t.Kind() != reflect.Struct {
 		return nil // ignore it if not a struct (this is *not* an error situation)
 	}
+
 	// Check if we have already seen this struct
 	if previousType, ok := s.usedAs[t]; ok {
 		if previousType == gqlObjectType && inputType == gqlInterfaceType {

@@ -14,11 +14,10 @@ import (
 	"unicode/utf8"
 )
 
-// fromFunc converts a Go function into the type/value of what it returns
+// fromFunc converts a Go function into the type/value of what it returns by calling it using reflection
 // Parameters:
 //   ctx - is a context.Context that may be cancelled at any time
 //   field - is the GraphQL query object field
-//   t - the type of the Go function
 //   v - the reflection "value" of the Go function's return value
 //   fieldInfo - contains the parameter names and defaults obtained from the Go field metadata
 func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info) (vReturn reflect.Value, err error) {
@@ -115,45 +114,6 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 	}
 	return out[0], err
 }
-
-/*
-Instead of using getAstValue(t, v) we can use op.getValue(t, name, v.Value(vars))
-
-// GetAstValue converts an ast.Value into a value of type interface{} (like the JSON decoder does).
-// A scalar is just returned as is (as an interface{} while a nested object becomes a map[string]interface{}
-// and a list becomes []interface{}.
-// Parameters
-//  t = the expected type of value returned (as a reflect.Value)
-//  v = the value to convert
-func (op *gqlOperation) getAstValue(t reflect.Type, v *ast.Value) (interface{}, error) {
-	switch v.Kind {
-	case ast.Variable:
-		if value, ok := op.variables[v.Raw]; ok {
-			return value, nil
-		}
-	case ast.BooleanValue: // TODO
-	case ast.IntValue: // TODO
-	case ast.FloatValue: // TODO
-	case ast.StringValue:
-		return v.Raw, nil
-	case ast.NullValue:
-		return nil, nil
-	case ast.ListValue: // TODO
-	case ast.ObjectValue:
-		val := make(map[string]interface{}, len(v.Children))
-		for _, elem := range v.Children {
-			elemVal, err := elem.Value.Value(op.variables)
-			if err != nil {
-				return nil, err
-			}
-			val[elem.Name] = elemVal
-		}
-		return val, nil // TODO convert into struct fields
-	default:
-		panic(fmt.Errorf("unknown value kind %d", v.Kind))
-	}
-}
-*/
 
 // getValue returns a value (eg for a resolver argument) given an interface{} and an expected Go type
 // Parameters:

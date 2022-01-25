@@ -111,7 +111,7 @@ type (
 	}
 	QueryInterface2 struct {
 		Hero Character
-		_    Person // this is the only way for the schema builder to know about the Person type
+		_    *Person // this is the only way for the schema builder to know about the Person type
 	}
 )
 
@@ -163,8 +163,8 @@ var testData = map[string]struct {
 	"IRecurseList": {QueryIRecurseList{},
 		"schema{query:QueryIRecurseList} interface IRecurseList{list:[QueryIRecurseList]} type QueryIRecurseList implements IRecurseList{list:[QueryIRecurseList]}"},
 	"Interface2": {QueryInterface2{},
-		"schema{query:QueryInterface2} interface Character {name:String! friends:[Character]!} type Person " +
-			" implements Character{name:String! friends:[Character]! personality:String!} type QueryInterface2{hero:Character!}"},
+		"schema{query:QueryInterface2} interface Character {friends:[Character]! name:String!} type Person " +
+			" implements Character{friends:[Character]! name:String! personality:String!} type QueryInterface2{hero:Character!}"},
 }
 
 func TestBuildSchema(t *testing.T) {
