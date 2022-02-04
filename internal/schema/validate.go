@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 var nameRegex = regexp.MustCompile(`^[_a-zA-Z][_a-zA-Z0-9]*$`)
@@ -14,6 +15,9 @@ var nameRegex = regexp.MustCompile(`^[_a-zA-Z][_a-zA-Z0-9]*$`)
 // validGraphQLName checks that a string contains a valid GraphQL identifier like a variable,
 // argument, or resolver name or an enum name or value.
 func validGraphQLName(s string) bool {
+	if strings.HasPrefix(s, "__") {
+		return false // reserved names
+	}
 	return nameRegex.MatchString(s)
 }
 
