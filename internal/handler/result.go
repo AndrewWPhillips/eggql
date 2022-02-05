@@ -102,6 +102,14 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 //  a) no matching field was found (which may occur for embedded structs since the field may be matched in the main struct)
 //  b) the field was excluded based on a directive
 func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, v reflect.Value) (interface{}, error) {
+	if v.Type().Kind() != reflect.Struct { // struct = 25
+		// param. 'v' validation - note that this is a bug which is precluded during building of the schema
+		panic("FindSelection: search of query field in non-struct")
+	}
+	if astField.Name == "__typename" {
+		return astField.ObjectDefinition.Name, nil
+	}
+
 	var i int
 	// Check all the (exported) fields of the struct for a match to astField.Name
 	for i = 0; i < v.Type().NumField(); i++ {
