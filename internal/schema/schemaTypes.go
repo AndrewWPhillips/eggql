@@ -286,10 +286,12 @@ func (s schema) getParams(name string, t reflect.Type, enums map[string][]string
 	builder := &strings.Builder{}
 	sep := paramStart
 	paramNum := 0
+	var contextSeen bool
 	for i := 0; i < t.NumIn(); i++ {
 		// Skip 1st param if it's a context
-		if i == 0 && fieldInfo.HasContext {
-			// We allow for a first context parameter that is not a formal GraphQL parameter
+		if !contextSeen && fieldInfo.HasContext {
+			// contextContext parameter is not a formal GraphQL parameter
+			contextSeen = true
 			continue
 		}
 		if !validGraphQLName(fieldInfo.Params[paramNum]) {

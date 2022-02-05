@@ -31,11 +31,11 @@
 
 // Of course, you can do much more sophisticated stuff, usually very easily, such
 // as mutations with query parameters.  In fact, you can do most normal GraphQL
-// stuff (apart from subscriptions and a few other things - see TODO list below)
+// stuff (apart from subscriptions and a few other things - see TO-DO list below)
 // To create bullet-proof servers, resolver functions also (optionally) support a
 // context parameter (of context.Context type) and error returns (of error type).
 
-// See the README.md file for more details.
+// See the README.md file for more details on using the package.
 
 package eggql
 
@@ -43,15 +43,12 @@ package eggql
 // object param with an enum field
 // GraphQL parallel execution of queries (but not mutations)
 // allow map to return a list where key = a field (default name ID)
-// make a map generate a list with the map key as the ID
 // add ID type
 // ext. types
 // add Date (extension) type
 // null handling and non-nullability
-// inline fragments on interface type
 // unions
-// introspection
 // subscriptions
 // more systematic error handling
-// caching requests
+// caching of requests
 // dataloader

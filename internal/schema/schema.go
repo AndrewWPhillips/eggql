@@ -21,8 +21,6 @@ const (
 	Query EntryPoint = iota
 	Mutation
 	Subscription
-
-	NoEntryPoint EntryPoint = -1
 )
 
 const (
@@ -94,10 +92,7 @@ func Build(enums map[string][]string, qms ...interface{}) (string, error) {
 		default:
 			return "", errors.New("More than 3 structs provided for schema (can only have query, mutation, subscription)")
 		}
-		typeName, err := getTypeName(t)
-		if err != nil {
-			return "", fmt.Errorf("%w building schema for %s", err, entryPointName)
-		}
+		typeName, _ := getTypeName(t)
 		if typeName == "" {
 			typeName = entryPointName // use default name for anon struct
 		}

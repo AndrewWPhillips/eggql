@@ -29,7 +29,7 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 	baseArg := 0                                    // index of 1st query resolver argument (== 1 if function call needs ctx, else == 0)
 
 	if fieldInfo.HasContext {
-		args[0] = reflect.ValueOf(ctx)
+		args[baseArg] = reflect.ValueOf(ctx)
 		baseArg++ // we're now expecting one less value in params/defaults lists
 	}
 

@@ -21,7 +21,6 @@ import (
 type Info struct {
 	Name        string // field name for use in GraphQL queries - based on metadata (tag) or Go struct field name
 	GQLTypeName string // name of enum - must be for field of int type (or function returning an int type)
-	//ReturnType reflect.Type // Go field type or func return type
 
 	// The following are for function resolvers only
 	Params     []string // name(s) of args to resolver function obtained from metadata
@@ -76,10 +75,11 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 	}
 	if t.Kind() == reflect.Func {
 		firstIndex := 0
-		if t.NumIn() > 0 && t.In(0).Kind() == reflect.Interface && t.In(0).Implements(contextType) {
+		// Check for first parameter of context.Context
+		if t.NumIn() > firstIndex && t.In(firstIndex).Kind() == reflect.Interface && t.In(0).Implements(contextType) {
 			// 1st param is a context so don't add it to the list of query arguments
 			fieldInfo.HasContext = true
-			firstIndex = 1
+			firstIndex++
 		}
 		if t.NumIn()-firstIndex != len(fieldInfo.Params) {
 			if len(fieldInfo.Params) == 0 {
