@@ -63,10 +63,15 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 			}
 		}
 
-		var v reflect.Value // value of the root query or mutation
+		var v, vIntro reflect.Value // value of the root query or mutation
+		var introOp *gqlOperation
 		switch operation.Operation {
 		case ast.Query:
 			v = reflect.ValueOf(g.h.qData)
+			if AllowIntrospection {
+				introOp = &gqlOperation{enums: IntrospectionEnums}
+				vIntro = reflect.ValueOf(NewIntrospectionData(g.h.schema))
+			}
 		case ast.Mutation:
 			op.isMutation = true // TODO: run queries (but not mutations) in separate Go routines
 			v = reflect.ValueOf(g.h.mData)
@@ -76,7 +81,7 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 		default:
 			panic("unexpected")
 		}
-		result, err := op.GetSelections(ctx, operation.SelectionSet, v)
+		result, err := op.GetSelections(ctx, operation.SelectionSet, v, vIntro, introOp)
 
 		// TODO: don't stop on 1st error but record all errors to save the client debug time
 		if err != nil {

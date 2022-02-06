@@ -11,6 +11,10 @@ import (
 	"reflect"
 )
 
+const (
+	AllowIntrospection = true
+)
+
 type (
 	// gqlOperation performs an operation (query) of a GraphQL request
 	gqlOperation struct {
@@ -30,14 +34,13 @@ type (
 //   ctx = a Go context that could expire at any time
 //   set = list of selections from a GraphQL query to be resolved
 //   v = value of Go struct whose (exported) fields are the resolvers
-func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, v reflect.Value) (jsonmap.Ordered, error) {
+func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, v, vIntro reflect.Value, introOp *gqlOperation) (jsonmap.Ordered, error) {
 	// Get the struct that contains the resolvers that we can use
 	for v.Type().Kind() == reflect.Ptr {
 		v = v.Elem() // follow indirection
 	}
-	if v.Type().Kind() != reflect.Struct { // struct = 25
-		// bug since we should have checked this when building the scehma
-		panic("We can only search for a query field within a struct") // TODO return error?
+	for vIntro.IsValid() && vIntro.Type().Kind() == reflect.Ptr {
+		vIntro = vIntro.Elem() // follow indirection
 	}
 
 	result := jsonmap.Ordered{
@@ -60,6 +63,13 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 			if err != nil {
 				return result, err
 			}
+			if value == nil && vIntro.IsValid() {
+				// handle any introspection query
+				value, err = introOp.FindSelection(ctx, astType, vIntro)
+				if err != nil {
+					return result, err
+				}
+			}
 			if value != nil {
 				key := astType.Alias // name used as map key
 				if _, ok := result.Data[key]; ok {
@@ -68,15 +78,15 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 				result.Data[key] = value
 				result.Order = append(result.Order, key)
 			}
-			// else TODO return error if not found (note: nil is currently returned when a field is excluded by directive)
+			// else TODO panic or return error (should be found as validator would have signalled a bad name)
 			continue // the rest of the loop only applies to fragments
 
 		case *ast.InlineFragment:
-			fragments, fragErr = op.GetSelections(ctx, astType.SelectionSet, v)
+			fragments, fragErr = op.GetSelections(ctx, astType.SelectionSet, v, vIntro, introOp)
 			fragName = "on " + astType.TypeCondition
 
 		case *ast.FragmentSpread:
-			fragments, fragErr = op.GetSelections(ctx, astType.Definition.SelectionSet, v)
+			fragments, fragErr = op.GetSelections(ctx, astType.Definition.SelectionSet, v, vIntro, introOp)
 			fragName = astType.Name
 		}
 
@@ -140,7 +150,10 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 			}
 		}
 	}
-	return nil, nil // indicate that astField.Name was not found
+	// If we got here the query has been ignored.  Ignoring a query is probably an error but this situation
+	// should be precluded by the query validation already performed.  But we don't panic here as this *can*
+	// occur if AllowIntrospection == false and it's an introspection (__schema or __type) query.
+	return nil, nil
 }
 
 // resolve calls a resolver given a query to obtain the results of the query (incl. listed and nested queries)
@@ -173,7 +186,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 
 	switch v.Type().Kind() {
 	case reflect.Struct:
-		return op.GetSelections(ctx, astField.SelectionSet, v) // returns map of interface{} as an interface{}
+		return op.GetSelections(ctx, astField.SelectionSet, v, reflect.Value{}, nil) // returns map of interface{} as an interface{}
 
 	case reflect.Slice, reflect.Array:
 		var results []interface{}

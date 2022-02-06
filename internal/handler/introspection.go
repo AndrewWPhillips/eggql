@@ -19,9 +19,9 @@ type (
 
 	gqlSchema struct {
 		Types            []gqlType
-		QueryType        gqlType
-		MutationType     gqlType
-		SubscriptionType gqlType
+		QueryType        *gqlType
+		MutationType     *gqlType
+		SubscriptionType *gqlType
 		Directives       []gqlDirective
 	}
 
@@ -75,20 +75,25 @@ func NewIntrospectionData(astSchema *ast.Schema) interface{} {
 		astSchema: astSchema,
 		Schema: gqlSchema{
 			Types: getTypes(astSchema.Types),
-			QueryType: gqlType{
-				Kind:        getTypeKind(astSchema.Query.Kind),
-				Name:        astSchema.Query.Name,
-				Description: astSchema.Query.Description,
-				Fields:      getFields(astSchema.Query.Fields),
-			},
-			MutationType: gqlType{
-				Kind:        getTypeKind(astSchema.Mutation.Kind),
-				Name:        astSchema.Mutation.Name,
-				Description: astSchema.Mutation.Description,
-				Fields:      getFields(astSchema.Mutation.Fields),
-			},
 		},
 	}
+	if astSchema.Query != nil {
+		i.Schema.QueryType = &gqlType{
+			Kind:        getTypeKind(astSchema.Query.Kind),
+			Name:        astSchema.Query.Name,
+			Description: astSchema.Query.Description,
+			Fields:      getFields(astSchema.Query.Fields),
+		}
+	}
+	if astSchema.Mutation != nil {
+		i.Schema.MutationType = &gqlType{
+			Kind:        getTypeKind(astSchema.Mutation.Kind),
+			Name:        astSchema.Mutation.Name,
+			Description: astSchema.Mutation.Description,
+			Fields:      getFields(astSchema.Mutation.Fields),
+		}
+	}
+	// TODO subscription
 	i.GetType = i.getType
 	return i
 }
