@@ -3,6 +3,7 @@ package schema
 // schemaTypes.go contains the schema Type which accumulates all the GraphQL type to be added to the schema
 
 import (
+	"errors"
 	"fmt"
 	"github.com/andrewwphillips/eggql/internal/field"
 	"reflect"
@@ -45,7 +46,7 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, inpu
 			t = t.Elem() // follow indirection
 		case reflect.Array, reflect.Slice:
 			if !needName {
-				// Get the element type name from with the square brackets
+				// Get the element type name from within the square brackets
 				if len(name) < 2 || name[0] != '[' || name[len(name)-1] != ']' {
 					panic("Type name for list should be in square brackets")
 				}
@@ -178,6 +179,13 @@ func (s schema) getResolvers(t reflect.Type, enums map[string][]string, gqlType 
 		if fieldInfo.Name != "" && !validGraphQLName(fieldInfo.Name) {
 			err = fmt.Errorf("%q is not a valid name", fieldInfo.Name)
 			return
+		}
+		if _, isEnum := enums[fieldInfo.GQLTypeName]; isEnum {
+			// For enums the resolver must have a Go integer type
+			if fieldInfo.Kind < reflect.Int || fieldInfo.Kind > reflect.Uintptr {
+				err = errors.New("resolver with enum type must be an integer field " + f.Name)
+				return
+			}
 		}
 		if fieldInfo.Embedded {
 			// Add struct to our collection as an "interface"

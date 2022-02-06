@@ -38,6 +38,9 @@ type (
 	QueryBadOption struct {
 		Fa func(int8) string `graphql:",parms(i)"` // parms should be params
 	}
+	QueryReservedName struct {
+		Message string `graphql:"__message"`
+	}
 	QueryBadParam1 struct {
 		Fb func(int8) string `graphql:",params(a b)"` // no comma
 	}
@@ -97,12 +100,6 @@ type (
 		M string
 		Embedded
 	}
-	IRecurseList2 struct {
-		List *[]IRecurseList2 // can't use IRecurseList2 as interface and object
-	}
-	QueryIRecurseList2 struct {
-		IRecurseList2
-	}
 )
 
 var (
@@ -111,6 +108,7 @@ var (
 	badValue    = map[string][]string{"Unit": {"456", "MILE"}}
 	badValue2   = map[string][]string{"Unit": {"true", "false", "null"}}
 	repeatValue = map[string][]string{"Unit": {"MILE", "FOOT", "MILE"}}
+	emptyEnum   = map[string][]string{"Unit": {"FOOT"}, "Empty": {}}
 )
 
 var errorData = map[string]struct {
@@ -129,6 +127,7 @@ var errorData = map[string]struct {
 	"Return2":         {QueryReturn2{}, nil, "must be error type"},
 	"Return3":         {QueryReturn3{}, nil, "returns too many values"},
 	"ObjectInput":     {QueryObjectAndInput{}, nil, "different GraphQL types"},
+	"BadReserved":     {QueryReservedName{}, nil, "not a valid name"},
 	"UnknownOption":   {QueryBadOption{}, nil, "unknown option"},
 	"BadParam1":       {QueryBadParam1{}, nil, "not a valid name"},
 	"BadParam2":       {QueryBadParam2{}, nil, "unmatched left bracket"},
@@ -139,6 +138,7 @@ var errorData = map[string]struct {
 	"EnumValue":       {Query{}, badValue, "enum value"},
 	"EnumValue2":      {Query{}, badValue2, "enum value"},
 	"EnumRepeat":      {Query{}, repeatValue, "repeated enum value"},
+	"EmptyEnum":       {Query{}, emptyEnum, "has no values"},
 	"UnknownEnum":     {QueryUnknownEnum{}, nil, "not found"},
 	"EnumNotInt":      {QueryEnumNotInt{}, enums, "enum type must be an integer"},
 	"UnknownParam":    {QueryUnknownParam{}, nil, "not found"},
@@ -152,7 +152,6 @@ var errorData = map[string]struct {
 	"DupeField2":      {QueryDupeField2{}, nil, "same name"},
 	"DupeEmbedded1":   {QueryDupe1{}, nil, "same name"},
 	"DupeEmbedded2":   {QueryDupe2{}, nil, "same name"},
-	"ObjectInterface": {QueryIRecurseList2{}, nil, "different GraphQL types"},
 
 	// TODO: test defaults errors: input, list
 }
@@ -166,6 +165,6 @@ func TestSchemaErrors(t *testing.T) {
 			// we got an error (good), but we should still make sure it's the right one
 			ok = strings.Contains(err.Error(), data.problem)
 		}
-		Assertf(t, ok, "TestSchemaErrors: %12s: expected an error, got %v", name, err)
+		Assertf(t, ok, "TestSchemaErrors: %12s: expected an error, got: %v", name, err)
 	}
 }

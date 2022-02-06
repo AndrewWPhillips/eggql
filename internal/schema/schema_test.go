@@ -106,8 +106,8 @@ type (
 		PrimaryFunction string
 	}
 	Character struct {
-		Friends []*Character
 		Name    string
+		Friends []*Character
 	}
 	QueryInterface2 struct {
 		Hero Character
