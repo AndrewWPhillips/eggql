@@ -43,7 +43,7 @@ type (
 	}
 	QueryName struct{ B byte }
 
-	// X and Y are embedded in other structs to implement a GraphQL interfaces X and Y
+	// X and Y are embedded in other structs to implement GraphQL interfaces X and Y
 	X struct {
 		X1 int
 	}
@@ -53,6 +53,11 @@ type (
 	D struct {
 		X
 		E string
+	}
+
+	ParentRef struct {
+		private int
+		Value   func() int // closure (set to point to ParentRef.valueFunc method below)
 	}
 )
 
@@ -101,7 +106,13 @@ var (
 	contextFunc2 = struct {
 		F func(context.Context, int, string) string `graphql:",params(i,s)"`
 	}{func(ctx context.Context, i int, s string) string { return strconv.Itoa(i) + s }}
+
+	parRef = ParentRef{private: 42}
 )
+
+func (p *ParentRef) valueFunc() int {
+	return p.private
+}
 
 // JsonObject is what json.Unmarshaller produces when it decodes a JSON object.  Not that we use a type alias here,
 //   hence the equals sing (=) rather than a type definition otherwise reflect.DeepEqual does not work.
@@ -188,9 +199,16 @@ var happyData = map[string]struct {
 		JsonObject{"dbl": float64(102)}},
 	"Context2": {param2ArgSchema, contextFunc2, `{ f(i:3,s:\"abc\") }`, "",
 		JsonObject{"f": "3abc"}},
+	// Note that we can't pass parRef by value (must use pointer) since parRef.value has not been set yet
+	"ParRef": {intSchema, &parRef, `{ value }`, "",
+		JsonObject{"value": float64(42)}},
+	// TODO: check that ctx kills the query even if resolver does not check ctx - eg long list of [sub-query]
 }
 
 func TestQuery(t *testing.T) {
+	// Value stores a closure on the method valueFunc so that it can refer back to field "private" via the receiver
+	parRef.Value = parRef.valueFunc
+
 	for name, testData := range happyData {
 		h := handler.New(testData.schema, testData.data)
 
