@@ -1,4 +1,4 @@
-// Package field is for analysing Go struct fields for use as GraphQL queries
+// Package field is for analysing Go struct fields for use as GraphQL query fields (resolvers)
 package field
 
 // field.go generates GraphQL resolver info from a Go struct field
@@ -13,14 +13,14 @@ import (
 	"unicode/utf8"
 )
 
-// Info is used by Get to return info extracted from a struct field used as a GraphQL query resolver.  The info is based on the field's name, type and "graphql" (metadata) tag.
+// Info is returned Get() with info extracted from a struct field to be used as a GraphQL query resolver.
+// The info is obtained from the field's name, type and "graphql" (metadata) tag.
 // Note that since Go has no native enums the GraphQL enum names are handled in metadata for
-// both resolver return value and arguments:
-//   return value - field name may be followed by "=<name>" where <name> is the enum name
-//   argument - each argument name in a "params" section may be followed by "=<name>"
+// both resolver return value and arguments (see metadata examples).
 type Info struct {
-	Name        string // field name for use in GraphQL queries - based on metadata (tag) or Go struct field name
-	GQLTypeName string // name of enum - must be for field of int type (or function returning an int type)
+	Name        string       // field name for use in GraphQL queries - based on metadata (tag) or Go struct field name
+	GQLTypeName string       // GraphQL type name (may be empty but is required for GraphQL enums)
+	Kind        reflect.Kind // Kind of Go Type of the field (or the element type for array/slice fields)
 
 	// The following are for function resolvers only
 	Params     []string // name(s) of args to resolver function obtained from metadata
@@ -33,7 +33,10 @@ type Info struct {
 	Nullable bool // pointer fields or those with the "nullable" tag are allowed to be null
 }
 
+// contextType is used to check if a resolver function takes a context.Context (1st) parameter
 var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
+
+// errorType is used to check if a resolver function returns a (2nd) error return value
 var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
 // Get checks if a field in a Go struct is exported and, if so, returns the GraphQL field info. incl. the
@@ -41,7 +44,7 @@ var errorType = reflect.TypeOf((*error)(nil)).Elem()
 // It also returns other stuff like whether the result is nullable and GraphQL parameters (and default
 // parameter values) if the resolver is a function.
 // An error may be returned e.g. for malformed metadata, or a resolver function returning multiple values.
-// If the field is not exported nil is returned, but no error.
+// If the field is not exported or the field name (1st tag value) is a dash (-) then nil is returned, but no error.
 func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 	if f.PkgPath != "" {
 		return // unexported field
@@ -111,12 +114,10 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 		}
 	}
 
-	if fieldInfo.GQLTypeName != "" {
-		// For enums the resolver function must return a Go integral type or list thereof
-		kind := t.Kind()
-		if kind == reflect.Slice || kind == reflect.Array {
-			kind = t.Elem().Kind()
-		}
+	fieldInfo.Kind = t.Kind()
+	for fieldInfo.Kind == reflect.Slice || fieldInfo.Kind == reflect.Array {
+		t = t.Elem()
+		fieldInfo.Kind = t.Kind()
 	}
 
 	return
@@ -127,7 +128,7 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 // (e.g. if no tag was supplied) then the returned Info is not nil but the Name field is empty.
 func GetTagInfo(tag string) (*Info, error) {
 	if tag == "-" {
-		return nil, nil
+		return nil, nil // this field is to be ignored
 	}
 	parts, err := SplitNested(tag)
 	if err != nil {
@@ -176,13 +177,6 @@ func GetTagInfo(tag string) (*Info, error) {
 			}
 			continue
 		}
-		// Removed: defaults are now part of params (after =)
-		//if list, err := getBracketedList(part, "defaults"); err != nil {
-		//	return nil, fmt.Errorf("%w getting defaults in %q", err, tag)
-		//} else if list != nil {
-		//	fieldInfo.Defaults = list
-		//	continue
-		//}
 		return nil, fmt.Errorf("unknown option %q in GraphQL tag %q", part, tag)
 	}
 	return fieldInfo, nil
