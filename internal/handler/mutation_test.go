@@ -23,7 +23,7 @@ const (
 var (
 	toBeSet = 1
 	setData = struct {
-		Store func(int) int `graphql:",params(p)"`
+		Store func(int) int `graphql:",args(p)"`
 	}{func(p int) int { toBeSet = p; return p }}
 )
 

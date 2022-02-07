@@ -29,7 +29,7 @@ var splitData = map[string]struct {
 	"String2":      {`"[]]](c), (d), )e(",""`, []string{`"[]]](c), (d), )e("`, `""`}},
 	"String3":      {` a("{]}"), b[1,2,3] `, []string{`a("{]}")`, `b[1,2,3]`}},
 	"WithDefaults": {`list=[1,3,6],obj={a:""}`, []string{`list=[1,3,6]`, `obj={a:""}`}},
-	"ParamsOption": {`, params(list=[1,3,6],obj={a:""}) `, []string{``, `params(list=[1,3,6],obj={a:""})`}},
+	"ParamsOption": {`, args(list=[1,3,6],obj={a:""}) `, []string{``, `args(list=[1,3,6],obj={a:""})`}},
 }
 
 func TestSplit(t *testing.T) {

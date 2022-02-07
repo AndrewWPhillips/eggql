@@ -37,16 +37,16 @@ type (
 	QueryBoolFunc  struct{ F func() bool }
 	QueryErrorFunc struct{ F func() (int, error) }
 	QueryFuncParam struct {
-		F func(float64) int `graphql:",params(q)"`
+		F func(float64) int `graphql:",args(q)"`
 	}
 	QueryFuncParam2 struct {
-		F func(string, int) bool `graphql:",params( p1, p2 )"`
+		F func(string, int) bool `graphql:",args( p1, p2 )"`
 	}
 	QueryFuncDefault struct {
-		F func(string, int) bool `graphql:",params(p1,p2=42)"`
+		F func(string, int) bool `graphql:",args(p1,p2=42)"`
 	}
 	QueryFuncDefault2 struct {
-		F func(string, float64) bool `graphql:",params(p1=\"a b\",p2=3.14)"`
+		F func(string, float64) bool `graphql:",args(p1=\"a b\",p2=3.14)"`
 	}
 	QueryContextFunc struct {
 		F func(context.Context) (int, error)
@@ -61,10 +61,10 @@ type (
 
 	InputInt        struct{ I int }
 	QueryInputParam struct {
-		F func(InputInt) int `graphql:",params(in)"`
+		F func(InputInt) int `graphql:",args(in)"`
 	}
 	QueryInputAnon struct {
-		F func(struct{ J int }) bool `graphql:",params(anon)"`
+		F func(struct{ J int }) bool `graphql:",args(anon)"`
 	}
 	QueryRecurse struct {
 		P *QueryRecurse // recursive data structure: P is (ptr to) type of enclosed struct
@@ -188,7 +188,7 @@ func TestBuildSchema(t *testing.T) {
 }
 
 // Assertf writes a tick or cross (depending on the status of a value that is asserted during tests), followed
-// by a message (with params - printf style).  This allows the result of a test run to be quickly scanned to
+// by a message (with parameters - printf style).  This allows the result of a test run to be quickly scanned to
 // see which tests passed and which failed.  Note that all messages are printed (to stderr) if any test fails or
 // if the -v (verbose) test flag is used.  If all tests pass then no messages are printed (unless -v is used).
 func Assertf(t *testing.T, succeeded bool, format string, args ...interface{}) {

@@ -86,7 +86,7 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 		}
 		if t.NumIn()-firstIndex != len(fieldInfo.Params) {
 			if len(fieldInfo.Params) == 0 {
-				return nil, fmt.Errorf("no params found in graphql tag for %q but %d required", f.Name, t.NumIn()-firstIndex)
+				return nil, fmt.Errorf("no args found in graphql tag for %q but %d required", f.Name, t.NumIn()-firstIndex)
 			}
 			return nil, fmt.Errorf("function %q argument count should be %d but is %d",
 				f.Name, len(fieldInfo.Params), t.NumIn()-firstIndex)
@@ -153,8 +153,8 @@ func GetTagInfo(tag string) (*Info, error) {
 			fieldInfo.Nullable = true
 			continue
 		}
-		if list, err := getBracketedList(part, "params"); err != nil {
-			return nil, fmt.Errorf("%w getting params in %q", err, tag)
+		if list, err := getBracketedList(part, "args"); err != nil {
+			return nil, fmt.Errorf("%w getting args in %q", err, tag)
 		} else if list != nil {
 			fieldInfo.Params = make([]string, len(list))
 			fieldInfo.Defaults = make([]string, len(list))

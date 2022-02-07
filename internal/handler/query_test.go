@@ -78,22 +78,22 @@ var (
 		V int
 	}{"mmm", 43}
 	paramData = struct {
-		Dbl func(int) int `graphql:",params(v)"`
+		Dbl func(int) int `graphql:",args(v)"`
 	}{func(value int) int { return 2 * value }}
 	param2ArgData = struct {
-		F func(int, string) string `graphql:",params(i,s)"`
+		F func(int, string) string `graphql:",args(i,s)"`
 	}{func(i int, s string) string { return s + strconv.Itoa(i) }}
 	default1Data = struct {
-		F func(int, string) string `graphql:",params(i,s=xyz)"`
+		F func(int, string) string `graphql:",args(i,s=xyz)"`
 	}{func(i int, s string) string { return s + strconv.Itoa(i*2) }}
 	default2Data = struct {
-		F func(int, string) string `graphql:",params(i=87,s=ijk)"`
+		F func(int, string) string `graphql:",args(i=87,s=ijk)"`
 	}{func(i int, s string) string { return strconv.Itoa(i) + s }}
 	inputParamData = struct {
-		InputQuery func(struct{ Field string }) int `graphql:",params(param)"`
+		InputQuery func(struct{ Field string }) int `graphql:",args(param)"`
 	}{func(p struct{ Field string }) int { r, _ := strconv.Atoi(p.Field); return r }}
 	inputParam2FieldData = struct {
-		Q func(inputParam2FieldType) string `graphql:",params(p)"`
+		Q func(inputParam2FieldType) string `graphql:",args(p)"`
 	}{func(parm inputParam2FieldType) string { return parm.S + strconv.FormatFloat(parm.F, 'g', 10, 64) }}
 	interfaceData  = struct{ A D }{D{X{4}, "fff"}}
 	interfaceFunc  = struct{ A func() D }{func() D { return D{X{5}, "ggg"} }}
@@ -101,10 +101,10 @@ var (
 
 	contextFunc  = struct{ Value func(context.Context) int }{func(ctx context.Context) int { return 100 }}
 	contextFunc1 = struct {
-		Dbl func(context.Context, int) int `graphql:",params(v)"`
+		Dbl func(context.Context, int) int `graphql:",args(v)"`
 	}{func(ctx context.Context, i int) int { return 100 + 2*i }}
 	contextFunc2 = struct {
-		F func(context.Context, int, string) string `graphql:",params(i,s)"`
+		F func(context.Context, int, string) string `graphql:",args(i,s)"`
 	}{func(ctx context.Context, i int, s string) string { return strconv.Itoa(i) + s }}
 
 	parRef = ParentRef{private: 42}

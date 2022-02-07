@@ -7,14 +7,11 @@ import (
 )
 
 type (
-	//gqlTypeKind          = int // __TypeKind
-	//gqlDirectiveLocation = int // __DirectiveLocation
-
 	introspection struct {
 		astSchema *ast.Schema
 
 		Schema  gqlSchema             `graphql:"__schema"`
-		GetType func(string) *gqlType `graphql:"__type,params(name)"`
+		GetType func(string) *gqlType `graphql:"__type,args(name)"`
 	}
 
 	gqlSchema struct {

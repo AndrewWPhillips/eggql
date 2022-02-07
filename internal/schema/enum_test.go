@@ -19,19 +19,19 @@ type (
 		E int `graphql:"name:Unit"`
 	}
 	QueryParam struct {
-		F func(int) string `graphql:",params(u:Unit)"`
+		F func(int) string `graphql:",args(u:Unit)"`
 	}
 	QueryListParam struct {
-		F func([]int) string `graphql:",params(u:[Unit])"`
+		F func([]int) string `graphql:",args(u:[Unit])"`
 	}
 	QueryDefault struct {
-		Height func(float64, int) string `graphql:",params(h,u:Unit=METER)"`
+		Height func(float64, int) string `graphql:",args(h,u:Unit=METER)"`
 	}
 	QueryListDefault struct {
-		F func([]int) string `graphql:",params(u:[Unit]=[METER, FOOT, FOOT])"`
+		F func([]int) string `graphql:",args(u:[Unit]=[METER, FOOT, FOOT])"`
 	}
 	QueryDefaultEmpty struct {
-		F func([]int) string `graphql:",params(u:[Unit]=[])"`
+		F func([]int) string `graphql:",args(u:[Unit]=[])"`
 	}
 )
 

@@ -212,10 +212,10 @@ func (s schema) getResolvers(t reflect.Type, enums map[string][]string, gqlType 
 			continue
 		}
 
-		// Get resolver arguments (if any) from the "params" option of the GraphQL tag
+		// Get resolver arguments (if any) from the "args" option of the GraphQL tag
 		params, err3 := s.getParams(f.Name, f.Type, enums, fieldInfo)
 		if err3 != nil {
-			err = fmt.Errorf("%w getting params for type %q", err3, fieldInfo.Name)
+			err = fmt.Errorf("%w getting args for type %q", err3, fieldInfo.Name)
 			return
 		}
 		// Get the resolver return type
@@ -306,7 +306,7 @@ func (s schema) getParams(name string, t reflect.Type, enums map[string][]string
 			return "", fmt.Errorf("for %q parameter %d argument %q is not a valid name", name, i, fieldInfo.Params[paramNum])
 		}
 		builder.WriteString(sep)
-		// the next line will panic if not enough arguments were given in "params" part of tag
+		// the next line will panic if not enough arguments were given in "args" part of tag
 		builder.WriteString(fieldInfo.Params[paramNum])
 		builder.WriteString(": ")
 
@@ -373,7 +373,7 @@ func (s schema) getParams(name string, t reflect.Type, enums map[string][]string
 				}
 			}
 		} else {
-			// For params that are not enum we just need to check any defaults are of the right type
+			// For args that are not enum we just need to check any defaults are of the right type
 			if fieldInfo.Defaults[paramNum] != "" {
 				// Check that the default value is a valid literal for the type
 				if !validLiteral(param.Kind(), fieldInfo.Defaults[paramNum]) {
@@ -417,7 +417,7 @@ func (s schema) getParams(name string, t reflect.Type, enums map[string][]string
 		return "", fmt.Errorf("expected %d parameters but function %s only has %d",
 			len(fieldInfo.Params), name, paramNum)
 	}
-	if sep != paramStart { // if we got any params
+	if sep != paramStart { // if we got any args
 		builder.WriteString(paramEnd)
 	}
 	return builder.String(), nil
