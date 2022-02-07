@@ -181,6 +181,9 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 		}
 	}
 	for v.Type().Kind() == reflect.Ptr || v.Type().Kind() == reflect.Interface {
+		if v.IsNil() {
+			return v.Interface(), nil
+		}
 		v = v.Elem() // follow indirection
 	}
 
