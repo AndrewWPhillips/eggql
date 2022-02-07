@@ -207,7 +207,7 @@ Here I'll explain, in detail, how to declare Go types in order to implement a Gr
 
 ### Basic Types
 
-First, we'll look at basic types (scalars, lists and nested objects), then arguments (including defaults and input types), enums, interfaces, mutations, etc.  We'll also look at the sorts of errors you can get and how to handle them.
+First, we'll look at basic types (scalars, lists and nested objects).  Later we'll look at query arguments (including defaults and input types), enums, interfaces, mutations, etc.  We'll also look at the sorts of errors you can get and how to handle them.
 
 If _writing_ queries you also need to know about variables, fragments, directives, aliases, introspection, etc, but since these are handled automatically I won't cover them here.  There are plenty of tutorials that talk about how to use these things.
 
@@ -239,7 +239,6 @@ func main() {
 				Friends: []*Character{
 					{Name: "Leia Organa"},
 					{Name: "Luke Skywalker"},
-					{Name: "Han Solo"},
 				},
 			},
 		}))
@@ -252,6 +251,7 @@ Here the root query has type `Query` as it's the first (only) parameter passed t
 ```graphql
 {
     hero {
+        name
         friends {
             name
         }
@@ -265,15 +265,13 @@ which will produce this:
 {
     "data": {
         "hero": {
+            "name": "R2-D2",
             "friends": [
                 {
                     "name": "Leia Organa"
                 },
                 {
                     "name": "Luke Skywalker"
-                },
-                {
-                    "name": "Han Solo"
                 }
             ]
         }
@@ -292,3 +290,93 @@ The `Friends` field of `Character` defines a list, in this case implemented usin
 The `Name` field has the GraphQL scalar type of `String!` because it uses the Go `string` types.  Similarly, Go integer types create the GraphQL `Int!` type, Go bool => `Boolean!` and got float32/float64 => `Float!`.  Note that none of these types are *nullable* by default, which is indicated by the GraphQL `!` suffix but can be made os by using pointers or the `nullable` tag.
 
 Now we'll look at some more advanced types....
+
+### Arguments
+
+In GraphQL parlance the server code that "resolves" a query is called a resolver.  In the above example the "resolver" for the Here query was just a Character structure.  A more useful and more common thing is for a resolver to be a function.  For one, this allows resolvers to take arguments that permits much greater flexibility.
+
+As an example we will change the `hero` resolver to be a function that takes a parameter specifying which episode we want the hero for.  So now instead of the `Hero` field simply being a `Character` object it is now a function that returns a `Character`.
+
+```Go
+type Query struct {
+	Hero func(episode int) Character `graphql:"hero,args(episode=2)"`
+}
+```
+This also shows our first use of the **graphql tag** stored in the *metadata*.  (Metadata in Go can be attached to any field of a struct type.)  The options in the graphql tag are comma-separated (using a similar format to json, xml, etc tags).
+
+The first option in the graphql tag is the resolver name - in this case `hero`.  Although we don't really need to supply the name as it defaults to the field name (`Hero`) with the first letter converted to lower-case.
+
+The 2nd option of the graphql tag (`args(episode=2)`) specifies the resolver arguments. The number of arguments (comma-separated) in the `args` option must match the number of function parameters (except that the function may also include an initial context.Context parameter as discussed below).  The names of the argument(s) must be given in the `args` (in this case there is just one called `episode`) and you can also give an optional default value (in this case `2`). [Technical note: we can't obtain the argument name from the function parameters as Go reflection only stores the types of function parameters not their names.]
+
+Here is a complete program with the `Hero` resolver.  Note that I changed the `Hero()` function to return a pointer to `Character`; this allows us to return a null value when an invalid episode number has been provided as the argument. (I could have also changed the resolver function to return a 2nd `error` value as we will see later.)
+
+```Go
+package main
+
+import (
+	"github.com/andrewwphillips/eggql"
+	"net/http"
+)
+
+type (
+	Query struct {
+		Hero func(episode int) *Character `graphql:",args(episode=2)"`
+	}
+	Character struct {
+		Name    string
+		Friends []*Character
+	}
+	EpisodeDetails struct {
+		Name   string
+		HeroId int
+	}
+)
+
+var (
+	characters = []Character{
+		{Name: "Luke Skywalker"},
+		{Name: "Leia Organa"},
+		{Name: "Han Solo"},
+		{Name: "R2-D2"},
+	}
+	episodes = []EpisodeDetails{
+		{Name: "A New Hope", HeroId: 0},
+		{Name: "The Empire Strikes Back", HeroId: 0},
+		{Name: "Return of the Jedi", HeroId: 3},
+	}
+)
+
+func main() {
+	// Set up friendships
+	characters[0].Friends = []*Character{&characters[1], &characters[2], &characters[3]}
+	characters[1].Friends = []*Character{&characters[0], &characters[2], &characters[3]}
+	characters[2].Friends = []*Character{&characters[0], &characters[1]}
+	characters[3].Friends = []*Character{&characters[0], &characters[1]}
+
+	http.Handle("/graphql", eggql.MustRun(Query{Hero: func(episode int) *Character {
+		if episode < 0 || episode >= len(episodes) {
+			return nil
+		}
+		return &characters[episodes[episode].HeroId]
+	}}))
+	http.ListenAndServe(":8080", nil)
+}
+```
+
+Now try this query:
+
+```graphql
+{
+    hero(episode: 1) {
+        name
+    }
+}
+```
+
+### Enums
+
+### Interfaces and Unions
+
+### Mutations and Input Types
+
+### Context and Errors
