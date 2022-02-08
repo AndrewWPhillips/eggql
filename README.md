@@ -375,6 +375,136 @@ Now try this query:
 
 ### Enums
 
+In the above code we used an integer to identify episodes.  For example, the `Hero` function's parameter is `episode int`.  For this type of data GraphQL provides enums, which are essentially an integer restricted to as set of named values.  If you are familiar with GraphQL schemas we can define a new `Episode` enum type with 3 values type like this:
+
+```graphqls
+enum Episode {
+  NEWHOPE
+  EMPIRE
+  JEDI
+}
+```
+(Don't worry if you are not familiar with schemas as **eggql** will generate the schema automatically.)
+
+The three allowed values for an `Episode` (NEWHOPE, EMPIRE, and JEDI) are internally represented by the integers 0, 1, and 2.  Because Go does not have a native enum type you just use an integer type, but you also need to tell **eggql** about the corresponding names of the enum values using a slice of strings.  To do this you pass a map of string slices as the 1st (optional) parameter to `MustRun()` where the map key is the enum name.  For example, here is the map for two enum types `Episode` and `Unit`.
+
+```Go
+var gqlEnums = map[string][]string{
+	"Episode": {"NEWHOPE", "EMPIRE", "JEDI"},
+	"Unit":    {"METER", "FOOT"},
+}
+```
+
+It's simple to change the `Hero` resolver to use this `Episode` enum as its argument.
+
+```Go
+	Hero func(episode int) *Character `graphql:",args(episode:Episode=JEDI)"`
+```
+
+If you look closely at the above `args` option you can see that the `episode` argument now has a type name after the colon (:) which is the enum name.  The default value is changed from the integer literal `2` to the enum value `JEDI`.
+
+Of course, a resolver can also _return_ an enum, or a list of enums as we will show here.  We will add a new `appearsIn` field to the `Character` struct which contains a list of episodes that the character has appeared in.
+
+```Go
+	Appears []int `graphql:"appearsIn:[Episode]"`
+```
+
+Here the first tag option (`appearsIn:[Episode]`) says that the GraphQL name of the field is `appearsIn` and the type is a list of `Episode`.
+
+Here's the final program with the above changes.
+
+```Go
+package main
+
+import (
+	"github.com/andrewwphillips/eggql"
+	"net/http"
+)
+
+type (
+	Query struct {
+		Hero func(episode int) *Character `graphql:",args(episode:Episode=JEDI)"`
+	}
+	Character struct {
+		Name    string
+		Friends []*Character
+		Appears []int `graphql:"appearsIn:[Episode]"`
+	}
+	EpisodeDetails struct {
+		Name   string
+		HeroId int
+	}
+)
+
+var (
+	gqlEnums = map[string][]string{
+		"Episode": {"NEWHOPE", "EMPIRE", "JEDI"},
+		"Unit":    {"METER", "FOOT"},
+	}
+	characters = []Character{
+		{Name: "Luke Skywalker"},
+		{Name: "Leia Organa"},
+		{Name: "Han Solo"},
+		{Name: "R2-D2"},
+	}
+	episodes = []EpisodeDetails{
+		{Name: "A New Hope", HeroId: 0},
+		{Name: "The Empire Strikes Back", HeroId: 0},
+		{Name: "Return of the Jedi", HeroId: 3},
+	}
+)
+
+func main() {
+	// Set up friendships
+	characters[0].Friends = []*Character{&characters[1], &characters[2], &characters[3]}
+	characters[1].Friends = []*Character{&characters[0], &characters[2], &characters[3]}
+	characters[2].Friends = []*Character{&characters[0], &characters[1]}
+	characters[3].Friends = []*Character{&characters[0], &characters[1]}
+
+	// Set up appearances
+	characters[0].Appears = []int{0, 1, 2}
+	characters[1].Appears = []int{0, 1, 2}
+	characters[2].Appears = []int{0, 1, 2}
+	characters[3].Appears = []int{0, 1, 2}
+
+	http.Handle("/graphql", eggql.MustRun(gqlEnums, Query{Hero: func(episode int) *Character {
+		if episode < 0 || episode >= len(episodes) {
+			return nil
+		}
+		return &characters[episodes[episode].HeroId]
+	}}))
+	http.ListenAndServe(":8080", nil)
+}
+```
+
+If you run this query:
+
+```graphql
+{
+    hero(episode: EMPIRE) {
+        name
+        appearsIn
+    }
+}
+```
+
+You should see this result:
+
+```json
+{
+    "data": {
+        "hero": {
+            "name": "Luke Skywalker",
+            "appearsIn": [
+                "NEWHOPE",
+                "EMPIRE",
+                "JEDI"
+            ]
+        }
+    }
+}
+```
+
 ### Interfaces and Unions
 
 ### Mutations and Input Types

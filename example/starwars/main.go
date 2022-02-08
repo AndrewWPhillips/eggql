@@ -7,11 +7,12 @@ import (
 
 type (
 	Query struct {
-		Hero func(episode int) *Character `graphql:",args(episode=2)"`
+		Hero func(episode int) *Character `graphql:",args(episode:Episode=JEDI)"`
 	}
 	Character struct {
 		Name    string
 		Friends []*Character
+		Appears []int `graphql:"appearsIn:[Episode]"`
 	}
 	EpisodeDetails struct {
 		Name   string
@@ -20,6 +21,10 @@ type (
 )
 
 var (
+	gqlEnums = map[string][]string{
+		"Episode": {"NEWHOPE", "EMPIRE", "JEDI"},
+		"Unit":    {"METER", "FOOT"},
+	}
 	characters = []Character{
 		{Name: "Luke Skywalker"},
 		{Name: "Leia Organa"},
@@ -40,7 +45,13 @@ func main() {
 	characters[2].Friends = []*Character{&characters[0], &characters[1]}
 	characters[3].Friends = []*Character{&characters[0], &characters[1]}
 
-	http.Handle("/graphql", eggql.MustRun(Query{Hero: func(episode int) *Character {
+	// Set up appearances
+	characters[0].Appears = []int{0, 1, 2}
+	characters[1].Appears = []int{0, 1, 2}
+	characters[2].Appears = []int{0, 1, 2}
+	characters[3].Appears = []int{0, 1, 2}
+
+	http.Handle("/graphql", eggql.MustRun(gqlEnums, Query{Hero: func(episode int) *Character {
 		if episode < 0 || episode >= len(episodes) {
 			return nil
 		}
