@@ -507,6 +507,172 @@ You should see this result:
 
 ### Interfaces and Unions
 
+Interfaces (and unions) are an advanced, but sometimes useful, feature of GraphQL.  Interfaces are similar to interfaces in the type system of Go, so you may be surprised that **eggql** does not use Go interfaces to implement GraphQL interfaces.  Instead it uses struct embedding.
+
+To demonstrate interfaces we are going to change the Star Wars example so that the `Character` type is an interface.  But first we introduce two new types `Human` and `Droid` for GraphQL object types that **implement** the `Character` interface.
+
+```Go
+type (
+	Human struct {
+		Character
+		Height float64 // meters
+	}
+	Droid struct {
+		Character
+		PrimaryFunction string
+	}
+)
+```
+
+The above Go code creates two GraphQL types `Human` and `Droid` which implement the `Character` interface because the Go struct embeds the `Character` struct.  (They also have their own type specific fields.)
+
+No changes are required to the earlier `Character` struct but it now is used as a GraphQL `interface` due solely to the fact that it has been embedded in another struct (or two in this case).
+
+If you have a Character struct (or pointer to one) there is no way in Go to get the struct that embeds it or to even determine that it is embedded in another struct.  So to return a `Character` (which is either a `Human` or a `Droid` underneath) we return a Human or Droid as a Go `interface{}` and use the graphql tag to indicate that the GraphQl type is a `Character` interface.
+
+```Go
+	Hero func(episode int) interface{} `graphql:"hero:Character,args(episode:Episode=JEDI)"`
+```
+
+Here the first option in the graphql tag (`hero:Character`) says that the field is called `hero` and its type is `Character`.  Of course. you also need to change the implementation of the Hero() function so that it returns a `Human` or a `Droid` (as an `interface{}`).
+
+This change to the return value causes one further complication that given the `Query` type passed to `MustRun()` there is no way for **eggql** to discover (by reflection) the `Character` type or even the new `Human` and `Droid` types.  The solution is to add a dummy field with a "blank" name of underscore (_).  See below.
+
+```Go
+package main
+
+import (
+	"github.com/andrewwphillips/eggql"
+	"net/http"
+)
+
+type (
+	Query struct {
+		Hero func(episode int) interface{} `graphql:"hero:Character,args(episode:Episode=JEDI)"`
+		_    Character
+		_    Human
+		_    Droid
+	}
+	Character struct {
+		Name    string
+		Friends []*Character
+		Appears []int `graphql:"appearsIn:[Episode]"`
+	}
+	Human struct {
+		Character
+		Height float64 // meters
+	}
+	Droid struct {
+		Character
+		PrimaryFunction string
+	}
+	EpisodeDetails struct {
+		Name   string
+		HeroId int
+	}
+)
+
+var (
+	gqlEnums = map[string][]string{
+		"Episode": {"NEWHOPE", "EMPIRE", "JEDI"},
+		"Unit":    {"METER", "FOOT"},
+	}
+	humans = []Human{
+		{Character{Name: "Luke Skywalker"}, 1.67},
+		{Character{Name: "Leia Organa"}, 1.65},
+		{Character{Name: "Han Solo"}, 1.85},
+		{Character{Name: "Chewbacca"}, 2.3},
+	}
+	droids = []Droid{
+		{Character{Name: "R2-D2"}, "Astromech"},
+		{Character{Name: "C-3PO"}, "Protocol"},
+	}
+	episodes = []EpisodeDetails{
+		{Name: "A New Hope", HeroId: 1000},
+		{Name: "The Empire Strikes Back", HeroId: 1000},
+		{Name: "Return of the Jedi", HeroId: 2000},
+	}
+)
+
+func main() {
+	// Set up friendships
+	luke := &humans[0].Character
+	leia := &humans[1].Character
+	solo := &humans[2].Character
+	chew := &humans[3].Character
+	r2d2 := &droids[0].Character
+	c3po := &droids[1].Character
+
+	humans[0].Friends = []*Character{leia, solo, chew, r2d2}
+	humans[1].Friends = []*Character{luke, solo, r2d2, c3po}
+	humans[2].Friends = []*Character{chew, leia, luke}
+	humans[3].Friends = []*Character{solo, luke}
+
+	droids[0].Friends = []*Character{c3po, luke, leia}
+	droids[1].Friends = []*Character{r2d2, leia}
+
+	// Set up appearances
+	humans[0].Appears = []int{0, 1, 2}
+	humans[1].Appears = []int{0, 1, 2}
+	humans[2].Appears = []int{0, 1, 2}
+	humans[3].Appears = []int{0, 1, 2}
+	droids[0].Appears = []int{0, 1, 2}
+	droids[1].Appears = []int{0, 1, 2}
+
+	http.Handle("/graphql", eggql.MustRun(gqlEnums, Query{Hero: func(episode int) interface{} {
+		if episode < 0 || episode >= len(episodes) {
+			return nil
+		}
+		ID := episodes[episode].HeroId
+		if ID >= 2000 {
+			// droids have IDs starting at 2000
+			ID -= 2000
+			if ID > len(droids) {
+				return nil
+			}
+			return droids[ID]
+		}
+		// humans have IDs starting at 1000
+		ID -= 1000
+		if ID < 0 || ID > len(humans) {
+			return nil
+		}
+		return humans[ID]
+	}}))
+	http.ListenAndServe(":8080", nil)
+}
+```
+
+You can check that this works using GraphQL **inline fragments** like this:
+
+```graphql
+{
+  hero(episode: JEDI) {
+    name
+    ... on Droid {
+      primaryFunction
+    }
+    ... on Human {
+      height
+    }
+  }
+}
+```
+
+which will produce JSON output that includes Droid specific (the `primaryFunction` field) data:
+
+```json
+{
+    "data": {
+        "hero": {
+            "name": "R2-D2",
+            "primaryFunction": "Astromech"
+        }
+    }
+}
+```
+
+
 ### Mutations and Input Types
 
 ### Context and Errors
