@@ -159,6 +159,7 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, inpu
 func (s schema) getResolvers(t reflect.Type, enums map[string][]string, gqlType string) (r map[string]string, iface []string, err error) {
 	r = make(map[string]string)
 
+	// First get type info from all dummy fields - those with blank ID (_) as their name
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		if f.Name == "_" {
@@ -166,8 +167,10 @@ func (s schema) getResolvers(t reflect.Type, enums map[string][]string, gqlType 
 			if err = s.add("", f.Type, enums, gqlObjectType); err != nil {
 				return
 			}
-			continue
 		}
+	}
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
 		fieldInfo, err2 := field.Get(&f)
 		if err2 != nil {
 			err = fmt.Errorf("%w getting field %q", err2, f.Name)

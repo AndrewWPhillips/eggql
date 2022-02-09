@@ -26,8 +26,18 @@ type (
 		PrimaryFunction string
 	}
 	EpisodeDetails struct {
-		Name   string
-		HeroId int
+		Name       string
+		HeroId     int
+		Stars      int
+		Commentary string
+	}
+
+	Mutation struct {
+		CreateReview func(int, ReviewInput) *EpisodeDetails `graphql:",args(episode:Episode,review)"`
+	}
+	ReviewInput struct {
+		Stars      int
+		Commentary string
 	}
 )
 
@@ -78,25 +88,50 @@ func main() {
 	droids[0].Appears = []int{0, 1, 2}
 	droids[1].Appears = []int{0, 1, 2}
 
-	http.Handle("/graphql", eggql.MustRun(gqlEnums, Query{Hero: func(episode int) interface{} {
-		if episode < 0 || episode >= len(episodes) {
-			return nil
-		}
-		ID := episodes[episode].HeroId
-		if ID >= 2000 {
-			// droids have IDs starting at 2000
-			ID -= 2000
-			if ID > len(droids) {
-				return nil
-			}
-			return droids[ID]
-		}
-		// humans have IDs starting at 1000
-		ID -= 1000
-		if ID < 0 || ID > len(humans) {
-			return nil
-		}
-		return humans[ID]
-	}}))
+	http.Handle("/graphql", eggql.MustRun(gqlEnums,
+		Query{
+			Hero: func(episode int) interface{} {
+				if episode < 0 || episode >= len(episodes) {
+					return nil
+				}
+				ID := episodes[episode].HeroId
+				if ID >= 2000 {
+					// droids have IDs starting at 2000
+					ID -= 2000
+					if ID > len(droids) {
+						return nil
+					}
+					return droids[ID]
+				}
+				// humans have IDs starting at 1000
+				ID -= 1000
+				if ID < 0 || ID > len(humans) {
+					return nil
+				}
+				return humans[ID]
+			},
+		},
+		Mutation{
+			CreateReview: func(episode int, review ReviewInput) *EpisodeDetails {
+				if episode < 0 || episode >= len(episodes) {
+					return nil
+				}
+				episodes[episode].Stars = limit(0, 5, review.Stars)
+				episodes[episode].Commentary = review.Commentary
+				return &episodes[episode]
+			},
+		},
+	))
 	http.ListenAndServe(":8080", nil)
+}
+
+// limit returns v (3rd parameter) if it's within the range, else it returns v snapped to the range
+func limit(min, max, v int) int {
+	if v < min {
+		v = min
+	}
+	if v > max {
+		v = max
+	}
+	return v
 }

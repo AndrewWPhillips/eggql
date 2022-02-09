@@ -205,9 +205,9 @@ Traditionally in GraphQL, you first create a schema which defines your types, bu
 
 Here I'll explain, in detail, how to declare Go types in order to implement a GraphQL server.  Since we're implementing the backend (GraphQL server) I'll focus on that, not on using it.  So it's mostly Go code with a few test queries.  However, I am using an example based on the official GraphQL tutorial (see https://graphql.org/learn/), so if you want to explorer the frontend side of things at the same time you can use the example queries from there.
 
-### Basic Types
-
 First, we'll look at basic types (scalars, lists and nested objects).  Later we'll look at query arguments (including defaults and input types), enums, interfaces, mutations, etc.  We'll also look at the sorts of errors you can get and how to handle them.
+
+### Basic Types
 
 If _writing_ queries you also need to know about variables, fragments, directives, aliases, introspection, etc, but since these are handled automatically I won't cover them here.  There are plenty of tutorials that talk about how to use these things.
 
@@ -246,7 +246,7 @@ func main() {
 }
 ```
 
-Here the root query has type `Query` as it's the first (only) parameter passed to `MustRun()`.  Now you can send a `hero` query to the server which returns a `Character`.  The `Character` object can be queried for its name and for a list of friends.  Try this query:
+Here the type `Query` is the root query as it's the first (only) parameter passed to `MustRun()`.  Now you can send a `hero` query to the server which returns a `Character`.  The `Character` object can be queried for its name and for a list of friends.  Try this query:
 
 ```graphql
 {
@@ -279,9 +279,7 @@ which will produce this:
 }
 ```
 
-Note that you could recursively query the friends of the friends but the above data does not have any friends for Leia, etc.
-
-The above examples shows the basic types of GraphQL: scalars, objects and lists.
+Note that you could recursively query the friends of the friends.  You can even query friends of friends of friends ... to any depth, but it is unwise to nest queries too deeply (and some servers limit nesting to 3 or 4 levels).  You can't see this with the above data as Luke and Leia do not have any friends yet.
 
 The `Character` type is an object since it has fields (sub-queries) within it. `Query` is also an object but it is special being the **root query**.
 
@@ -505,7 +503,7 @@ You should see this result:
 }
 ```
 
-### Interfaces and Unions
+### Interfaces
 
 Interfaces (and unions) are an advanced, but sometimes useful, feature of GraphQL.  Interfaces are similar to interfaces in the type system of Go, so you may be surprised that **eggql** does not use Go interfaces to implement GraphQL interfaces.  Instead it uses struct embedding.
 
@@ -643,7 +641,7 @@ func main() {
 }
 ```
 
-You can check that this works using GraphQL **inline fragments** like this:
+You can check that this works using a GraphQL query with **inline fragments** like this:
 
 ```graphql
 {
@@ -672,7 +670,191 @@ which will produce JSON output that includes Droid specific (the `primaryFunctio
 }
 ```
 
-
 ### Mutations and Input Types
 
-### Context and Errors
+GraphQL is mainly used for receiving information from the backend (server) using queries, but it's often useful for backends to also receive information from their frontends (clients).  This is what Mutations are for.  Mutations are syntactically indentical to queries.  There is a root mutation (by default called `Mutation`) in the same way there is a root query (by default called `Query`). Just as the root query is passed as the 1st parameter to `MustRun()` (2nd parameter if you have enums) then the root mutation is passed as the 2nd parameter (3rd parameter if you have enums).
+
+You could in fact write a _query_ that modifies data on the backend but that is a bad idea for two reasons:
+
+1. It's confusing to clients (and to backend code maintainers)
+2. Mutations are guaranteed to be executed in sequence (whereas parts of a query resolve in parallel)
+
+To demonstrate, we will add a mutation that allows clients to submit movie ratings and reviews.  Here are the relevant types:
+
+```Go
+type (
+	EpisodeDetails struct {
+		Name       string
+		HeroId     int
+		Stars      int
+		Commentary string
+	}
+	Mutation struct {
+		CreateReview func(int, ReviewInput) *EpisodeDetails `graphql:",args(episode:Episode,review)"`
+	}
+	ReviewInput struct {
+		Stars      int
+		Commentary string
+	}
+)
+```
+Note that the `EpisodeDetails` struct, which we have already seen, has two new fields (`Stars` and `Commentary`) which are used to save the submitted values from the client.  There is also a root mutation object containing a `CreateReview` mutation.  This mutation takes two arguments, an `Episode` (enum) and a `ReviewInput` and returns the `EpisodeDetails` as confirmation of the change.
+
+A new thing here is a struct (`ReviewInput`) used as an argument.  This generates a GraphQL **input** type in the schema.  An input type is similar to a GraphQL object type except that it can only be used as an argument to a mutation or query.  Unlike an object (or interface) type the fields of an input type cannot have arguments.  Also, if you try to use the same Go struct as an input type _and_ an object type (or interface type) **eggql** will return an error.  TODO: include error message
+
+Here is the complete program with the mutation.
+
+```Go
+package main
+
+import (
+	"github.com/andrewwphillips/eggql"
+	"net/http"
+)
+
+type (
+	Query struct {
+		Hero func(episode int) interface{} `graphql:"hero:Character,args(episode:Episode=JEDI)"`
+		_    Character
+		_    Human
+		_    Droid
+	}
+	Character struct {
+		Name    string
+		Friends []*Character
+		Appears []int `graphql:"appearsIn:[Episode]"`
+	}
+	Human struct {
+		Character
+		Height float64 // meters
+	}
+	Droid struct {
+		Character
+		PrimaryFunction string
+	}
+	EpisodeDetails struct {
+		Name       string
+		HeroId     int
+		Stars      int
+		Commentary string
+	}
+
+	Mutation struct {
+		CreateReview func(int, ReviewInput) *EpisodeDetails `graphql:",args(episode:Episode,review)"`
+	}
+	ReviewInput struct {
+		Stars      int
+		Commentary string
+	}
+)
+
+var (
+	gqlEnums = map[string][]string{
+		"Episode": {"NEWHOPE", "EMPIRE", "JEDI"},
+		"Unit":    {"METER", "FOOT"},
+	}
+	humans = []Human{
+		{Character{Name: "Luke Skywalker"}, 1.67},
+		{Character{Name: "Leia Organa"}, 1.65},
+		{Character{Name: "Han Solo"}, 1.85},
+		{Character{Name: "Chewbacca"}, 2.3},
+	}
+	droids = []Droid{
+		{Character{Name: "R2-D2"}, "Astromech"},
+		{Character{Name: "C-3PO"}, "Protocol"},
+	}
+	episodes = []EpisodeDetails{
+		{Name: "A New Hope", HeroId: 1000},
+		{Name: "The Empire Strikes Back", HeroId: 1000},
+		{Name: "Return of the Jedi", HeroId: 2000},
+	}
+)
+
+func main() {
+	// Set up friendships
+	luke := &humans[0].Character
+	leia := &humans[1].Character
+	solo := &humans[2].Character
+	chew := &humans[3].Character
+	r2d2 := &droids[0].Character
+	c3po := &droids[1].Character
+
+	humans[0].Friends = []*Character{leia, solo, chew, r2d2}
+	humans[1].Friends = []*Character{luke, solo, r2d2, c3po}
+	humans[2].Friends = []*Character{chew, leia, luke}
+	humans[3].Friends = []*Character{solo, luke}
+
+	droids[0].Friends = []*Character{c3po, luke, leia}
+	droids[1].Friends = []*Character{r2d2, leia}
+
+	// Set up appearances
+	humans[0].Appears = []int{0, 1, 2}
+	humans[1].Appears = []int{0, 1, 2}
+	humans[2].Appears = []int{0, 1, 2}
+	humans[3].Appears = []int{0, 1, 2}
+	droids[0].Appears = []int{0, 1, 2}
+	droids[1].Appears = []int{0, 1, 2}
+
+	http.Handle("/graphql", eggql.MustRun(gqlEnums,
+		Query{
+			Hero: func(episode int) interface{} {
+				if episode < 0 || episode >= len(episodes) {
+					return nil
+				}
+				ID := episodes[episode].HeroId
+				if ID >= 2000 {
+					// droids have IDs starting at 2000
+					ID -= 2000
+					if ID > len(droids) {
+						return nil
+					}
+					return droids[ID]
+				}
+				// humans have IDs starting at 1000
+				ID -= 1000
+				if ID < 0 || ID > len(humans) {
+					return nil
+				}
+				return humans[ID]
+			},
+		},
+		Mutation{
+			CreateReview: func(episode int, review ReviewInput) *EpisodeDetails {
+				if episode < 0 || episode >= len(episodes) {
+					return nil
+				}
+				episodes[episode].Stars = review.Stars
+				episodes[episode].Commentary = review.Commentary
+				return &episodes[episode]
+			},
+		},
+	))
+	http.ListenAndServe(":8080", nil)
+}
+```
+
+To run the `CreateReview` mutation send this "query" to the server:
+
+```graphql
+mutation {
+  createReview(episode: EMPIRE, review: {stars: 5, commentary: "one of the greatest science fiction movies"}) {
+    name
+    stars
+    commentary
+  }
+}
+```
+
+You should get a response that confirms that the `EpisodeDetails` was updated
+
+```json
+{
+    "data": {
+        "createReview": {
+            "name": "The Empire Strikes Back",
+            "stars": 5,
+            "commentary": "one of the greatest science fiction movies"
+        }
+    }
+}
+```
