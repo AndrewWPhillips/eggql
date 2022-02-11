@@ -4,7 +4,7 @@ The **eggql** package allows you to very easily create a GraphQL server using Go
 
 It currently supports queries, mutations, all GraphQL types including interfaces. It does not support subscriptions (yet).
 
-For simplicity, you _don't_ need to create a GraphQL **schema**. You just declare Go structs with fields that act as the GraphQL **resolvers**.  For some things, like resolver arguments, you need to add tags (metadata attached to a field of a struct type), similar to the way tags are used for encoding of JSON.
+For simplicity, you _don't_ need to create a GraphQL **schema**. You just declare Go structs with fields that act as the GraphQL **resolvers**.  For some things, like resolver arguments, you need to add tags (metadata attached to a field of a struct type), like the tags used to control JSON encoding/decoding.
 
 ## Getting Started
 
@@ -54,7 +54,7 @@ To test the server just send a query like the following to http://localhost:8080
 }
 ```
 
-Note that the query name `random` is derived from the struct's field name `Random`.  Only exported fields (those with a upper-case first letter) are used and the generated GraphQL name is the same but with a lower-case first letter.  You can also provide your own name using the graphql tag such as `graphql:"myRand,args(low=1,high=6)"`.
+Note that the query name `random` is derived from the struct's field name `Random`.  Only exported fields (those with a upper-case first letter) are used and the generated GraphQL name derived from it using a lower-case first letter.  You can also provide your own name using the graphql tag such as `graphql:"myRand,args(low=1,high=6)"`.
 
 Also note the two resolver arguments (`low` and `high`) given in the graphql tag.  You must supply the `args` option of the tag if the resolver function takes arguments.  In this case there are two arguments so you must specify two names in the `args`.  (An exception is if the first function argument is a `context.Context` as we will see below.)
 
@@ -197,7 +197,9 @@ func main() {
 
 Note that there are further ways to increase the robustness of your server, that I won't cover here, such as adding a ReadTimeout, graceful server shutdown, etc.  These are easily incorporated into the above code - look for Go HTTP tutorials using a Google search.
 
-## Details
+---
+
+## Tutorial
 
 GraphQL is all about types - scalar types (int, string, etc), object types which are composed of fields of other types (a bit like Go structs), lists (a bit like a Go slices) and more specialized types like interfaces and input types (which we will get to later).
 
@@ -283,9 +285,9 @@ Note that you could recursively query the friends of the friends.  You can even 
 
 The `Character` type is an object since it has fields (sub-queries) within it. `Query` is also an object but it is special being the **root query**.
 
-The `Friends` field of `Character` defines a list, in this case implemented using a slice of pointers.
+The `Friends` field of `Character` defines a list, in this case implemented using a slice of pointers.  
 
-The `Name` field has the GraphQL scalar type of `String!` because it uses the Go `string` types.  Similarly, Go integer types create the GraphQL `Int!` type, Go bool => `Boolean!` and got float32/float64 => `Float!`.  Note that none of these types are *nullable* by default, which is indicated by the GraphQL `!` suffix but can be made os by using pointers or the `nullable` tag.
+The `Name` field has the GraphQL scalar type of `String!` because it uses the Go `string` type.  Similarly, any Go integer types create the GraphQL `Int!` type, Go bool => `Boolean!` and float32/float64 => `Float!`.  Note that none of these types are *nullable* by default, which is indicated by the GraphQL `!` suffix but can be made so by using pointers or the `nullable` tag.
 
 Now we'll look at some more advanced types....
 
@@ -625,14 +627,14 @@ func main() {
 		if ID >= 2000 {
 			// droids have IDs starting at 2000
 			ID -= 2000
-			if ID > len(droids) {
+			if ID >= len(droids) {
 				return nil
 			}
 			return droids[ID]
 		}
 		// humans have IDs starting at 1000
 		ID -= 1000
-		if ID < 0 || ID > len(humans) {
+		if ID < 0 || ID >= len(humans) {
 			return nil
 		}
 		return humans[ID]
@@ -641,11 +643,11 @@ func main() {
 }
 ```
 
-You can check that this works using a GraphQL query with **inline fragments** like this:
+You can check that this works using a GraphQL query with **inline fragments**.  (See [Inline Fragments](https://graphql.org/learn/queries/#inline-fragments) for details.)
 
 ```graphql
 {
-  hero(episode: JEDI) {
+  hero {
     name
     ... on Droid {
       primaryFunction
@@ -657,7 +659,7 @@ You can check that this works using a GraphQL query with **inline fragments** li
 }
 ```
 
-which will produce JSON output that includes Droid specific (the `primaryFunction` field) data:
+which will produce JSON output like this:
 
 ```json
 {
@@ -670,14 +672,45 @@ which will produce JSON output that includes Droid specific (the `primaryFunctio
 }
 ```
 
+Since R2-D2 is a droid you get the `primaryFunction` field.  Now use a differeny episode as the query parameter, as below.
+
+Note that rather than changing the query in this way it is good practice to "parameterize" any parts that might change using variables - see [GraphQL Variables](https://graphql.org/learn/queries/#variables).  But that's outside the scope of this tutorial.
+
+```graphql
+{
+  hero(episode: NEWHOPE) {
+    name
+    ... on Droid {
+      primaryFunction
+    }
+    ... on Human {
+      height
+    }
+  }
+}
+```
+
+which returns Luke's modest height:
+
+```json
+{
+    "data": {
+        "hero": {
+            "name": "Luke Skywalker",
+            "height": 1.67
+        }
+    }
+}
+```
+
 ### Mutations and Input Types
 
-GraphQL is mainly used for receiving information from the backend (server) using queries, but it's often useful for backends to also receive information from their frontends (clients).  This is what Mutations are for.  Mutations are syntactically indentical to queries.  There is a root mutation (by default called `Mutation`) in the same way there is a root query (by default called `Query`). Just as the root query is passed as the 1st parameter to `MustRun()` (2nd parameter if you have enums) then the root mutation is passed as the 2nd parameter (3rd parameter if you have enums).
+GraphQL is mainly used for receiving information from the backend (server) using queries, but it's sometimes required for a frontend (client) to _send_ information to the backend.  This is what Mutations are for.  Mutations are syntactically identical to queries.  There is a root mutation (by default called `Mutation`) in the same way there is a root query (by default called `Query`). Just as the root query is passed as the 1st parameter to `MustRun()` (2nd parameter if you have enums) then the root mutation is passed as the next (2nd or 3rd parameter).
 
-You could in fact write a _query_ that modifies data on the backend but that is a bad idea for two reasons:
+Are mutations necessary? A _query_ could in fact modify data on the backend but that is a bad idea for two reasons:
 
-1. It's confusing to clients (and to backend code maintainers)
-2. Mutations are guaranteed to be executed in sequence (whereas parts of a query resolve in parallel)
+1. It's confusing to clients (and to backend code maintainers).
+2. Mutations are guaranteed to be executed in sequence (whereas parts of a query may resolve in parallel).  So the order that changes would be made in queries is undefined and the results would be unpredictable. 
 
 To demonstrate, we will add a mutation that allows clients to submit movie ratings and reviews.  Here are the relevant types:
 
@@ -698,11 +731,11 @@ type (
 	}
 )
 ```
-Note that the `EpisodeDetails` struct, which we have already seen, has two new fields (`Stars` and `Commentary`) which are used to save the submitted values from the client.  There is also a root mutation object containing a `CreateReview` mutation.  This mutation takes two arguments, an `Episode` (enum) and a `ReviewInput` and returns the `EpisodeDetails` as confirmation of the change.
+We've already seen the `EpisodeDetails` struct, but it now has two new fields (`Stars` and `Commentary`) which are used to save the submitted values from the client.  There is also a root mutation containing the `CreateReview` mutation.  This mutation takes two arguments, an `Episode` (enum) and a `ReviewInput` and returns the `EpisodeDetails` as confirmation of the change.
 
-A new thing here is a struct (`ReviewInput`) used as an argument.  This generates a GraphQL **input** type in the schema.  An input type is similar to a GraphQL object type except that it can only be used as an argument to a mutation or query.  Unlike an object (or interface) type the fields of an input type cannot have arguments.  Also, if you try to use the same Go struct as an input type _and_ an object type (or interface type) **eggql** will return an error.  TODO: include error message
+A new thing here is a struct (`ReviewInput`) used as an argument.  This creates a GraphQL **input** type.  An input type is similar to a GraphQL object type except that it can only be used as an argument to a mutation or query.  Unlike an object (or interface) type the fields of an input type cannot have arguments.  Also, if you try to use the same Go struct as an input type _and_ an object (or interface) type then **eggql** will return an error.  TODO: include error message
 
-Here is the complete program with the mutation.
+Here is the complete program with the `CreateReview` mutation.
 
 ```Go
 package main
@@ -805,14 +838,14 @@ func main() {
 				if ID >= 2000 {
 					// droids have IDs starting at 2000
 					ID -= 2000
-					if ID > len(droids) {
+					if ID >= len(droids) {
 						return nil
 					}
 					return droids[ID]
 				}
 				// humans have IDs starting at 1000
 				ID -= 1000
-				if ID < 0 || ID > len(humans) {
+				if ID < 0 || ID >= len(humans) {
 					return nil
 				}
 				return humans[ID]
@@ -858,3 +891,229 @@ You should get a response that confirms that the `EpisodeDetails` was updated
     }
 }
 ```
+
+### Using Go Methods as Resolvers
+
+One of the great things about **eggql** is that you may be able to quickly turn existing software into a GraphQL server.  This is because you can often use existing structs to generate GraphQL types, with little or no changes to the code.  As long as the field name is capitalized then the field will automatically resolve to its value.  A good example of this is the `height` field of the `Human` struct we have already seen.
+
+One complication with resolver functions is: How do they access the data of their parent?  The first thing is to remember that the Go `func` type is more than a function pointer but a **closure**.  (I guess I should really call them resolver "closures" not resolver functions.) So far we have only assigned a function to a resolver `func` but (as it's a closure) it can also be assigned an instance **method**, in which case it retains a pointer to the instance.
+
+(I tend to think of a Go `func` variable like a C function pointer, and when you assigned a Go _function_, or nil, to it, it is essentially no more than a function pointer.  But it can be _more_ since a closure retains two things: a function pointer and data pointer.)
+
+Imagine we need to change the `height` resolver so that it takes an argument specifying the unit (foot or meter) in which we want the value returned.  To use an argument the `Height float64` field must be converted to a closure that returns a `float64`.
+
+```Go
+	Human struct {
+		Character
+		Height       func(int) float64 `graphql:",args(unit:Unit=METER)"`
+		height       float64            // meters
+	}
+```
+
+Now the `Height` resolver is a `func` taking a "unit" argument.  The `unit` argument is of type `Unit` - an enum we introduced earlier but did not use.  The original `Height` field is retained but with an initial lower-case 'h' so that it is *not* seen as a GraphQL field.
+
+The problem now is how does the `Height` closure access the `height` field?  To do this we introduce a method on the `Human` type which I called `getHeight()`.  This method has the same signature as the `Height` closure (`func(int) float64`).
+
+```Go
+func (h *Human) getHeight(unit int) float64 {
+	switch unit {
+	case FOOT:
+		return h.height * 3.28084
+	}
+	return h.height
+}
+```
+
+This method is assigned to the `Height` field.  Since we have a slice of `Human`s we have to do it for each element of the slice.
+
+```Go
+	for i := range humans {
+		humans[i].Height = (&humans[i]).getHeight
+	}
+```
+
+Here is the full code
+
+```Go
+package main
+
+import (
+	"fmt"
+	"github.com/andrewwphillips/eggql"
+	"net/http"
+)
+
+type (
+	Query struct {
+		Hero func(episode int) (interface{}, error) `graphql:"hero:Character,args(episode:Episode=JEDI)"`
+		_    Character
+		_    Human
+		_    Droid
+	}
+	Character struct {
+		Name    string
+		Friends []*Character
+		Appears []int `graphql:"appearsIn:[Episode]"`
+	}
+	Human struct {
+		Character
+		Height func(int) float64 `graphql:",args(unit:Unit=METER)"`
+		height float64           // meters
+	}
+	Droid struct {
+		Character
+		PrimaryFunction string
+	}
+	EpisodeDetails struct {
+		Name       string
+		HeroId     int
+		Stars      int
+		Commentary string
+	}
+
+	Mutation struct {
+		CreateReview func(int, ReviewInput) *EpisodeDetails `graphql:",args(episode:Episode,review)"`
+	}
+	ReviewInput struct {
+		Stars      int
+		Commentary string
+	}
+)
+
+var (
+	gqlEnums = map[string][]string{
+		"Episode": {"NEWHOPE", "EMPIRE", "JEDI"},
+		"Unit":    {"METER", "FOOT"},
+	}
+)
+
+var (
+	humans = []Human{
+		{Character: Character{Name: "Luke Skywalker"}, height: 1.67},
+		{Character: Character{Name: "Leia Organa"}, height: 1.65},
+		{Character: Character{Name: "Han Solo"}, height: 1.85},
+		{Character: Character{Name: "Chewbacca"}, height: 2.3},
+	}
+	droids = []Droid{
+		{Character: Character{Name: "C-3PO"}, PrimaryFunction: "Protocol"},
+		{Character: Character{Name: "R2-D2"}, PrimaryFunction: "Astromech"},
+	}
+	episodes = []EpisodeDetails{
+		{Name: "A New Hope", HeroId: 1000},
+		{Name: "The Empire Strikes Back", HeroId: 1000},
+		{Name: "Return of the Jedi", HeroId: 2001},
+	}
+)
+
+func init() {
+	// Set up friendships
+	luke := &humans[0].Character
+	leia := &humans[1].Character
+	solo := &humans[2].Character
+	chew := &humans[3].Character
+	c3po := &droids[0].Character
+	r2d2 := &droids[1].Character
+
+	humans[0].Friends = []*Character{leia, solo, chew, r2d2}
+	humans[1].Friends = []*Character{luke, solo, r2d2, c3po}
+	humans[2].Friends = []*Character{chew, leia, luke}
+	humans[3].Friends = []*Character{solo, luke}
+
+	droids[0].Friends = []*Character{r2d2, leia}
+	droids[1].Friends = []*Character{c3po, luke, leia}
+
+	// Set up human Height closure
+	for i := range humans {
+		humans[i].Height = (&humans[i]).getHeight
+	}
+	// Set up appearances
+	humans[0].Appears = []int{0, 1, 2}
+	humans[1].Appears = []int{0, 1, 2}
+	humans[2].Appears = []int{0, 1, 2}
+	humans[3].Appears = []int{0, 1, 2}
+	droids[0].Appears = []int{0, 1, 2}
+	droids[1].Appears = []int{0, 1, 2}
+}
+
+func main() {
+	http.Handle("/graphql", eggql.MustRun(gqlEnums,
+		Query{
+			Hero: func(episode int) (interface{}, error) {
+				if episode < 0 || episode >= len(episodes) {
+					return nil, fmt.Errorf("episode %d not found", episode)
+				}
+				ID := episodes[episode].HeroId
+				if ID >= 2000 {
+					// droids have IDs starting at 2000
+					ID -= 2000
+					if ID >= len(droids) {
+						return nil, fmt.Errorf("internal error: no character with ID %d in episode %d", ID, episode)
+					}
+					return droids[ID], nil
+				}
+				// humans have IDs starting at 1000
+				ID -= 1000
+				if ID < 0 || ID >= len(humans) {
+					return nil, fmt.Errorf("internal error: no character with ID %d in episode %d", ID, episode)
+				}
+				return humans[ID], nil
+			},
+		},
+		Mutation{
+			CreateReview: func(episode int, review ReviewInput) *EpisodeDetails {
+				if episode < 0 || episode >= len(episodes) {
+					return nil
+				}
+				episodes[episode].Stars = review.Stars
+				episodes[episode].Commentary = review.Commentary
+				return &episodes[episode]
+			},
+		},
+	))
+	http.ListenAndServe(":8080", nil)
+}
+
+// getHeight returns the height of a human
+// Parameters
+//  h (receiver) is a pointer to the Human
+//  unit is the unit for the return value
+func (h *Human) getHeight(unit int) float64 {
+	if unit == 1 {
+		return h.height * 3.28084
+	}
+	return h.height
+}
+```
+
+If you try this query:
+
+```graphql
+{
+    hero(episode:NEWHOPE) {
+        name
+        ... on Human {
+            height(unit:FOOT)
+        }
+    }
+}
+```
+
+You should get this result:
+
+```json
+{
+    "data": {
+        "hero": {
+            "name": "Luke Skywalker",
+            "height": 5.4790028
+        }
+    }
+}
+```
+
+### Context and Errors
+
+TODO
+
+### Conclusion
+
