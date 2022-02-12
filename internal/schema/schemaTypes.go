@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/andrewwphillips/eggql/internal/field"
+	"log"
 	"reflect"
 	"sort"
 	"strings"
@@ -94,6 +95,7 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, inpu
 	required := len(inputType) + 1 + len(name) + len(openString) + len(closeString)
 	if len(interfaces) > 0 {
 		required += len(implementsString)
+		required += (len(interfaces) - 1) * 2
 		for _, iface := range interfaces {
 			required += 1 + len(iface)
 		}
@@ -114,9 +116,10 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, inpu
 
 	// Add interfaces
 	if len(interfaces) > 0 {
-		builder.WriteString(implementsString)
+		sep := implementsString + " "
 		for _, iface := range interfaces {
-			builder.WriteRune(' ')
+			builder.WriteString(sep)
+			sep = " & "
 			builder.WriteString(iface)
 		}
 	}
@@ -139,8 +142,9 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, inpu
 		}
 	}
 	s.declaration[name] = builder.String()
-	if required != len(s.declaration[name]) {
-		panic("string buffer size was incorrect (TODO: remove this)")
+	actual := len(s.declaration[name])
+	if required != actual {
+		log.Fatalln("string buffer size was incorrect (TODO: remove this)", required, actual)
 	}
 	return nil
 }
