@@ -4,6 +4,12 @@ import (
 	"fmt"
 	"github.com/andrewwphillips/eggql"
 	"net/http"
+	"time"
+)
+
+const (
+	FirstHumanID = 1000
+	FirstDroidID = 2000
 )
 
 type (
@@ -46,8 +52,13 @@ type (
 var (
 	gqlEnums = map[string][]string{
 		"Episode": {"NEWHOPE", "EMPIRE", "JEDI"},
-		"Unit":    {"METER", "FOOT"},
+		"Unit":    {"METER", "FOOT"}, // order of strings should match METER, etc consts below
 	}
+)
+
+const (
+	METER = iota
+	FOOT
 )
 
 var (
@@ -99,27 +110,27 @@ func init() {
 }
 
 func main() {
-	http.Handle("/graphql", eggql.MustRun(gqlEnums,
+	handler := eggql.MustRun(
+		gqlEnums,
 		Query{
 			Hero: func(episode int) (interface{}, error) {
 				if episode < 0 || episode >= len(episodes) {
 					return nil, fmt.Errorf("episode %d not found", episode)
 				}
 				ID := episodes[episode].HeroId
-				if ID >= 2000 {
-					// droids have IDs starting at 2000
-					ID -= 2000
-					if ID >= len(droids) {
-						return nil, fmt.Errorf("internal error: no character with ID %d in episode %d", ID, episode)
+				if ID >= FirstDroidID {
+					// droids have IDs starting at FirstDroidID
+					ID -= FirstDroidID
+					if ID < len(droids) {
+						return droids[ID], nil
 					}
-					return droids[ID], nil
 				}
-				// humans have IDs starting at 1000
-				ID -= 1000
-				if ID < 0 || ID >= len(humans) {
-					return nil, fmt.Errorf("internal error: no character with ID %d in episode %d", ID, episode)
+				// humans have IDs starting at FirstHumanID
+				ID -= FirstHumanID
+				if ID > 0 && ID < len(humans) {
+					return humans[ID], nil
 				}
-				return humans[ID], nil
+				return nil, fmt.Errorf("internal error: no character with ID %d in episode %d", ID, episode)
 			},
 		},
 		Mutation{
@@ -132,17 +143,24 @@ func main() {
 				return &episodes[episode]
 			},
 		},
-	))
+	)
+	handler = http.TimeoutHandler(handler, 5*time.Second, `{"errors":[{"message":"timeout"}]}`)
+	http.Handle("/graphql", handler)
 	http.ListenAndServe(":8080", nil)
 }
 
 // getHeight returns the height of a human
 // Parameters
 //  h (receiver) is a pointer to the Human
-//  unit is the unit for the return value
+//  unit is the unit for the return value (FOOT or METER)
 func (h *Human) getHeight(unit int) float64 {
-	if unit == 1 {
+	switch unit {
+	case METER:
+		// nothing here - height is already in meters
+	case FOOT:
 		return h.height * 3.28084
+	default:
+		panic("unknown unit value")
 	}
 	return h.height
 }

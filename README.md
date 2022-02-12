@@ -161,11 +161,7 @@ Now the erroneous query will produce this result:
 }
 ```
 
-A critical part of any server in Go is using the `context.Context` type.  It allows all processing associated with a client request to be tidily terminated.  This is most commonly used for a timeout for a request in case anything is taking too long or has completely stalled.
-
-Using **eggql** a resolver function can (optionally) take a 1st parameter of `context.Context`. You should almost always use a context in your resolver function unless you are sure it will always execute quickly and there is no chance of delay (eg the database could be offline or the network might be slow).  Moreover, since GraphQL queries can return lists and nested queries, a single GraphQL request can cause a cascade of queries taking a long time even if each individual query does not.  The context approach can mitigate problems of overload due to poorly designed GraphQL queries or even a deliberate DOS attack.
-
-To demonstrate I have added a `context.Context` parameter to the resolver function and added a loop with calls to `Sleep()` to simulate a process that may take a long time to run.  To enable the context I use the `http.TimeOutHandler()` specifying a time limit of 2 seconds.  If the resolver function is still running after 2 seconds the context `ctx` will be cancelled and the function can return as soon as it discovers that it's result is no longer required.
+For resolvers that may take a long time to run or block on I/O you should also provide a **context** parameter.  In the code below I have added `context.Context` as the 1st parameter of the `Random()` function and added a loop with a call to `Sleep()` to simulate a lengthy process.  To enable the context I use the `http.TimeOutHandler()` specifying a time limit of 2 seconds.  If the resolver function is still running after 2 seconds the context `ctx` will be cancelled and the function will return (with an error) as soon as it discovers that it's result is no longer required.
 
 ```go
 type Query struct {
@@ -733,6 +729,8 @@ type (
 ```
 We've already seen the `EpisodeDetails` struct, but it now has two new fields (`Stars` and `Commentary`) which are used to save the submitted values from the client.  There is also a root mutation containing the `CreateReview` mutation.  This mutation takes two arguments, an `Episode` (enum) and a `ReviewInput` and returns the `EpisodeDetails` as confirmation of the change.
 
+#### Input Types
+
 A new thing here is a struct (`ReviewInput`) used as an argument.  This creates a GraphQL **input** type.  An input type is similar to a GraphQL object type except that it can only be used as an argument to a mutation or query.  Unlike an object (or interface) type the fields of an input type cannot have arguments.  Also, if you try to use the same Go struct as an input type _and_ an object (or interface) type then **eggql** will return an error.  TODO: include error message
 
 Here is the complete program with the `CreateReview` mutation.
@@ -932,7 +930,80 @@ This method is assigned to the `Height` field.  Since we have a slice of `Human`
 	}
 ```
 
-Here is the full code
+With this change, if you try this query:
+
+```graphql
+{
+    hero(episode:NEWHOPE) {
+        name
+        ... on Human {
+            height(unit:FOOT)
+        }
+    }
+}
+```
+
+You should will get Luke's height in feet:
+
+```json
+{
+    "data": {
+        "hero": {
+            "name": "Luke Skywalker",
+            "height": 5.4790028
+        }
+    }
+}
+```
+
+### Error Handling
+
+#### Resolver errors
+
+Resolver `func`s return a single value, but they can optionally return an `error` which will be reported in the "errors" section of the query result.  For example, in the `Hero` function we used above, when there is an error we return `nil` instead of a pointer to a `Character`, which results in a `NULL` `Character` being seen in the GraphQL query results.
+
+There are two error conditions in the `Hero` resolver.
+
+1. the client provides an invalid episode as the query parameter
+2. the hero ID stored in the `EpisodeDetails` does not refer to a real character
+
+This is handled by the improved `Hero` resolver in the complete program below.
+
+#### Contexts
+
+A critical part of any server in Go is using the `context.Context` type.  It allows _all_ processing associated with a client request to be expediently and tidily terminated.  This is most commonly used for a timeout in case anything is taking too long or has completely stalled.
+
+Using **eggql** a resolver function can (optionally) take a 1st parameter of `context.Context`.  You would almost certainly use a context if the resolver code read from or wrote to a Go `chan`, or made a library or system call that could block on disk or network I/O such as a database query, or even just inside a loop during a lengthy calculation.
+
+Our Star Wars example works with in-memory data structures so the resolver functions do _not_ need context parameters.  (See the **Getting Started** example in the README where a `context` parameter is added to the `random` query.)  Even so, since GraphQL queries can return lists and nested queries, a single GraphQL request can cause a cascade of queries taking a long time even if each individual query does not.  Here is a query that may take some time to run:
+
+```graphql
+{
+    hero {
+        friends {
+            friends {
+                friends {
+                    name
+                }
+            }
+        }
+    }
+}
+```
+
+Fortunately, in this situation **eggql** itself will automatically shutdown query processing if the `context` is cancelled.  For example, if the request's context is cancelled a sub-query may abort in the middle of processing a list (such as the `friends` sub-query of the `hero` query above), with a response like this:
+
+```json
+{
+  "errors":[
+    {
+      "message":"timeout"
+    }
+  ]
+}
+```
+
+Unfortunately, Go HTTP handlers do not have timeouts by default, so I have wrapped the GraphQL handler in a timeout handler (see the call to `http.TimeoutHandler()`) which creates a context that expires after 5 seconds.  Using context can mitigate problems due to poorly designed GraphQL queries, server overload or even a deliberate DOS attack.
 
 ```Go
 package main
@@ -941,6 +1012,7 @@ import (
 	"fmt"
 	"github.com/andrewwphillips/eggql"
 	"net/http"
+	"time"
 )
 
 type (
@@ -1036,7 +1108,8 @@ func init() {
 }
 
 func main() {
-	http.Handle("/graphql", eggql.MustRun(gqlEnums,
+	handler := eggql.MustRun(
+		gqlEnums,
 		Query{
 			Hero: func(episode int) (interface{}, error) {
 				if episode < 0 || episode >= len(episodes) {
@@ -1046,17 +1119,17 @@ func main() {
 				if ID >= 2000 {
 					// droids have IDs starting at 2000
 					ID -= 2000
-					if ID >= len(droids) {
-						return nil, fmt.Errorf("internal error: no character with ID %d in episode %d", ID, episode)
+					if ID < len(droids) {
+						return droids[ID], nil
 					}
-					return droids[ID], nil
+				} else {
+					// humans have IDs starting at 1000
+					ID -= 1000
+					if ID >= 0 && ID < len(humans) {
+						return humans[ID], nil
+					}
 				}
-				// humans have IDs starting at 1000
-				ID -= 1000
-				if ID < 0 || ID >= len(humans) {
-					return nil, fmt.Errorf("internal error: no character with ID %d in episode %d", ID, episode)
-				}
-				return humans[ID], nil
+				return nil, fmt.Errorf("internal error: no character with ID %d in episode %d", ID, episode)
 			},
 		},
 		Mutation{
@@ -1069,7 +1142,9 @@ func main() {
 				return &episodes[episode]
 			},
 		},
-	))
+	)
+	handler = http.TimeoutHandler(handler, 5*time.Second, `{"errors":[{"message":"timeout"}]}`)
+	http.Handle("/graphql", handler)
 	http.ListenAndServe(":8080", nil)
 }
 
@@ -1085,35 +1160,58 @@ func (h *Human) getHeight(unit int) float64 {
 }
 ```
 
-If you try this query:
+# Viewing Errors and the Schema
 
-```graphql
-{
-    hero(episode:NEWHOPE) {
-        name
-        ... on Human {
-            height(unit:FOOT)
-        }
-    }
+There are two classes of errors you may need to deal with:
+
+1. coding errors that cause initial setup to fail, in which case `MustRun()` will panic
+2. errors in the query that will result in an error response being returned to the client
+
+It is common to initially make lots of coding mistakes when creating structs, their fields, their metadata (graphql tag), enums, etc.  Instaed of getting a panic when you using `MustRun()` you can get the error returned by using object returned from `eggql.New()`, then adding the query and mutation structs as well as enums, then call the `GetHandler()` method.  You can also call `GetSchema()` to view the GraphQL schema that **eggql*** has generated.  Here's an example:
+
+```Go
+package main
+
+import (
+	"github.com/andrewwphillips/eggql"
+	"log"
+	"net/http"
+)
+
+const value = 3.14
+
+func main() {
+	gql := eggql.New()
+	gql.SetQuery(struct {
+		Len func(int) float64 `graphql:",args(unit:Unit=METER)"`
+	}{
+		Len: func(unit int) float64 {
+		    if unit == 1 {
+			    return value * 3.28084 // return as feet
+		    }
+		    return value // return as meters
+	    },
+	})
+	gql.SetEnums(map[string][]string{"Unit": []string{"METER", "FOOT"}})
+
+	if schema, err := gql.GetSchema(); err != nil {
+		log.Fatalln(err)
+	} else {
+		log.Println(schema) // write the schema (text) to the log
+	}
+	if handler, err := gql.GetHandler(); err != nil {
+		log.Fatalln(err)
+	} else {
+		http.Handle("/graphql", handler)
+		http.ListenAndServe(":8080", nil)
+	}
 }
 ```
 
-You should get this result:
+Once the GraphQL server is running - ie. the handler is processing then any errors encountered will return an error response to the client.  All requests are returned with an HTTP status of **OK** (200).  There is no way to return a different HTTP status like **Bad Request** (400) for GraphQL errors.  This includes errors that **eggql** detects while processing and validating the request, such as using an unknown query name.  It also includes errors returned from any resolver function, such as the "episode not found" error returned from the `Hero()` resolver function above.  (This does not mean that a client of the GraphQL server should not be prepared to handle an HTTP status above 300 due to a low-level problem.)
 
-```json
-{
-    "data": {
-        "hero": {
-            "name": "Luke Skywalker",
-            "height": 5.4790028
-        }
-    }
-}
-```
+What about bugs in the resolver functions?  If you detect a software defect in your code then you should return an error message beginning with "internal error:".  There is no way to return HTTP status **Internal Server Error** (500).  An example is the "internal error: no character with ID" returned from the `Hero()` function above.
 
-### Context and Errors
-
-TODO
+Also note that if your resolver function **panics** then, fortunately, the program will not terminate.  The Go http package will "catch" any panic in a handler and terminate the request, but continue to allow further requests to be processed.  Of course, you should not allow your resolver functions to panic (as the client will get no response) but at least return some sort of internal error.
 
 ### Conclusion
-
