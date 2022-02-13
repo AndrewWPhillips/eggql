@@ -1208,10 +1208,24 @@ func main() {
 }
 ```
 
-Once the GraphQL server is running - ie. the handler is processing then any errors encountered will return an error response to the client.  All requests are returned with an HTTP status of **OK** (200).  There is no way to return a different HTTP status like **Bad Request** (400) for GraphQL errors.  This includes errors that **eggql** detects while processing and validating the request, such as using an unknown query name.  It also includes errors returned from any resolver function, such as the "episode not found" error returned from the `Hero()` resolver function above.  (This does not mean that a client of the GraphQL server should not be prepared to handle an HTTP status above 300 due to a low-level problem.)
+Once the GraphQL server is running - ie. the handler is processing then any errors encountered will return an error response to the client.  All requests are returned with an HTTP status of **OK** (200).  There is no way to return a different HTTP status like **Bad Request** (400) for GraphQL errors.  This includes errors that **eggql** detects while processing and validating the request, such as using an unknown query name.  It also includes errors returned from any resolver function, such as the "episode not found" error returned from the `Hero()` resolver function above.  (This does not mean that a client of the GraphQL server should not be prepared to handle an HTTP status error.)
 
-What about bugs in the resolver functions?  If you detect a software defect in your code then you should return an error message beginning with "internal error:".  There is no way to return HTTP status **Internal Server Error** (500).  An example is the "internal error: no character with ID" returned from the `Hero()` function above.
+What about _bugs_ in the resolver functions?  If you detect a software defect in your code then you should return an error message beginning with "internal error:".  There is no way to return HTTP status **Internal Server Error** (500).  An example is the "internal error: no character with ID" returned from the `Hero()` function above.
 
-Also note that if your resolver function **panics** then, fortunately, the program will not terminate.  The Go http package will "catch" any panic in a handler and terminate the request, but continue to allow further requests to be processed.  Of course, you should not allow your resolver functions to panic (as the client will get no response) but at least return some sort of internal error.
+Also note that if your resolver function **panics** then (fortunately) the program will not terminate.  The Go http package will "catch" any panic in a handler and terminate the request, but continue to allow further requests to be processed.  Of course, you should not allow your resolver functions to panic (as the client will get no response) but at least return some sort of internal error.
 
 ### Conclusion
+
+I trust this tutorial has helped you to see how easy it is to create a simple GraphQL server using **eggql**.  Unlike most backend soltuions you are not required to create, or even understand GraphQL schemas.  (Under the hood, a schema is generated for you which you can view if you need to.)  Unlike other Go packages this avoids getting lot's of run-time panics when your schema does not match your data types.
+
+However, **eggql** may not be the best solution for you if you want something comprehensive or more efficient.  It does not have any support for databases, such as a dataloader since I wrote it to work with in-memory data.  It may also be too slow for heavy load as it uses reflection to run resolvers.  Here are some other Go GraphQl packages that I have tried and found to work very well.
+
+[graphql](https://github.com/graphql-go/graphql) by "graphql-go" (not to be confused with the project "graphql-go" below)
+[graphql-go](https://github.com/graph-gophers/graphql-go) by graph-gophers
+[gqlgen](https://github.com/99designs/gqlgen)  by 99 Designs
+
+I particularly like **gqlgen** of **99 Designs** as it uses "go generate" to avoid the inefficiencies of reflection and the lack of type safety due to passing around `interface{}` types. 
+
+The "pros" for **eggql** are, I believe, that  it is simple to use (though I may be biased due to my familiarity with it) and complete (except for subscriptions that currently have high priority), and allows you to write robust GraphQL servers due to support for `context.Context` parameters and `error` return values.  I have also found it surprisingly performant.
+
+The latest (and possibly improved) version of the code of the Star Wars example is available on GitHub at [Star Wars example](https://github.com/AndrewWPhillips/eggql/tree/main/example/starwars).  This includes more data (characters etc) and more queries and fields but is still less than 200 lines of code.
