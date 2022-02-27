@@ -205,6 +205,8 @@ Here I'll explain, in detail, how to declare Go types in order to implement a Gr
 
 First, we'll look at basic types (scalars, lists and nested objects).  Later we'll look at query arguments (including defaults and input types), enums, interfaces, mutations, etc.  We'll also look at the sorts of errors you can get and how to handle them.
 
+Note: the final code for the tutorial is in example/starwars/main.go and the code is running in GCP.  So you can try any of the queries in Postman (or Curl etc) using the address https://aphillips801-eggql-sw.uc.r.appspot.com/graphql.  In fact you can try any of the queries from the offical GraphQL **Star Wars** tutorial at https://graphql.org/learn/.
+
 ### Basic Types
 
 If _writing_ queries you also need to know about variables, fragments, directives, aliases, introspection, etc, but since these are handled automatically I won't cover them here.  There are plenty of tutorials that talk about how to use these things.

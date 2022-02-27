@@ -43,6 +43,7 @@ package eggql
 // object param with an enum field
 // GraphQL parallel execution of queries (but not mutations)
 // allow map to return a list where key = a field (default name ID)
+// allow slice/array to return list where ID = index
 // add ID type
 // ext. types
 // add Date (extension) type
