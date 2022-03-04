@@ -291,16 +291,16 @@ Now we'll look at some more advanced types....
 
 ### Arguments
 
-In GraphQL parlance the server code that "resolves" a query is called a resolver.  In the above example the "resolver" for the Here query was just a Character structure.  A more useful and more common thing is for a resolver to be a function.  For one, this allows resolvers to take arguments that permits much greater flexibility.
+In GraphQL parlance the server code that "resolves" a query is called a resolver.  In the above example the "resolver" for the `hero` query was just a `Character` struct.  A more useful and more common thing is for a resolver to be a function.  For one, this allows resolvers to take arguments that permits much greater flexibility.
 
-As an example we will change the `hero` resolver to be a function that takes a parameter specifying which episode we want the hero for.  So now instead of the `Hero` field simply being a `Character` object it is now a function that returns a `Character`.
+As an example we will change the `hero` resolver to be a function that takes a parameter specifying which episode we want the hero for.  So now instead of the `Hero` field simply being a `Character` object it is now a function that _returns_ a `Character`.
 
 ```Go
 type Query struct {
 	Hero func(episode int) Character `graphql:"hero,args(episode=2)"`
 }
 ```
-This also shows our first use of the **graphql tag** stored in the *metadata*.  (Metadata in Go can be attached to any field of a struct type.)  The options in the graphql tag are comma-separated (using a similar format to json, xml, etc tags).
+This also shows our first use of the **graphql tag** stored in the `Hero` field's *metadata*.  Metadata in Go can be attached to any field of a struct by adding a string after the field declaration.  (Note that these strings usually use back-quotes (`) rather than double-quotes (") so we don't have to _escape_ the double quotes within the string.)  The options in the graphql tag are comma-separated (using a similar format to json, xml, etc tags).
 
 The first option in the graphql tag is the resolver name - in this case `hero`.  Although we don't really need to supply the name as it defaults to the field name (`Hero`) with the first letter converted to lower-case.
 
@@ -932,7 +932,7 @@ This method is assigned to the `Height` field.  Since we have a slice of `Human`
 	}
 ```
 
-With this change, if you try this query:
+With this change, if you add a `unit:FOOT` argument to the `height` sub-query:
 
 ```graphql
 {
@@ -945,7 +945,7 @@ With this change, if you try this query:
 }
 ```
 
-You should will get Luke's height in feet:
+You will get Luke's height in feet instead of meters:
 
 ```json
 {
@@ -969,31 +969,31 @@ There are two error conditions in the `Hero` resolver.
 1. the client provides an invalid episode as the query parameter
 2. the hero ID stored in the `EpisodeDetails` does not refer to a real character
 
-This is handled by the improved `Hero` resolver in the complete program below.
+So to distinguish between these errors we add a 2nd (`error`) return value to the `Hero` function (see the complete program below).  Now if there is an error the query will return an error message instead of just a `NULL` character.
 
 #### Contexts
 
-A critical part of any server in Go is using the `context.Context` type.  It allows _all_ processing associated with a client request to be expediently and tidily terminated.  This is most commonly used for a timeout in case anything is taking too long or has completely stalled.
+A critical part of any server in Go is using the `context.Context` type.  It allows _all_ processing associated with a client request to be expediently and tidily terminated.  This is most commonly used in web servers for a timeout in case anything is taking too long or has completely stalled.
 
-Using **eggql** a resolver function can (optionally) take a 1st parameter of `context.Context`.  You would almost certainly use a context if the resolver code read from or wrote to a Go `chan`, or made a library or system call that could block on disk or network I/O such as a database query, or even just inside a loop during a lengthy calculation.
+Using **eggql** a resolver function can (optionally) take a 1st parameter of `context.Context`.  You would almost certainly use a context if the resolver code read from or wrote to a Go `chan`, or made a library or system call that could block on disk or network I/O such as a database query.  A less common scenario is a compute intensive resolver in which case you can check if the context has been cancelled regularly, such as in an inner loop.
 
-Our Star Wars example works with in-memory data structures so the resolver functions do _not_ need context parameters.  (See the **Getting Started** example in the README where a `context` parameter is added to the `random` query.)  Even so, since GraphQL queries can return lists and nested queries, a single GraphQL request can cause a cascade of queries taking a long time even if each individual query does not.  Here is a query that may take some time to run:
+Our Star Wars example works with in-memory data structures so the resolver functions do _not_ need context parameters.  (See the **Getting Started** example in the README where a `context` parameter is added to the `random` query.)  Even so, since GraphQL queries can return lists and nested queries, a single GraphQL request can cause a cascade of queries taking a long time even if each individual query does not - eg. if you deeply nested a friends query like this: 
 
 ```graphql
 {
     hero {
+        name
         friends {
-            friends {
-                friends {
-                    name
-                }
+            name
+`            friends {
+               ...
             }
         }
     }
 }
 ```
 
-Fortunately, in this situation **eggql** itself will automatically shutdown query processing if the `context` is cancelled.  For example, if the request's context is cancelled a sub-query may abort in the middle of processing a list (such as the `friends` sub-query of the `hero` query above), with a response like this:
+Fortunately, **eggql** itself will automatically shutdown query processing if the `context` is cancelled.  If you test this with a deeply nested query (and perhaps reduce the timeout in the `TimeoutHandler` below), you will see a message like this, even without `Hero` using a `Context` parameter:
 
 ```json
 {
@@ -1005,7 +1005,7 @@ Fortunately, in this situation **eggql** itself will automatically shutdown quer
 }
 ```
 
-Unfortunately, Go HTTP handlers do not have timeouts by default, so I have wrapped the GraphQL handler in a timeout handler (see the call to `http.TimeoutHandler()`) which creates a context that expires after 5 seconds.  Using context can mitigate problems due to poorly designed GraphQL queries, server overload or even a deliberate DOS attack.
+Note that Go HTTP handlers do **not** have timeouts by default, so the GraphQL handler is wrapped in a timeout handler (see the call to `http.TimeoutHandler()`) which creates a context that expires after 5 seconds.  Using a `Context` like this can mitigate problems such as poorly designed client GraphQL queries, server overload or even a DOS attack.
 
 ```Go
 package main

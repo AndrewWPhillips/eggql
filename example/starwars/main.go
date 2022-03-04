@@ -18,7 +18,7 @@ type (
 		_        Character                              // needed so eggql knows about Character struct
 		Hero     func(episode int) (interface{}, error) `graphql:"hero:Character,args(episode:Episode=JEDI)"`
 		Human    func(int) (*Human, error)              `graphql:",args(id = 1000)"`
-		Droid    func(int) (*Droid, error)              `graphql:",args(id)"`
+		Droid    func(int) (*Droid, error)              `graphql:",args(id)"` // id is required
 		StarShip func(int) (*StarShip, error)           `graphql:",args(id = 3000)"`
 	}
 	Character struct {
@@ -63,7 +63,7 @@ type (
 var (
 	gqlEnums = map[string][]string{
 		"Episode":    {"NEWHOPE", "EMPIRE", "JEDI"},
-		"LengthUnit": {"METER", "FOOT"}, // order of strings should match METER, etc consts below
+		"LengthUnit": {"METER", "FOOT"}, // order of strings in the slice should match METER, etc consts below
 	}
 )
 
@@ -86,9 +86,9 @@ var (
 		{Character: Character{Name: "R2-D2"}, PrimaryFunction: "Astromech"},
 	}
 	episodes = []EpisodeDetails{
-		{Name: "A New Hope", HeroId: 1000},
-		{Name: "The Empire Strikes Back", HeroId: 1000},
-		{Name: "Return of the Jedi", HeroId: 2001},
+		{Name: "A New Hope", HeroId: FirstHumanID},
+		{Name: "The Empire Strikes Back", HeroId: FirstHumanID},
+		{Name: "Return of the Jedi", HeroId: FirstDroidID + 1},
 	}
 	starShips = []StarShip{
 		{Name: "Millenium Falcon", length: 34.37},
@@ -165,7 +165,7 @@ func main() {
 				}
 				// humans have IDs starting at FirstHumanID
 				ID -= FirstHumanID
-				if ID > 0 && ID < len(humans) {
+				if ID >= 0 && ID < len(humans) {
 					return humans[ID], nil
 				}
 				return nil, fmt.Errorf("internal error: no character with ID %d in episode %d", ID, episode)
@@ -206,7 +206,7 @@ func main() {
 			},
 		},
 	)
-	handler = http.TimeoutHandler(handler, 5*time.Second, `{"errors":[{"message":"timeout"}]}`)
+	handler = http.TimeoutHandler(handler, 15*time.Second, `{"errors":[{"message":"timeout"}]}`)
 	http.Handle("/graphql", handler)
 	http.ListenAndServe(":8080", nil)
 }

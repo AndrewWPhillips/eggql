@@ -184,14 +184,18 @@ var happyData = map[string]struct {
 
 	"Alias": {paramSchema, paramData, `{ two: dbl(v: 1) six: dbl(v: 3) }`, "",
 		JsonObject{"two": 2.0, "six": 6.0}},
-	"Fragment": {nestedSchema, nestedData, `{n1: n {...f} n2: n {...f}} fragment f on N {p}`, "",
+	"Fragment2Uses": {nestedSchema, nestedData, `{n1: n {...f} n2: n {...f}} fragment f on N {p}`, "",
 		JsonObject{"n1": JsonObject{"p": true}, "n2": JsonObject{"p": true}}},
+	"Fragment2Fields": {nestedSchema, nestedData, `{n {...f}} fragment f on N {p q}`, "",
+		JsonObject{"n": JsonObject{"p": true, "q": false}}},
 	"Interface": {interfaceSchema, interfaceData, `{ a { x1 e } }`, "",
 		JsonObject{"a": JsonObject{"x1": 4.0, "e": "fff"}}},
 	"InterfaceFunc": {interfaceSchema, interfaceFunc, `{ a { x1 e } }`, "",
 		JsonObject{"a": JsonObject{"x1": 5.0, "e": "ggg"}}},
 	"InlineFrag": {interfaceSchema, inlineFragFunc, `{ a { ... on D { e } } }`, "",
 		JsonObject{"a": JsonObject{"e": "e in d"}}},
+	"InlineFrag2Fields": {interfaceSchema, inlineFragFunc, `{ a { ... on D { x1 e } } }`, "",
+		JsonObject{"a": JsonObject{"x1": 1.0, "e": "e in d"}}},
 
 	"Context0": {intSchema, contextFunc, `{ value }`, "",
 		JsonObject{"value": float64(100)}},
@@ -210,6 +214,7 @@ func TestQuery(t *testing.T) {
 	parRef.Value = parRef.valueFunc
 
 	for name, testData := range happyData {
+		//log.Println(name) // we only need this if a test panics - to see which one it was
 		h := handler.New(testData.schema, testData.data)
 
 		// Make the request body and the HTTP request that uses it
