@@ -41,7 +41,6 @@ package eggql
 
 // TODO:
 // object param with an enum field
-// GraphQL parallel execution of queries (but not mutations)
 // allow map to return a list where key = a field (default name ID)
 // allow slice/array to return list where ID = index
 // add ID type
@@ -53,3 +52,4 @@ package eggql
 // more systematic error handling
 // caching of requests
 // dataloader
+// finish introspection (__type.interfaces, input types, directives)
