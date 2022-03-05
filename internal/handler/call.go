@@ -17,9 +17,9 @@ import (
 // fromFunc converts a Go function into the type/value of what it returns by calling it using reflection
 // Parameters:
 //   ctx - is a context.Context that may be cancelled at any time
-//   field - is the GraphQL query object field
+//   astField - is the GraphQL query object field
 //   v - the reflection "value" of the Go function's return value
-//   fieldInfo - contains the parameter names and defaults obtained from the Go field metadata
+//   fieldInfo - contains the args, defaults, etc obtained from the Go field metadata
 func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info) (vReturn reflect.Value, err error) {
 	if v.IsNil() {
 		err = fmt.Errorf("function for %q is not implemented (nil)", astField.Name)
@@ -35,7 +35,7 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 
 	// Add supplied arguments
 	for _, argument := range astField.Arguments {
-		// Which arg # is it (GraphQL params are supplied by name not position)
+		// Which parameter # is it (GraphQL args are supplied by name not position)
 		n := -1
 		for paramNum, paramName := range fieldInfo.Params {
 			if paramName == argument.Name {
@@ -119,6 +119,7 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 // Parameters:
 //   t = expected type
 //   name = corresponding name of the argument
+//   enumName allows lookup of an enum value if t is an integer and value is a string
 //   value = what needs to be returned as a value of type t
 func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, value interface{}) (reflect.Value, error) {
 	// If it's an enum we need to convert the enum name (string) to int

@@ -53,3 +53,4 @@ package eggql
 // more systematic error handling
 // caching of requests
 // dataloader
+// finish introspection (__type.interfaces, input types, directives)

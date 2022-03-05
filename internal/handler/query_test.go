@@ -233,7 +233,7 @@ func TestQuery(t *testing.T) {
 
 		// Invoke the handler, recording the response
 		writer := httptest.NewRecorder()
-		h.ServeHTTP(writer, request)
+		h.ServeHTTP(writer, request) /*****/
 
 		// All of these tests should give status OK
 		if writer.Result().StatusCode != http.StatusOK {

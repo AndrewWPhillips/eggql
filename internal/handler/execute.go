@@ -26,7 +26,10 @@ type (
 
 	// gqlResult contains the result (or errors) of the request to be encoded in JSON
 	gqlResult struct {
-		//Data   map[string]interface{} `json:"data,omitempty"`
+		// Data stores the results of the query or queries
+		// We use a jsonmap.Ordered rather than a map[string]interface{} so as to remember the order since
+		// the query result should have the same order as the query.  A nested query result is stored
+		// as a jsonmap.Ordered (as interface{}) within the Data whereas a list is stored as a slice.
 		Data   jsonmap.Ordered `json:"data,omitempty"`
 		Errors gqlerror.List   `json:"errors,omitempty"`
 	}
