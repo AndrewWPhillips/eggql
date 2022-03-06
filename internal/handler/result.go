@@ -9,6 +9,7 @@ import (
 	"github.com/dolmen-go/jsonmap"
 	"github.com/vektah/gqlparser/ast"
 	"reflect"
+	"strings"
 )
 
 const (
@@ -16,11 +17,18 @@ const (
 )
 
 type (
-	// gqlOperation performs an operation (query) of a GraphQL request
+	// gqlOperation controls an operation (query/mutation) of a GraphQL request
 	gqlOperation struct {
 		isMutation bool
 		variables  map[string]interface{}
 		enums      map[string][]string
+	}
+
+	// gqlValue contains the result of a query or queries, or an error, plus the name
+	gqlValue struct {
+		name  string      // name/alias of the entry/resolver
+		value interface{} // scalar, nested result (jsonmap.Ordered), list ([]interface{})
+		err   error       // non-nil if something went wrong whence the contents of value should be ignored
 	}
 )
 
@@ -43,87 +51,92 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 		vIntro = vIntro.Elem() // follow indirection
 	}
 
-	result := jsonmap.Ordered{
-		Data:  make(map[string]interface{}),
-		Order: make([]string, 0, len(set)),
-	}
+	resultChans := make([]<-chan gqlValue, 0, len(set)) // TODO: allow extra space for fragment sets > 1 in length
 
+	var result jsonmap.Ordered
+	var err error
 	// resolve each (sub)query
 	for _, s := range set {
-		// TODO: check if ctx has expired here
-
-		var fragments jsonmap.Ordered
-		var fragErr error
-		var fragName string
-
 		switch astType := s.(type) {
 		case *ast.Field:
 			// Find and execute the "resolver" in the struct (or recursively in embedded structs)
-			value, err := op.FindSelection(ctx, astType, v)
-			if err != nil {
-				return result, err
+			if vIntro.IsValid() && strings.HasPrefix(astType.Name, "__") {
+				resultChans = append(resultChans, introOp.FindSelection(ctx, astType, vIntro))
+			} else {
+				resultChans = append(resultChans, op.FindSelection(ctx, astType, v))
 			}
-			if value == nil && vIntro.IsValid() {
-				// handle any introspection query
-				value, err = introOp.FindSelection(ctx, astType, vIntro)
-				if err != nil {
-					return result, err
-				}
-			}
-			if value != nil {
-				key := astType.Alias // name used as map key
-				if _, ok := result.Data[key]; ok {
-					return result, fmt.Errorf("resolver %q in %s has duplicate name", key, astType.Name)
-				}
-				result.Data[key] = value
-				result.Order = append(result.Order, key)
-			}
-			// else TODO panic or return error (should be found as validator would have signalled a bad name)
-			continue // the rest of the loop only applies to fragments
+			continue
 
 		case *ast.InlineFragment:
-			fragments, fragErr = op.GetSelections(ctx, astType.SelectionSet, v, vIntro, introOp)
-			fragName = "on " + astType.TypeCondition
-
+			result, err = op.GetSelections(ctx, astType.SelectionSet, v, reflect.Value{}, nil)
 		case *ast.FragmentSpread:
-			fragments, fragErr = op.GetSelections(ctx, astType.Definition.SelectionSet, v, vIntro, introOp)
-			fragName = astType.Name
+			result, err = op.GetSelections(ctx, astType.Definition.SelectionSet, v, reflect.Value{}, nil)
 		}
-
-		if fragErr != nil {
-			return result, fragErr
-		}
-		// Add the entries found in the fragment (in the order they were found)
-		for _, key := range fragments.Order {
-			// check if a selection with this name is already present
-			if _, ok := result.Data[key]; ok {
-				return result, fmt.Errorf("resolver %q in fragment %s has duplicate name", key, fragName)
+		// This code (until end of loop) if for shared code for fragments
+		var ch chan gqlValue
+		if err != nil {
+			ch = make(chan gqlValue, 1)
+			ch <- gqlValue{err: err}
+		} else {
+			if len(result.Order) != len(result.Data) {
+				panic("slice and map must have same number of elts")
 			}
-			result.Data[key] = fragments.Data[key]
+			ch = make(chan gqlValue, len(result.Order))
+			for _, v := range result.Order {
+				ch <- gqlValue{name: v, value: result.Data[v]}
+			}
 		}
-		result.Order = append(result.Order, fragments.Order...)
+		close(ch)
+		resultChans = append(resultChans, ch)
 	}
-	return result, nil
+
+	// Now extract the values (will block until all channels have closed)
+	r := jsonmap.Ordered{
+		Data:  make(map[string]interface{}),
+		Order: make([]string, 0, len(set)),
+	}
+	for _, ch := range resultChans {
+	inner:
+		for {
+			select {
+			case v, ok := <-ch:
+				if !ok {
+					break inner
+				}
+				if v.err != nil {
+					return r, v.err
+				}
+				r.Data[v.name] = v.value
+				r.Order = append(r.Order, v.name)
+			case <-ctx.Done():
+				return r, ctx.Err()
+			}
+		}
+	}
+	return r, nil
 }
 
-// FindSelection scans a struct for a match (exported field with name matching the ast.Field)
-// It probably should never return an error unless there is a bug since schema validation should avoid any problems.
-// It may return nil (even when error is nil) if
-//  a) no matching field was found (which may occur for embedded structs since the field may be matched in the main struct)
-//  b) the field was excluded based on a directive
-func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, v reflect.Value) (interface{}, error) {
+// FindSelection scans v for a field that matches astField and resolves the value (if found)
+// It returns a chan that will send (perhaps later) a single value (or error) and is then closed.
+// If no match is found, or the matched field is excluded (by a directive) the chan is closed without any value sent.
+func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, v reflect.Value) <-chan gqlValue {
 	if v.Type().Kind() != reflect.Struct { // struct = 25
 		// param. 'v' validation - note that this is a bug which is precluded during building of the schema
 		panic("FindSelection: search of query field in non-struct")
 	}
+
+	//r := make(chan gqlValue) //
 	if astField.Name == "__typename" {
-		return astField.ObjectDefinition.Name, nil
+		// Special "introspection" field
+		r := make(chan gqlValue, 1)
+		r <- gqlValue{name: astField.Alias, value: astField.ObjectDefinition.Name}
+		close(r)
+		return r
 	}
 
 	var i int
 	// Check all the (exported) fields of the struct for a match to astField.Name
 	for i = 0; i < v.Type().NumField(); i++ {
-		// TODO: check if ctx has expired here
 		tField := v.Type().Field(i)
 		vField := v.Field(i)
 		fieldInfo, err := field.Get(&tField)
@@ -135,73 +148,94 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 		}
 		// Recursively check fields of embedded struct
 		if fieldInfo.Embedded {
-			if value, err := op.FindSelection(ctx, astField, vField); err != nil {
-				return nil, err
-			} else if value != nil {
-				return value, nil // found it
+			// if a field in the embedded struct matches a value is sent on the chan returned from FindSelection
+			for v := range op.FindSelection(ctx, astField, vField) {
+				// just send the 1st value from chan
+				r := make(chan gqlValue, 1)
+				// TODO: check if we should run this in a separate Go routine
+				select {
+				case r <- v:
+					// nothing else needed here
+				case <-ctx.Done():
+					r <- gqlValue{err: ctx.Err()}
+				}
+				close(r)
+				return r
 			}
+			// chan closed (no match found) so continue below
 		}
 		if fieldInfo.Name == astField.Name {
-			// resolver found so use it
-			if value, err := op.resolve(ctx, astField, vField, fieldInfo); err != nil {
-				return nil, err
+			// resolver found so run it (concurrently)
+			if op.isMutation {
+				// Mutations are run sequentially
+				r := make(chan gqlValue, 1)
+				if value := op.resolve(ctx, astField, vField, fieldInfo); value != nil {
+					r <- *value
+				}
+				close(r)
+				return r
 			} else {
-				return value, nil
+				// This go routine allows resolvers to run in parallel
+				r := make(chan gqlValue)
+				go func() {
+					if value := op.resolve(ctx, astField, vField, fieldInfo); value != nil {
+						r <- *value
+					}
+					close(r)
+				}()
+				return r
 			}
 		}
 	}
-	// If we got here the query has been ignored.  Ignoring a query is probably an error but this situation
-	// should be precluded by the query validation already performed.  But we don't panic here as this *can*
-	// occur if AllowIntrospection == false and it's an introspection (__schema or __type) query.
-	return nil, nil
+	// No matching field so close chan without writing
+	r := make(chan gqlValue)
+	close(r)
+	return r
 }
 
 // resolve calls a resolver given a query to obtain the results of the query (incl. listed and nested queries)
 // Resolvers are often dynamic (where the resolver is a Go function) in which case the function is called to get the value.
-// Returns a value (or an error) where the value (returned in an interface{} type) is:
-//   * a scalar - integer, float, boolean, string
-//   * a nested query - returned as a jsonmap.Ordered
-//   * a list - returned as a []interface{}).
-//   * nil - if no value is to be provided (eg due to "skip" directive on the field)
+// Returns a pointer to a value (or error) or nil if nothing results (eg if excluded by directive)
 // Parameters:
 //   ctx = a Go context that could expire at any time
 //   astField = a query or sub-query - a field of a GraphQL object
 //   v = value of the resolver (field of Go struct)
 //   fieldInfo = metadata for the resolver (eg parameter name) obtained from the struct field tag
-func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info) (interface{}, error) {
+func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info) *gqlValue {
 	if op.directiveBypass(astField) {
-		// TODO return a special value so that scan of fields stops
-		return nil, nil
+		return nil
 	}
+
 	if v.Type().Kind() == reflect.Func {
 		var err error
 		// For function fields, we have to call it to get the resolver value to use
 		if v, err = op.fromFunc(ctx, astField, v, fieldInfo); err != nil {
-			return nil, err
+			return &gqlValue{err: err}
 		}
 	}
 	for v.Type().Kind() == reflect.Ptr || v.Type().Kind() == reflect.Interface {
 		if v.IsNil() {
-			return v.Interface(), nil
+			return &gqlValue{name: astField.Alias, value: v.Interface()}
 		}
 		v = v.Elem() // follow indirection
 	}
 
 	switch v.Type().Kind() {
 	case reflect.Struct:
-		return op.GetSelections(ctx, astField.SelectionSet, v, reflect.Value{}, nil) // returns map of interface{} as an interface{}
+		if result, err := op.GetSelections(ctx, astField.SelectionSet, v, reflect.Value{}, nil); err != nil {
+			return &gqlValue{err: err}
+		} else {
+			return &gqlValue{name: astField.Alias, value: result}
+		}
 
 	case reflect.Slice, reflect.Array:
 		var results []interface{}
 		for i := 0; i < v.Len(); i++ {
-			// TODO: check if ctx has expired here
-			if value, err2 := op.resolve(ctx, astField, v.Index(i), fieldInfo); err2 != nil {
-				return nil, err2
-			} else if value != nil {
-				results = append(results, value)
+			if value := op.resolve(ctx, astField, v.Index(i), fieldInfo); value != nil {
+				results = append(results, value.value)
 			}
 		}
-		return results, nil // returns slice of interface{} as an interface{}
+		return &gqlValue{name: astField.Alias, value: results}
 	}
 	// If enum or enum list get the integer index and look up the enum value
 	if enumName := fieldInfo.GQLTypeName; enumName != "" {
@@ -229,12 +263,11 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 		case uint64:
 			idx = int(value)
 		default:
-			return nil, fmt.Errorf("invalid return type %d for enum (should be an integer type)", v.Kind())
+			return &gqlValue{err: fmt.Errorf("invalid return type %d for enum (should be an integer type)", v.Kind())}
 		}
-		return op.enums[enumName][idx], nil
+		return &gqlValue{name: astField.Alias, value: op.enums[enumName][idx]}
 	}
-
-	return v.Interface(), nil
+	return &gqlValue{name: astField.Alias, value: v.Interface()}
 }
 
 // directiveBypass handles field directives - just standard "skip" and "include" for now

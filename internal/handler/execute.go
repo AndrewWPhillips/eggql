@@ -55,7 +55,6 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 	// Now process the operation(s)
 	r.Data.Data = make(map[string]interface{})
 	for _, operation := range query.Operations {
-		// TODO: check if ctx has expired?
 		op := gqlOperation{enums: g.h.enums}
 
 		// Get variables associated with this operation if any
@@ -76,7 +75,7 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 				vIntro = reflect.ValueOf(NewIntrospectionData(g.h.schema))
 			}
 		case ast.Mutation:
-			op.isMutation = true // TODO: run queries (but not mutations) in separate Go routines
+			op.isMutation = true
 			v = reflect.ValueOf(g.h.mData)
 		case ast.Subscription:
 			r.Errors = append(r.Errors, &gqlerror.Error{Message: "TODO: subscriptions not yet implemented"})

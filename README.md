@@ -2,7 +2,7 @@
 
 The **eggql** package allows you to very easily create a GraphQL server using Go.
 
-It currently supports queries, mutations, all GraphQL types including interfaces. It does not support subscriptions (yet).
+It currently supports queries, mutations, all GraphQL types including enums, interfaces, etc.  Queries (but not mutations) are processed concurrently.  It does not support subscriptions (yet).
 
 For simplicity, you _don't_ need to create a GraphQL **schema**. You just declare Go structs with fields that act as the GraphQL **resolvers**.  For some things, like resolver arguments, you need to add tags (metadata attached to a field of a struct type), like the tags used to control JSON encoding/decoding.
 
