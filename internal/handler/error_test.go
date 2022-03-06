@@ -1,13 +1,16 @@
 package handler_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"github.com/andrewwphillips/eggql/internal/handler"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 const (
@@ -52,11 +55,11 @@ func TestErrors(t *testing.T) {
 
 		// Invoke the handler, recording the response
 		writer := httptest.NewRecorder()
-		h.ServeHTTP(writer, request)
+		h.ServeHTTP(writer, request) /****/
 
 		// All of these tests should give status OK
-		if writer.Result().StatusCode != http.StatusOK {
-			t.Logf("%12s: Unexpected response code %d", name, writer.Code)
+		if status := writer.Result().StatusCode; status != http.StatusOK {
+			Assertf(t, false, "%12s: Expected Status OK (200) got %d", name, status)
 			continue
 		}
 
@@ -74,7 +77,34 @@ func TestErrors(t *testing.T) {
 		}
 
 		// Check that the resulting GraphQL result (error and data)
-		Assertf(t, len(result.Data) == 0, "%12s: Expected no data and got %v", name, result.Data)
-		Assertf(t, result.Errors[0].Message == testData.expError, "%12s: Expected error %q, got %v", name, testData.expError, result.Errors)
+		if len(result.Data) > 0 {
+			Assertf(t, false, "%12s: Expected no data and got %v", name, result.Data)
+		}
+		Assertf(t, result.Errors != nil && result.Errors[0].Message == testData.expError, "%12s: Expected error %q, got %v", name, testData.expError, result.Errors)
+	}
+}
+
+func TestTimeout(t *testing.T) {
+	h := handler.New("type Query{v:Int!}", struct{ V func() int }{func() int { time.Sleep(time.Second); return 0 }})
+
+	request := httptest.NewRequest("POST", "/", strings.NewReader(`{"query":"{v}"}`))
+	request.Header.Add("Content-Type", "application/json")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	request = request.WithContext(ctx)
+
+	writer := httptest.NewRecorder()
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		h.ServeHTTP(writer, request) /****/
+		wg.Done()
+	}()
+
+	// Cancel the context and wait for the request to finish
+	cancel()
+	wg.Wait()
+	if !strings.Contains(writer.Body.String(), `"context canceled"`) {
+		t.Fatalf("Expected returned JSON to contain an error about canceled context but got %q", writer.Body.String())
 	}
 }

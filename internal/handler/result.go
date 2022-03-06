@@ -96,13 +96,21 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 		Order: make([]string, 0, len(set)),
 	}
 	for _, ch := range resultChans {
-		// TODO: check if ctx has expired here (select on ch and ctx)
-		for v := range ch {
-			if v.err != nil {
-				return r, v.err
+	inner:
+		for {
+			select {
+			case v, ok := <-ch:
+				if !ok {
+					break inner
+				}
+				if v.err != nil {
+					return r, v.err
+				}
+				r.Data[v.name] = v.value
+				r.Order = append(r.Order, v.name)
+			case <-ctx.Done():
+				return r, ctx.Err()
 			}
-			r.Data[v.name] = v.value
-			r.Order = append(r.Order, v.name)
 		}
 	}
 	return r, nil
@@ -144,7 +152,13 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 			for v := range op.FindSelection(ctx, astField, vField) {
 				// just send the 1st value from chan
 				r := make(chan gqlValue, 1)
-				r <- v
+				// TODO: check if we should run this in a separate Go routine
+				select {
+				case r <- v:
+					// nothing else needed here
+				case <-ctx.Done():
+					r <- gqlValue{err: ctx.Err()}
+				}
 				close(r)
 				return r
 			}

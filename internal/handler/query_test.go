@@ -206,7 +206,6 @@ var happyData = map[string]struct {
 	// Note that we can't pass parRef by value (must use pointer) since parRef.value has not been set yet
 	"ParRef": {intSchema, &parRef, `{ value }`, "",
 		JsonObject{"value": float64(42)}},
-	// TODO: check that ctx kills the query even if resolver does not check ctx - eg long list of [sub-query]
 }
 
 func TestQuery(t *testing.T) {
@@ -233,7 +232,7 @@ func TestQuery(t *testing.T) {
 
 		// Invoke the handler, recording the response
 		writer := httptest.NewRecorder()
-		h.ServeHTTP(writer, request)
+		h.ServeHTTP(writer, request) /*****/
 
 		// All of these tests should give status OK
 		if writer.Result().StatusCode != http.StatusOK {
