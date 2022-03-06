@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"github.com/andrewwphillips/eggql"
 	"net/http"
@@ -20,12 +21,13 @@ type (
 		Human    func(int) (*Human, error)              `graphql:",args(id = 1000)"`
 		Droid    func(int) (*Droid, error)              `graphql:",args(id)"` // id is required
 		StarShip func(int) (*StarShip, error)           `graphql:",args(id = 3000)"`
+		Reviews  func(episode int) ([]Review, error)    `graphql:",args(episode:Episode)"`
 	}
 	Character struct {
-		Name    string
-		Friends []*Character
-		//FriendsConnection TODO
-		Appears []int `graphql:"appearsIn:[Episode]"`
+		Name            string
+		Friends         []*Character
+		Appears         []int `graphql:"appearsIn:[Episode]"`
+		SecretBackstory func() (string, error)
 	}
 	Human struct {
 		Character
@@ -41,6 +43,10 @@ type (
 	EpisodeDetails struct {
 		Name       string
 		HeroId     int
+		Stars      []int
+		Commentary []string
+	}
+	Review struct {
 		Stars      int
 		Commentary string
 	}
@@ -115,9 +121,14 @@ func init() {
 	droids[0].Friends = []*Character{r2d2, luke, leia, chew}
 	droids[1].Friends = []*Character{c3po, luke, leia}
 
-	// Set up human Height closures
+	// Set up human closures
 	for i := range humans {
-		humans[i].Height = (&humans[i]).getHeight
+		humans[i].SecretBackstory = getSecretBackstory // assign function to the closure
+		humans[i].Height = (&humans[i]).getHeight      // assign method to allow access to height field
+	}
+	// Set up droid closures
+	for i := range droids {
+		droids[i].SecretBackstory = getSecretBackstory
 	}
 
 	// Set up appearances
@@ -191,6 +202,16 @@ func main() {
 				}
 				return &starShips[ID], nil
 			},
+			Reviews: func(episode int) ([]Review, error) {
+				if episode < 0 || episode >= len(episodes) {
+					return nil, fmt.Errorf("episode %d not found", episode)
+				}
+				var r []Review
+				for i := range episodes[episode].Stars {
+					r = append(r, Review{Stars: episodes[episode].Stars[i], Commentary: episodes[episode].Commentary[i]})
+				}
+				return r, nil
+			},
 		},
 		Mutation{
 			CreateReview: func(episode int, review ReviewInput) (*EpisodeDetails, error) {
@@ -200,8 +221,8 @@ func main() {
 				if review.Stars < 0 || review.Stars > 5 {
 					return nil, fmt.Errorf("review stars %d out of range", review.Stars)
 				}
-				episodes[episode].Stars = review.Stars
-				episodes[episode].Commentary = review.Commentary
+				episodes[episode].Stars = append(episodes[episode].Stars, review.Stars)
+				episodes[episode].Commentary = append(episodes[episode].Commentary, review.Commentary)
 				return &episodes[episode], nil
 			},
 		},
@@ -210,6 +231,8 @@ func main() {
 	http.Handle("/graphql", handler)
 	http.ListenAndServe(":8080", nil)
 }
+
+func getSecretBackstory() (string, error) { return "", errors.New("secretBackstory is secret.") }
 
 const feetPerMeter = 3.28084
 
