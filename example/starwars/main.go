@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"github.com/andrewwphillips/eggql"
@@ -24,10 +25,11 @@ type (
 		Reviews  func(episode int) ([]Review, error)    `graphql:",args(episode:Episode)"`
 	}
 	Character struct {
-		Name            string
-		Friends         []*Character
-		Appears         []int `graphql:"appearsIn:[Episode]"`
-		SecretBackstory func() (string, error)
+		Name              string
+		Friends           []*Character
+		FriendsConnection func(first int, after string) (FriendsConnection, error) `graphql:",args(first=-1, after=\"\")"`
+		Appears           []int                                                    `graphql:"appearsIn:[Episode]"`
+		SecretBackstory   func() (string, error)
 	}
 	Human struct {
 		Character
@@ -56,6 +58,7 @@ type (
 		length float64                    // meters
 	}
 
+	// Movie reviews
 	Mutation struct {
 		CreateReview func(int, ReviewInput) (*EpisodeDetails, error) `graphql:",args(episode:Episode,review)"`
 	}
@@ -63,6 +66,23 @@ type (
 		Stars      int
 		Commentary string
 		//Time TODO
+	}
+
+	// The following are for pagination of a list of friends
+	FriendsConnection struct {
+		TotalCount int           // total number of friends
+		Edges      []FriendsEdge // list of (subset of) friends
+		Friends    []*Character
+		PageInfo   PageInfo
+	}
+	FriendsEdge struct {
+		Cursor string
+		Node   *Character
+	}
+	PageInfo struct {
+		StartCursor *string
+		EndCursor   *string
+		HasNextPage bool
 	}
 )
 
@@ -125,10 +145,12 @@ func init() {
 	for i := range humans {
 		humans[i].SecretBackstory = getSecretBackstory // assign function to the closure
 		humans[i].Height = (&humans[i]).getHeight      // assign method to allow access to height field
+		humans[i].FriendsConnection = (&humans[i]).Character.getFriendsConnection
 	}
 	// Set up droid closures
 	for i := range droids {
 		droids[i].SecretBackstory = getSecretBackstory
+		droids[i].FriendsConnection = (&droids[i]).Character.getFriendsConnection
 	}
 
 	// Set up appearances
@@ -264,4 +286,60 @@ func (ss *StarShip) getLength(unit int) (float64, error) {
 	default:
 		return 0, fmt.Errorf("StarShip.length: unknown LengthUnit value: %d", unit)
 	}
+}
+
+func (c *Character) getFriendsConnection(first int, after string) (FriendsConnection, error) {
+	r := FriendsConnection{
+		TotalCount: len(c.Friends),
+		Edges:      make([]FriendsEdge, 0),
+		Friends:    make([]*Character, 0),
+	}
+
+	beg := -1
+
+	// Find start index based on 'after' parameter
+	if after == "" {
+		beg = 0 // if 'after' not given start from the beginning
+	} else {
+		for i, friend := range c.Friends {
+			if base64.StdEncoding.EncodeToString([]byte(friend.Name)) == after {
+				beg = i + 1 // start after it
+				break
+			}
+		}
+	}
+
+	// If 'after' was valid then get the 'first' friends after
+	if beg > -1 {
+		// Find (one past) last index based on 'first' parameter
+		end := len(c.Friends)
+		if first > -1 {
+			end = beg + first
+			if end > len(c.Friends) {
+				end = len(c.Friends)
+			}
+		}
+
+		// Get the friends in the range
+		for i := beg; i < end; i++ {
+			r.Edges = append(r.Edges, FriendsEdge{
+				Cursor: base64.StdEncoding.EncodeToString([]byte(c.Friends[i].Name)),
+				Node:   c.Friends[i],
+			})
+			r.Friends = append(r.Friends, c.Friends[i])
+		}
+
+		// Update paging info
+		if beg < len(c.Friends) {
+			s1 := base64.StdEncoding.EncodeToString([]byte(c.Friends[beg].Name))
+			r.PageInfo.StartCursor = &s1
+			if end >= beg {
+				s2 := base64.StdEncoding.EncodeToString([]byte(c.Friends[end-1].Name))
+				r.PageInfo.EndCursor = &s2
+			}
+		}
+		r.PageInfo.HasNextPage = end < len(c.Friends)
+	}
+
+	return r, nil
 }
