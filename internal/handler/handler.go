@@ -25,7 +25,7 @@ type (
 
 // New is the main handler function that returns an HTTP handler given a schema (and enums(s)) PLUS
 // corresponding instances of query and optionally mutation and subscription structs.
-func New(schemaString string, qms ...interface{}) *Handler {
+func New(schemaString string, qms ...interface{}) http.Handler {
 	schema, pgqlError := gqlparser.LoadSchema(&ast.Source{
 		Name:  "schema",
 		Input: schemaString,
@@ -57,6 +57,10 @@ func New(schemaString string, qms ...interface{}) *Handler {
 // query (or mutation) and generates an HTTP response or error message
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
 
 	// Decode the request (JSON)
 	g := gqlRequest{h: h}

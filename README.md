@@ -10,8 +10,8 @@ For simplicity, you _don't_ need to create a GraphQL **schema**. You just declar
 
 To create a GraphQL server you must declare a struct, representing the root query object.  Each exported field (ie, having a capitalized name) of this struct represents a GraphQL query.  Each such field can be
 
-- a scalar type (int, string, etc) that represents a GraphQL scalar (Int!, String!, etc)
-- an integer type (int, int8, uint, etc) that represents an enumeration
+- a scalar type (int, string, etc.) that represents a GraphQL scalar (Int!, String!, etc.)
+- an integer type (int, int8, uint, etc.) that represents an enumeration
 - a nested struct that represents a GraphQL nested query
 - a slice or array that represents a GraphQL list of any of the above types
 - a pointer to one of the above types, in which case the value is nullable
@@ -54,9 +54,9 @@ To test the server just send a query like the following to http://localhost:8080
 }
 ```
 
-Note that the query name `random` is derived from the struct's field name `Random`.  Only exported fields (those with a upper-case first letter) are used and the generated GraphQL name derived from it using a lower-case first letter.  You can also provide your own name using the graphql tag such as `graphql:"myRand,args(low=1,high=6)"`.
+Note that the query name `random` is derived from the struct's field name `Random`.  Only exported fields (those with an upper-case first letter) are used and the generated GraphQL name derived from it using a lower-case first letter.  You can also provide your own name using the graphql tag such as `graphql:"myRand,args(low=1,high=6)"`.
 
-Also note the two resolver arguments (`low` and `high`) given in the graphql tag.  You must supply the `args` option of the tag if the resolver function takes arguments.  In this case there are two arguments so you must specify two names in the `args`.  (An exception is if the first function argument is a `context.Context` as we will see below.)
+Also note the two resolver arguments (`low` and `high`) given in the graphql tag.  You must supply the `args` option of the tag if the resolver function takes arguments.  In this case there are two arguments, so you must specify two names in the `args`.  (An exception is if the first function argument is a `context.Context` as we will see below.)
 
 I usually test GraphQL servers using Postman (see below) but you can just use curl to post a GraphQL query like this:
 
@@ -76,7 +76,7 @@ and you should get a response like this:
 
 ### Testing with Postman
 
-To use Postman for testing your server just create a new **POST** request using an address of `http://localhost:8080/graphql`. Under the address select the **Headers** section and ensure that the `ContentType` header is `application/json`.  Then under the **Body** section select **GraphQL** and enter this query:
+To use Postman for testing your server just create a new **POST** request using an address of `http://localhost:8080/graphql`. Under the **Body** section select **GraphQL** and enter this query:
 
 ```graphql
 {
@@ -125,9 +125,9 @@ GraphQL errors, like the wrong query name, are handled for you but what about ot
 }
 ```
 
-With the Go code above this will cause `rand.Intn()` to panic (because it's given a -ve value) and there will be no response.  To handle this a "resolver" function can return an `error`.  (A resolver function must return only a single value OR a single value plus an `error`.)
+With the Go code above this will cause `rand.Intn()` to panic (because it's given a -ve value) and there will be no response.  To handle this a "resolver" function can return an `error`.  (A resolver function must have either one or two return values, the 2nd being an `error`.)
 
-This is shown in the following code. Note that I have separated the type of the `Query` struct and declared the instance `q` separately for clarity as this example is growing in size.
+This is shown in the following code. Note that I have separated the type of the `Query` struct and declared the instance `q` separately for clarity as this example is getting bigger.
 
 ```go
 type Query struct {
@@ -199,13 +199,15 @@ Note that there are further ways to increase the robustness of your server, that
 
 GraphQL is all about types - scalar types (int, string, etc), object types which are composed of fields of other types (a bit like Go structs), lists (a bit like a Go slices) and more specialized types like interfaces and input types (which we will get to later).
 
-Traditionally in GraphQL, you first create a schema which defines your types, but with **eggql** you just need to use Go structs and the schema is created for you.  We will see later how to view the GraphQL schema that is generated.  The first thing you need is a root query which is just an object type, but in this case it's fields define th queries that can be submitted to the GraphQL server.
+Traditionally in GraphQL, you first create a schema which defines your types, but with **eggql** you just need to use Go structs and the schema is created for you.  We will see later how to view the GraphQL schema that is generated.  The first thing you need is a root query which is just an object type, but in this case its fields define the queries that can be submitted to the GraphQL server.
 
-Here I'll explain, in detail, how to declare Go types in order to implement a GraphQL server.  Since we're implementing the backend (GraphQL server) I'll focus on that, not on using it.  So it's mostly Go code with a few test queries.  However, I am using an example based on the official GraphQL tutorial (see https://graphql.org/learn/), so if you want to explorer the frontend side of things at the same time you can use the example queries from there.
+Here I'll explain, in detail, how to declare Go types in order to implement a GraphQL server.  Since we're implementing the backend (GraphQL server) I'll focus on that, not on using it.  So it's just Go code with a few test queries.  We **won't** look at aliases, fragments, inline fragments, variables, directives, schemas and introspection, but rest assured that all these things work.  Since I am using the **Star Wars** example of the official GraphQL tutorial (see https://graphql.org/learn/), you can try all these things with the example queries from there.
 
-First, we'll look at basic types (scalars, lists and nested objects).  Later we'll look at query arguments (including defaults and input types), enums, interfaces, mutations, etc.  We'll also look at the sorts of errors you can get and how to handle them.
+First, we'll look at basic types (scalars, lists and nested objects).  Then we'll look at how to implement query arguments (including defaults and input types), enums, interfaces, mutations, etc.  We'll also look at the sorts of errors you can get and how to handle them.
 
-Note: the final code for the tutorial is in example/starwars/main.go and the code is running in GCP.  So you can try any of the queries in Postman (or Curl etc) using the address https://aphillips801-eggql-sw.uc.r.appspot.com/graphql.  In fact you can try any of the queries from the offical GraphQL **Star Wars** tutorial at https://graphql.org/learn/.
+Note: the final code for the tutorial is in the git repo at example/starwars/main.go.  It's less than 250 lines of code (and most of that is just data field initialization since all the data is stored in memory).  This is much smaller (and I think much simpler) than the same Star Wars example written for other Go packages and even in other languages (though most of these have a database and other complications).
+
+The example code is running *right now* in GCP (Google Cloud Platform), so you can try any of the queries below in Postman (or Curl etc) using the address https://aphillips801-eggql-sw.uc.r.appspot.com/graphql.  You can also try queries from the official GraphQL **Star Wars** tutorial at https://graphql.org/learn/.
 
 ### Basic Types
 
@@ -281,7 +283,7 @@ which will produce this:
 
 Note that you could recursively query the friends of the friends.  You can even query friends of friends of friends ... to any depth, but it is unwise to nest queries too deeply (and some servers limit nesting to 3 or 4 levels).  You can't see this with the above data as Luke and Leia do not have any friends yet.
 
-The `Character` type is an object since it has fields (sub-queries) within it. `Query` is also an object but it is special being the **root query**.
+The `Character` type is an object since it has fields (sub-queries) within it. `Query` is also an object, but it is special being the **root query**.
 
 The `Friends` field of `Character` defines a list, in this case implemented using a slice of pointers.  
 
@@ -505,7 +507,7 @@ You should see this result:
 
 ### Interfaces
 
-Interfaces (and unions) are an advanced, but sometimes useful, feature of GraphQL.  Interfaces are similar to interfaces in the type system of Go, so you may be surprised that **eggql** does not use Go interfaces to implement GraphQL interfaces.  Instead it uses struct embedding.
+Interfaces (and unions) are an advanced, but sometimes useful, feature of GraphQL.  Interfaces are similar to interfaces in the type system of Go, so you may be surprised that **eggql** does not use Go interfaces to implement GraphQL interfaces.  Instead, it uses struct embedding.
 
 To demonstrate interfaces we are going to change the Star Wars example so that the `Character` type is an interface.  But first we introduce two new types `Human` and `Droid` for GraphQL object types that **implement** the `Character` interface.
 
@@ -524,7 +526,7 @@ type (
 
 The above Go code creates two GraphQL types `Human` and `Droid` which implement the `Character` interface because the Go struct embeds the `Character` struct.  (They also have their own type specific fields.)
 
-No changes are required to the earlier `Character` struct but it now is used as a GraphQL `interface` due solely to the fact that it has been embedded in another struct (or two in this case).
+No changes are required to the earlier `Character` struct, but it now is used as a GraphQL `interface` due solely to the fact that it has been embedded in another struct (or two in this case).
 
 If you have a Character struct (or pointer to one) there is no way in Go to get the struct that embeds it or to even determine that it is embedded in another struct.  So to return a `Character` (which is either a `Human` or a `Droid` underneath) we return a Human or Droid as a Go `interface{}` and use the graphql tag to indicate that the GraphQl type is a `Character` interface.
 
@@ -670,7 +672,7 @@ which will produce JSON output like this:
 }
 ```
 
-Since R2-D2 is a droid you get the `primaryFunction` field.  Now use a differeny episode as the query parameter, as below.
+Since R2-D2 is a droid you get the `primaryFunction` field.  Now use a different episode as the query parameter, as below.
 
 Note that rather than changing the query in this way it is good practice to "parameterize" any parts that might change using variables - see [GraphQL Variables](https://graphql.org/learn/queries/#variables).  But that's outside the scope of this tutorial.
 
@@ -975,9 +977,9 @@ So to distinguish between these errors we add a 2nd (`error`) return value to th
 
 A critical part of any server in Go is using the `context.Context` type.  It allows _all_ processing associated with a client request to be expediently and tidily terminated.  This is most commonly used in web servers for a timeout in case anything is taking too long or has completely stalled.
 
-Using **eggql** a resolver function can (optionally) take a 1st parameter of `context.Context`.  You would almost certainly use a context if the resolver code read from or wrote to a Go `chan`, or made a library or system call that could block on disk or network I/O such as a database query.  A less common scenario is a compute intensive resolver in which case you can check if the context has been cancelled regularly, such as in an inner loop.
+Using **eggql** a resolver function can (optionally) take a 1st parameter of `context.Context`.  You would almost certainly use a context if the resolver code read from or wrote to a Go `chan`, or made a library or system call that could block on disk or network I/O such as a database query.  A less common scenario is a computationally intensive resolver in which case you can check if the context has been cancelled regularly, such as in an inner loop.
 
-Our Star Wars example works with in-memory data structures so the resolver functions do _not_ need context parameters.  (See the **Getting Started** example in the README where a `context` parameter is added to the `random` query.)  Even so, since GraphQL queries can return lists and nested queries, a single GraphQL request can cause a cascade of queries taking a long time even if each individual query does not - eg. if you deeply nested a friends query like this: 
+Our Star Wars example works with in-memory data structures so the resolver functions do _not_ need context parameters.  (See the **Getting Started** example in the README where a `context` parameter is added to the `random` query.)  Even so, since GraphQL queries can return lists and nested queries, a single GraphQL request can cause a cascade of queries taking a long time even if each individual query does not - e.g. if you deeply nested a friends query like this: 
 
 ```graphql
 {
@@ -993,7 +995,7 @@ Our Star Wars example works with in-memory data structures so the resolver funct
 }
 ```
 
-Fortunately, **eggql** itself will automatically shutdown query processing if the `context` is cancelled.  If you test this with a deeply nested query (and perhaps reduce the timeout in the `TimeoutHandler` below), you will see a message like this, even without `Hero` using a `Context` parameter:
+Fortunately, **eggql** itself will automatically not start any more query processing if the `context` is cancelled.  If you test this with a deeply nested query (and perhaps reduce the timeout in the `TimeoutHandler` below), you will see a message like this, even without `Hero` using a `Context` parameter:
 
 ```json
 {
@@ -1169,7 +1171,7 @@ There are two classes of errors you may need to deal with:
 1. coding errors that cause initial setup to fail, in which case `MustRun()` will panic
 2. errors in the query that will result in an error response being returned to the client
 
-It is common to initially make lots of coding mistakes when creating structs, their fields, their metadata (graphql tag), enums, etc.  Instaed of getting a panic when you using `MustRun()` you can get the error returned by using object returned from `eggql.New()`, then adding the query and mutation structs as well as enums, then call the `GetHandler()` method.  You can also call `GetSchema()` to view the GraphQL schema that **eggql*** has generated.  Here's an example:
+It is common to initially make lots of coding mistakes when creating structs, their fields, their metadata (graphql tag), enums, etc.  Instead of getting a panic, when using `MustRun()`, you can take the return value of `eggql.New()`, add the query and mutation structs as well as enums, then call the `GetHandler()` method which will return an error if there is a problem.  You can also call `GetSchema()` to view the GraphQL schema that **eggql*** has generated.  Here's an example:
 
 ```Go
 package main
@@ -1210,7 +1212,7 @@ func main() {
 }
 ```
 
-Once the GraphQL server is running - ie. the handler is processing then any errors encountered will return an error response to the client.  All requests are returned with an HTTP status of **OK** (200).  There is no way to return a different HTTP status like **Bad Request** (400) for GraphQL errors.  This includes errors that **eggql** detects while processing and validating the request, such as using an unknown query name.  It also includes errors returned from any resolver function, such as the "episode not found" error returned from the `Hero()` resolver function above.  (This does not mean that a client of the GraphQL server should not be prepared to handle an HTTP status error.)
+Once the GraphQL server is running - i.e. the handler is processing then any errors encountered will return an error response to the client.  All requests are returned with an HTTP status of **OK** (200).  There is no way to return a different HTTP status like **Bad Request** (400) for GraphQL errors.  This includes errors that **eggql** detects while processing and validating the request, such as using an unknown query name.  It also includes errors returned from any resolver function, such as the "episode not found" error returned from the `Hero()` resolver function above.  (This does not mean that a client of the GraphQL server should not be prepared to handle an HTTP status error.)
 
 What about _bugs_ in the resolver functions?  If you detect a software defect in your code then you should return an error message beginning with "internal error:".  There is no way to return HTTP status **Internal Server Error** (500).  An example is the "internal error: no character with ID" returned from the `Hero()` function above.
 
@@ -1218,7 +1220,7 @@ Also note that if your resolver function **panics** then (fortunately) the progr
 
 ### Conclusion
 
-I trust this tutorial has helped you to see how easy it is to create a simple GraphQL server using **eggql**.  Unlike most backend soltuions you are not required to create, or even understand GraphQL schemas.  (Under the hood, a schema is generated for you which you can view if you need to.)  Unlike other Go packages this avoids getting lot's of run-time panics when your schema does not match your data types.
+I trust this tutorial has helped you to see how easy it is to create a simple GraphQL server using **eggql**.  Unlike most backend solutions you are not required to create, or even understand GraphQL schemas.  (Under the hood, a schema is generated for you which you can view if you need to.)  Unlike other Go packages this avoids getting lots of run-time panics when your schema does not match your data types.
 
 However, **eggql** may not be the best solution for you if you want something comprehensive or more efficient.  It does not have any support for databases, such as a dataloader since I wrote it to work with in-memory data.  It may also be too slow for heavy load as it uses reflection to run resolvers.  Here are some other Go GraphQl packages that I have tried and found to work very well.
 
@@ -1230,4 +1232,4 @@ I particularly like **gqlgen** of **99 Designs** as it uses "go generate" to avo
 
 The "pros" for **eggql** are, I believe, that  it is simple to use (though I may be biased due to my familiarity with it) and complete (except for subscriptions that currently have high priority), and allows you to write robust GraphQL servers due to support for `context.Context` parameters and `error` return values.  I have also found it surprisingly performant.
 
-The latest (and possibly improved) version of the code of the Star Wars example is available on GitHub at [Star Wars example](https://github.com/AndrewWPhillips/eggql/tree/main/example/starwars).  This includes more data (characters etc) and more queries and fields but is still less than 200 lines of code.
+The latest (and possibly improved) version of the code of the Star Wars example is available on GitHub at [Star Wars example](https://github.com/AndrewWPhillips/eggql/tree/main/example/starwars).  This includes more data (characters etc.) and more queries and fields but is still less than 200 lines of code.
