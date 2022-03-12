@@ -51,7 +51,7 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 		vIntro = vIntro.Elem() // follow indirection
 	}
 
-	resultChans := make([]<-chan gqlValue, 0, len(set)) // TODO: allow extra space for fragment sets > 1 in length
+	resultChans := make([]<-chan gqlValue, 0, len(set)) // TODO: allow extra cap. for fragment sets > 1 in length
 
 	var result jsonmap.Ordered
 	var err error
@@ -72,7 +72,7 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 		case *ast.FragmentSpread:
 			result, err = op.GetSelections(ctx, astType.Definition.SelectionSet, v, reflect.Value{}, nil)
 		}
-		// This code (until end of loop) if for shared code for fragments
+		// This code (until end of loop) is shared code for fragments only
 		var ch chan gqlValue
 		if err != nil {
 			ch = make(chan gqlValue, 1)
@@ -178,10 +178,16 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 				// This go routine allows resolvers to run in parallel
 				r := make(chan gqlValue)
 				go func() {
+					defer func() {
+						// Convert any panics in resolvers into an (internal) error
+						if recoverValue := recover(); recoverValue != nil {
+							r <- gqlValue{err: fmt.Errorf("Internal error: panic %v", recoverValue)}
+						}
+						close(r)
+					}()
 					if value := op.resolve(ctx, astField, vField, fieldInfo); value != nil {
 						r <- *value
 					}
-					close(r)
 				}()
 				return r
 			}
