@@ -113,6 +113,15 @@ type (
 		Hero Character
 		_    *Person // this is the only way for the schema builder to know about the Person type
 	}
+	QuerySubscriptSlice struct {
+		Slice []string `graphql:",subscript"`
+	}
+	QuerySubscriptArray struct {
+		A [3]bool `graphql:",subscript="`
+	}
+	QuerySubscriptMap struct {
+		M map[string]float64 `graphql:",subscript=s"`
+	}
 )
 
 var testData = map[string]struct {
@@ -165,6 +174,9 @@ var testData = map[string]struct {
 	"Interface2": {QueryInterface2{},
 		"schema{query:QueryInterface2} interface Character {friends:[Character]! name:String!} type Person " +
 			" implements Character{friends:[Character]! name:String! personality:String!} type QueryInterface2{hero:Character!}"},
+	"SubscriptSlice": {QuerySubscriptSlice{}, "schema{ query:QuerySubscriptSlice } type QuerySubscriptSlice{slice(id:Int!):String! }"},
+	"SubscriptArray": {QuerySubscriptArray{}, "schema{ query:QuerySubscriptArray } type QuerySubscriptArray{a(id:Int!):Boolean! }"},
+	"SubscriptMap":   {QuerySubscriptMap{}, "schema{ query:QuerySubscriptMap } type QuerySubscriptMap{m(s:String!):Float! }"},
 }
 
 func TestBuildSchema(t *testing.T) {
