@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/andrewwphillips/eggql"
+	"log"
 	"net/http"
 	"time"
 )
@@ -12,23 +13,47 @@ import (
 const (
 	FirstHumanID    = 1000
 	FirstDroidID    = 2000
-	FirstStarShipID = 3000
+	FirstStarshipID = 3000
 )
 
 type (
 	Query struct {
-		_        Character                              // needed so eggql knows about Character struct
-		Hero     func(episode int) (interface{}, error) `graphql:"hero:Character,args(episode:Episode=JEDI)"`
-		Human    func(int) (*Human, error)              `graphql:",args(id = 1000)"`
-		Droid    func(int) (*Droid, error)              `graphql:",args(id)"` // id is required
-		StarShip func(int) (*StarShip, error)           `graphql:",args(id = 3000)"`
-		Reviews  func(episode int) ([]Review, error)    `graphql:",args(episode:Episode)"`
+		_ Character // needed so eggql knows about Character struct which is returned (in an interface{}) from Hero()
+		// Hero is a function used to implement the GraphQL resolver: "hero(episode: Episode = JEDI): Character", where:
+		//   hero = the resolver name taken from the 1st tag option (but could have been deduced from the field name "Hero")
+		//   episode = the name of the resolver argument (can't be deduced from the func parameter name as Go reflection only includes types, not names, of parameters)
+		//   Episode = type of the resolver argument - in GraphQL an enum (see gqlEnums below) but the Go func parameter must be an integer type (int, int8, etc)
+		//   JEDI = default value of the argument - must be one of the strings in gqlEnums["Episode"] below
+		//   Character = the resolver return type (taken from the 1st tag option after the colon)
+		//    - this can't be deduced from the func return type which must be an interface{} when implementing a GraphQL interface
+		Hero func(episode int) (interface{}, error) `graphql:"hero:Character,args(episode:Episode=JEDI)"`
+		// Human is a function used to implement the GraphQl resolver: "human(id: Int! = 1000): Human"
+		//   human = the resolver name, derived from the field name "Human", with the 1st letter lower-cased
+		//   id = the first (and only) argument name obtained from the "args" option of the "graphql" tag
+		//   Int! = the type of the argument, deduced from the func's parameter is an integer type (int, int8, uint, ect)
+		//   1000 = default value for id, which means that Luke is returned is the argument is not given in a query
+		//   Human = return type, deduced from the 1st return value of the func (nullable because a pointer is returned)
+		Human func(int) (*Human, error) `graphql:",args(id = 1000)"`
+		// Droid is a function used to implement the GraphQl resolver: "droid(id: Int!): Droid"
+		//   droid = the resolver name, derived from the field name "Droid"
+		//   id = the argument name which must be supplied in a GraphQL query as there is no default value
+		//   Int! = the type of the argument, the exclamation mark (!) means it is required (NULL can't be used)
+		//   Droid = return type, deduced from the 1st return value of the func (nullable because a pointer is returned)
+		Droid func(int) (*Droid, error) `graphql:",args(id)"` // id is required
+		// Starship is a function used to implement the GraphQl resolver: "starship(id: Int! = 3000): Starship"
+		Starship func(int) (*Starship, error) `graphql:",args(id = 3000)"`
+		// Reviews is a function used to implement the GraphQl resolver: "reviews(episode: Episode): [Review]"
+		//  reviews = resolver name, deduced from the field name "Reviews"
+		//  episode = argument name (from 1st value of "args" option before the colon)
+		//  Episode = argument type (from 1st value of "args" option after the colon)
+		//  [Review] = return type is a list of Reviews, deduced from the fact that the func returns a slice ([]Review)
+		Reviews func(int) ([]Review, error) `graphql:",args(episode:Episode)"`
 	}
 	Character struct {
 		Name              string
 		Friends           []*Character
-		FriendsConnection func(first int, after string) (FriendsConnection, error) `graphql:",args(first=-1, after=\"\")"`
-		Appears           []int                                                    `graphql:"appearsIn:[Episode]"`
+		FriendsConnection func(first int, after string) FriendsConnection `graphql:",args(first=-1, after=\"\")"`
+		Appears           []int                                           `graphql:"appearsIn:[Episode]"`
 		SecretBackstory   func() (string, error)
 	}
 	Human struct {
@@ -36,7 +61,7 @@ type (
 		Height     func(int) (float64, error) `graphql:",args(unit:LengthUnit=METER)"`
 		height     float64                    // meters
 		HomePlanet string
-		StarShips  []*StarShip
+		Starships  []*Starship
 	}
 	Droid struct {
 		Character
@@ -52,7 +77,7 @@ type (
 		Stars      int
 		Commentary string
 	}
-	StarShip struct {
+	Starship struct {
 		Name   string
 		Length func(int) (float64, error) `graphql:",args(unit:LengthUnit=METER)"`
 		length float64                    // meters
@@ -72,7 +97,7 @@ type (
 	FriendsConnection struct {
 		TotalCount int           // total number of friends
 		Edges      []FriendsEdge // list of (subset of) friends
-		Friends    []*Character
+		Friends    []*Character  // same friends as Characters
 		PageInfo   PageInfo
 	}
 	FriendsEdge struct {
@@ -88,8 +113,8 @@ type (
 
 var (
 	gqlEnums = map[string][]string{
-		"Episode":    {"NEWHOPE", "EMPIRE", "JEDI"},
-		"LengthUnit": {"METER", "FOOT"}, // order of strings in the slice should match METER, etc consts below
+		"Episode":    {"NEWHOPE", "EMPIRE", "JEDI"}, // order should match order EpisodeDetails in the episodes slice below
+		"LengthUnit": {"METER", "FOOT"},             // order of strings in the slice should match METER, etc consts below
 	}
 )
 
@@ -116,7 +141,7 @@ var (
 		{Name: "The Empire Strikes Back", HeroId: FirstHumanID},
 		{Name: "Return of the Jedi", HeroId: FirstDroidID + 1},
 	}
-	starShips = []StarShip{
+	starships = []Starship{
 		{Name: "Millenium Falcon", length: 34.37},
 		{Name: "X-Wing", length: 12.5},
 		{Name: "Tie Advanced x1", length: 9.2},
@@ -127,18 +152,21 @@ var (
 func init() {
 	// Set up friendships
 	luke := &humans[0].Character
+	bad1 := &humans[1].Character
 	solo := &humans[2].Character
 	leia := &humans[3].Character
+	bad2 := &humans[4].Character
 	chew := &humans[5].Character
 	c3po := &droids[0].Character
-	r2d2 := &droids[1].Character
+	artu := &droids[1].Character
 
-	humans[0].Friends = []*Character{leia, solo, chew, c3po, r2d2}
+	humans[0].Friends = []*Character{leia, solo, chew, c3po, artu}
+	humans[1].Friends = []*Character{bad1}
 	humans[2].Friends = []*Character{chew, leia, luke}
-	humans[3].Friends = []*Character{luke, solo, r2d2, c3po}
+	humans[3].Friends = []*Character{luke, solo, artu, c3po}
+	humans[4].Friends = []*Character{bad2}
 	humans[5].Friends = []*Character{solo, luke}
-
-	droids[0].Friends = []*Character{r2d2, luke, leia, chew}
+	droids[0].Friends = []*Character{artu, luke, leia, chew}
 	droids[1].Friends = []*Character{c3po, luke, leia}
 
 	// Set up human closures
@@ -164,19 +192,19 @@ func init() {
 	droids[1].Appears = []int{0, 1, 2}
 
 	// Set up star ship piloting
-	millenium := &starShips[0]
-	xwing := &starShips[1]
-	tie := &starShips[2]
-	shuttle := &starShips[3]
+	millenium := &starships[0]
+	xwing := &starships[1]
+	tie := &starships[2]
+	shuttle := &starships[3]
 
-	humans[0].StarShips = []*StarShip{xwing, shuttle}
-	humans[1].StarShips = []*StarShip{tie}
-	humans[2].StarShips = []*StarShip{millenium, shuttle}
-	humans[5].StarShips = []*StarShip{millenium}
+	humans[0].Starships = []*Starship{xwing, shuttle}
+	humans[1].Starships = []*Starship{tie}
+	humans[2].Starships = []*Starship{millenium, shuttle}
+	humans[5].Starships = []*Starship{millenium}
 
 	// Set up star ship Length closures
-	for i := range starShips {
-		starShips[i].Length = (&starShips[i]).getLength
+	for i := range starships {
+		starships[i].Length = (&starships[i]).getLength
 	}
 }
 
@@ -217,12 +245,12 @@ func main() {
 				}
 				return &droids[ID], nil
 			},
-			StarShip: func(ID int) (*StarShip, error) {
-				ID -= FirstStarShipID
-				if ID < 0 || ID >= len(starShips) {
+			Starship: func(ID int) (*Starship, error) {
+				ID -= FirstStarshipID
+				if ID < 0 || ID >= len(starships) {
 					return nil, fmt.Errorf("Star ship %d not found", ID)
 				}
-				return &starShips[ID], nil
+				return &starships[ID], nil
 			},
 			Reviews: func(episode int) ([]Review, error) {
 				if episode < 0 || episode >= len(episodes) {
@@ -251,7 +279,10 @@ func main() {
 	)
 	handler = http.TimeoutHandler(handler, 15*time.Second, `{"errors":[{"message":"timeout"}]}`)
 	http.Handle("/graphql", handler)
+
+	log.Println("starting server")
 	http.ListenAndServe(":8080", nil)
+	log.Println("stopping server")
 }
 
 func getSecretBackstory() (string, error) { return "", errors.New("secretBackstory is secret.") }
@@ -273,22 +304,30 @@ func (h *Human) getHeight(unit int) (float64, error) {
 	}
 }
 
-// getLength returns the length of a StarShip
+// getLength returns the length of a Starship
 // Parameters
-//  ss (receiver) is a pointer to the StarShip
+//  ss (receiver) is a pointer to the Starship
 //  unit is the unit for the return value (FOOT or METER)
-func (ss *StarShip) getLength(unit int) (float64, error) {
+func (ss *Starship) getLength(unit int) (float64, error) {
 	switch unit {
 	case METER:
 		return ss.length, nil
 	case FOOT:
 		return ss.length * feetPerMeter, nil
 	default:
-		return 0, fmt.Errorf("StarShip.length: unknown LengthUnit value: %d", unit)
+		return 0, fmt.Errorf("Starship.length: unknown LengthUnit value: %d", unit)
 	}
 }
 
-func (c *Character) getFriendsConnection(first int, after string) (FriendsConnection, error) {
+// getFriendsConnection allows access to friends with recommended pagination model (see https://graphql.org/learn/pagination/)
+// Note that to be compatible with the official Star Wars demo it does not return an error (eg if 'after' is not a valid
+// "cursor") but returns empty edges and friends lists and null startCursor/endCursor.
+// Parameters
+//  c (receiver) is the character for which friends are wanted
+//  first = max friends to return, -1 (default) means get all (ie from after 'after' till end of list)
+//  after is the "cursor" indicating the 1st friend required
+//  TODO: check defaults for 'first' and 'after' in Star Wars JS demo
+func (c *Character) getFriendsConnection(first int, after string) FriendsConnection {
 	r := FriendsConnection{
 		TotalCount: len(c.Friends),
 		Edges:      make([]FriendsEdge, 0),
@@ -333,7 +372,7 @@ func (c *Character) getFriendsConnection(first int, after string) (FriendsConnec
 		if beg < len(c.Friends) {
 			s1 := base64.StdEncoding.EncodeToString([]byte(c.Friends[beg].Name))
 			r.PageInfo.StartCursor = &s1
-			if end >= beg {
+			if end > beg {
 				s2 := base64.StdEncoding.EncodeToString([]byte(c.Friends[end-1].Name))
 				r.PageInfo.EndCursor = &s2
 			}
@@ -341,5 +380,5 @@ func (c *Character) getFriendsConnection(first int, after string) (FriendsConnec
 		r.PageInfo.HasNextPage = end < len(c.Friends)
 	}
 
-	return r, nil
+	return r
 }
