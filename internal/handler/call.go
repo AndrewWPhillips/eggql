@@ -33,62 +33,65 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 		baseArg++ // we're now expecting one less value in params/defaults lists
 	}
 
-	// Add supplied arguments
-	for _, argument := range astField.Arguments {
-		// Which parameter # is it (GraphQL args are supplied by name not position)
-		n := -1
-		for paramNum, paramName := range fieldInfo.Params {
-			if paramName == argument.Name {
-				if n != -1 {
-					// Note this is a BUG not an "error" as it should have been caught by validator
-					panic("argument specified more than once: " + argument.Name + " in " + astField.Name)
-				}
-				n = paramNum
-			}
-		}
-		if n == -1 {
-			// Note this is a BUG not an "error" as it should have been caught by validator
-			panic("unknown argument: " + argument.Name + " in " + astField.Name)
-		}
-
-		// rawValue stores the value of an argument the same way the JSON decoder does. Eg: a GraphQL "object" (to be
-		// decoded into a Go struct) is stored as a map[string]interface{} where each map entry is a field of the object
-		// and a GraphQL list is stored in a []interface{}. Obviously these can be nested, such as an object containing
-		// another object or a list.
-		var rawValue interface{}
-		if rawValue, err = argument.Value.Value(op.variables); err != nil {
-			return
-		}
-
-		// Now convert the "raw" value into the expected Go parameter type
-		if args[baseArg+n], err = op.getValue(v.Type().In(baseArg+n), argument.Name, fieldInfo.Enums[n], rawValue); err != nil {
-			return
-		}
-	}
-
-	// For any arguments not supplied use the default
-	for n, arg := range args {
-		// if the argument has not yet been set
-		if !arg.IsValid() {
-			// Find the arg in the field definition and get the default value
-			// (which should come from the text of fieldInfo.Defaults[n-baseArg])
-			ok := false
-			for _, defArg := range astField.Definition.Arguments {
-				if defArg.Name == fieldInfo.Params[n-baseArg] {
-					tmp, err := defArg.DefaultValue.Value(op.variables)
-					if err != nil {
-						panic(err)
+	// A subscript function can't use args option (though HasContext and HasError can be set)
+	if fieldInfo.Subscript == "" {
+		// Add supplied arguments
+		for _, argument := range astField.Arguments {
+			// Which parameter # is it (GraphQL args are supplied by name not position)
+			n := -1
+			for paramNum, paramName := range fieldInfo.Params {
+				if paramName == argument.Name {
+					if n != -1 {
+						// Note this is a BUG not an "error" as it should have been caught by validator
+						panic("argument specified more than once: " + argument.Name + " in " + astField.Name)
 					}
-					args[n], err = op.getValue(v.Type().In(n), defArg.Name, fieldInfo.Enums[n-baseArg], tmp)
-					if err != nil {
-						panic(err)
-					}
-					ok = true
-					break
+					n = paramNum
 				}
 			}
-			if !ok {
-				panic("default not found for " + fieldInfo.Params[n-baseArg])
+			if n == -1 {
+				// Note this is a BUG not an "error" as it should have been caught by validator
+				panic("unknown argument: " + argument.Name + " in " + astField.Name)
+			}
+
+			// rawValue stores the value of an argument the same way the JSON decoder does. Eg: a GraphQL "object" (to be
+			// decoded into a Go struct) is stored as a map[string]interface{} where each map entry is a field of the object
+			// and a GraphQL list is stored in a []interface{}. Obviously these can be nested, such as an object containing
+			// another object or a list.
+			var rawValue interface{}
+			if rawValue, err = argument.Value.Value(op.variables); err != nil {
+				return
+			}
+
+			// Now convert the "raw" value into the expected Go parameter type
+			if args[baseArg+n], err = op.getValue(v.Type().In(baseArg+n), argument.Name, fieldInfo.Enums[n], rawValue); err != nil {
+				return
+			}
+		}
+
+		// For any arguments not supplied use the default
+		for n, arg := range args {
+			// if the argument has not yet been set
+			if !arg.IsValid() {
+				// Find the arg in the field definition and get the default value
+				// (which should come from the text of fieldInfo.Defaults[n-baseArg])
+				ok := false
+				for _, defArg := range astField.Definition.Arguments {
+					if defArg.Name == fieldInfo.Params[n-baseArg] {
+						tmp, err := defArg.DefaultValue.Value(op.variables)
+						if err != nil {
+							panic(err)
+						}
+						args[n], err = op.getValue(v.Type().In(n), defArg.Name, fieldInfo.Enums[n-baseArg], tmp)
+						if err != nil {
+							panic(err)
+						}
+						ok = true
+						break
+					}
+				}
+				if !ok {
+					panic("default not found for " + fieldInfo.Params[n-baseArg])
+				}
 			}
 		}
 	}
@@ -120,7 +123,7 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 //   t = expected type
 //   name = corresponding name of the argument
 //   enumName allows lookup of an enum value if t is an integer and value is a string
-//   value = what needs to be returned as a value of type t
+//   value = what needs to be returned converted to a value of type t
 func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, value interface{}) (reflect.Value, error) {
 	// If it's an enum we need to convert the enum name (string) to int
 	if enumName != "" && t.Kind() >= reflect.Int && t.Kind() <= reflect.Uint64 {

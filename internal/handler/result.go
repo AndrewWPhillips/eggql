@@ -42,6 +42,8 @@ type (
 //   ctx = a Go context that could expire at any time
 //   set = list of selections from a GraphQL query to be resolved
 //   v = value of Go struct whose (exported) fields are the resolvers
+//   vIntro = Go struct with values for introspection (only supplied at root level)
+//   introOp = gqlOperation struct to be used with vIntro (contains some required enums)
 func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, v, vIntro reflect.Value, introOp *gqlOperation) (jsonmap.Ordered, error) {
 	// Get the struct that contains the resolvers that we can use
 	for v.Type().Kind() == reflect.Ptr {
@@ -51,7 +53,7 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 		vIntro = vIntro.Elem() // follow indirection
 	}
 
-	resultChans := make([]<-chan gqlValue, 0, len(set)) // TODO: allow extra space for fragment sets > 1 in length
+	resultChans := make([]<-chan gqlValue, 0, len(set)) // TODO: allow extra cap. for fragment sets > 1 in length
 
 	var result jsonmap.Ordered
 	var err error
@@ -72,7 +74,7 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 		case *ast.FragmentSpread:
 			result, err = op.GetSelections(ctx, astType.Definition.SelectionSet, v, reflect.Value{}, nil)
 		}
-		// This code (until end of loop) if for shared code for fragments
+		// This code (until end of loop) is shared code for fragments only
 		var ch chan gqlValue
 		if err != nil {
 			ch = make(chan gqlValue, 1)
@@ -220,8 +222,37 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 		v = v.Elem() // follow indirection
 	}
 
+	if fieldInfo.Subscript != "" {
+		if len(astField.Arguments) != 1 || astField.Arguments[0].Name != fieldInfo.Subscript {
+			return &gqlValue{err: fmt.Errorf("subscript resolver %q must supply an argument called %q", fieldInfo.Name, fieldInfo.Subscript)}
+		}
+		arg, err := op.getValue(fieldInfo.SubscriptType, fieldInfo.Subscript, "qqq", astField.Arguments[0].Value.Raw)
+		if err != nil {
+			return &gqlValue{err: err}
+		}
+		switch v.Type().Kind() {
+		case reflect.Map:
+			v = v.MapIndex(arg)
+			if !v.IsValid() {
+				return &gqlValue{err: fmt.Errorf("index '%s' (value %v) is not valid for field %s", fieldInfo.Subscript, arg.Interface(), fieldInfo.Name)}
+			}
+
+		case reflect.Slice, reflect.Array:
+			idx, ok := arg.Interface().(int)
+			if !ok {
+				//return &gqlValue{err: fmt.Errorf("subscript %q for resolver %q must be an integer to index a list", fieldInfo.Subscript, fieldInfo.Name)}
+				panic(fmt.Sprintf("subscript %q for resolver %q must be an integer to index a list", fieldInfo.Subscript, fieldInfo.Name))
+			}
+			if idx < 0 || idx >= v.Len() {
+				return &gqlValue{err: fmt.Errorf("index '%s' (value %d) is out of range for field %s", fieldInfo.Subscript, idx, fieldInfo.Name)}
+			}
+			v = v.Index(idx)
+		}
+	}
+
 	switch v.Type().Kind() {
 	case reflect.Struct:
+		// Look up all sub-queries in this object
 		if result, err := op.GetSelections(ctx, astField.SelectionSet, v, reflect.Value{}, nil); err != nil {
 			return &gqlValue{err: err}
 		} else {
@@ -229,10 +260,14 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 		}
 
 	case reflect.Slice, reflect.Array:
+		// resolve for all values in the list
 		var results []interface{}
-		for i := 0; i < v.Len(); i++ {
-			if value := op.resolve(ctx, astField, v.Index(i), fieldInfo); value != nil {
-				results = append(results, value.value)
+		if v.Type().Kind() == reflect.Array || !v.IsNil() {
+			results = make([]interface{}, 0) // to distinguish empty slice from nil slice
+			for i := 0; i < v.Len(); i++ {
+				if value := op.resolve(ctx, astField, v.Index(i), fieldInfo); value != nil {
+					results = append(results, value.value)
+				}
 			}
 		}
 		return &gqlValue{name: astField.Alias, value: results}

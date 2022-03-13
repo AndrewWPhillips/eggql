@@ -33,7 +33,6 @@ var errorData = map[string]struct {
 	"QueryError":   {"type Query{v:Int!}", errorFuncData, `x`, "", `Unexpected Name "x"`},
 	"UnknownQuery": {"type Query{v:Int!}", errorFuncData, `{ unknown }`, "", `Cannot query field "unknown" on type "Query".`},
 	// TODO test all error conditions
-	// TODO: check that ctx kills the query even if resolver does not check ctx - eg long list of [sub-query]
 }
 
 func TestErrors(t *testing.T) {

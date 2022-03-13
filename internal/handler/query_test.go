@@ -34,6 +34,8 @@ const (
 	inputParamSchema       = "type Query { inputQuery(param: inputType!): Int! } input inputType { field: String! }"
 	inputParam2FieldSchema = "type Query { q(p: R!): String! } input R{s:String! f:Float!}"
 	interfaceSchema        = "type Query { a: D! } interface X { x1: Int! } type D implements X { x1: Int! e: String! }"
+	subscriptSlice         = "schema {query: QuerySubscript} type QuerySubscript { slice(id: Int!): String! }"
+	subscriptMap           = "schema {query: QuerySubscript} type QuerySubscript { map(number: String!): Float! }"
 )
 
 type (
@@ -58,6 +60,11 @@ type (
 	ParentRef struct {
 		private int
 		Value   func() int // closure (set to point to ParentRef.valueFunc method below)
+	}
+
+	QuerySubscript struct {
+		Slice []string           `graphql:",subscript"`
+		Map   map[string]float64 `graphql:",subscript=number"`
 	}
 )
 
@@ -108,6 +115,11 @@ var (
 	}{func(ctx context.Context, i int, s string) string { return strconv.Itoa(i) + s }}
 
 	parRef = ParentRef{private: 42}
+
+	subscript = QuerySubscript{
+		Slice: []string{"zero", "", "two"},
+		Map:   map[string]float64{"pi": 3.14159265359, "root2": 1.41421356237},
+	}
 )
 
 func (p *ParentRef) valueFunc() int {
@@ -206,6 +218,14 @@ var happyData = map[string]struct {
 	// Note that we can't pass parRef by value (must use pointer) since parRef.value has not been set yet
 	"ParRef": {intSchema, &parRef, `{ value }`, "",
 		JsonObject{"value": float64(42)}},
+	"SubscriptSlice0": {subscriptSlice, subscript, `{ slice(id:0) }`, "",
+		JsonObject{"slice": "zero"}},
+	"SubscriptSlice1": {subscriptSlice, subscript, `{ slice(id:1) }`, "",
+		JsonObject{"slice": ""}},
+	"SubscriptSlice2": {subscriptSlice, subscript, `{ slice(id:2) }`, "",
+		JsonObject{"slice": "two"}},
+	"SubscriptMap": {subscriptMap, subscript, `{ map(number:\"pi\") }`, "",
+		JsonObject{"map": 3.14159265359}},
 }
 
 func TestQuery(t *testing.T) {
