@@ -7,47 +7,48 @@ import (
 )
 
 var testData = map[string]struct {
-	in string
-	// Expected results
-	name     string
-	params   []string
-	enums    []string
-	defaults []string
-	enum     string
-	nullable bool
+	in  string
+	exp field.Info // Expected results
 }{
-	"Empty":           {``, "", nil, nil, nil, "", false},
-	"Empty2":          {`,`, "", nil, nil, nil, "", false},
-	"Empty3":          {`,,`, "", nil, nil, nil, "", false},
-	"Nullable":        {`,nullable`, "", nil, nil, nil, "", true},
-	"All":             {`a, args(b:d=f,c:e=g)`, "a", []string{"b", "c"}, []string{"d", "e"}, []string{"f", "g"}, "", false},
-	"NameOnly":        {`X`, "X", nil, nil, nil, "", false},
-	"NameOnly2":       {`joe,`, "joe", nil, nil, nil, "", false},
-	"NameNull":        {`joe,nullable`, "joe", nil, nil, nil, "", true},
-	"Params0":         {`,args()`, "", []string{}, []string{}, []string{}, "", false},
-	"Params1":         {`,args(a)`, "", []string{"a"}, []string{""}, []string{""}, "", false},
-	"Params2":         {`,args(abc,d)`, "", []string{"abc", "d"}, []string{"", ""}, []string{"", ""}, "", false},
-	"Params3":         {`,args(abc,"d e",f)`, "", []string{"abc", `"d e"`, "f"}, []string{"", "", ""}, []string{"", "", ""}, "", false},
-	"ParamsSpaced":    {`,args( a , bcd , efg )`, "", []string{"a", "bcd", "efg"}, []string{"", "", ""}, []string{"", "", ""}, "", false},
-	"Defaults1":       {`,args(one=1,2)`, "", []string{"one", "2"}, []string{"", ""}, []string{"1", ""}, "", false},
-	"Defaults2":       {`,args(one=1,two="number two")`, "", []string{"one", "two"}, []string{"", ""}, []string{"1", `"number two"`}, "", false},
-	"Defaults3":       {`,args(list=[1,2,4],obj={a:1, b:"two"})`, "", []string{"list", "obj"}, []string{"", ""}, []string{"[1,2,4]", `{a:1, b:"two"}`}, "", false},
-	"Enum":            {`unit:Unit`, "unit", nil, nil, nil, "Unit", false},
-	"EnumNull":        {`unit:Unit,nullable`, "unit", nil, nil, nil, "Unit", true},
-	"EnumDefaultName": {`:A`, "", nil, nil, nil, "A", false},
-	"EnumParams":      {`,args(height, unit:Unit)`, "", []string{"height", "unit"}, []string{"", "Unit"}, []string{"", ""}, "", false},
-	"EnumParams2":     {`,args(h, w, unit:Unit = FOOT)`, "", []string{"h", "w", "unit"}, []string{"", "", "Unit"}, []string{"", "", "FOOT"}, "", false},
+	"Empty":           {``, field.Info{}},
+	"Empty2":          {`,`, field.Info{}},
+	"Empty3":          {`,,`, field.Info{}},
+	"Nullable":        {`,nullable`, field.Info{Nullable: true}},
+	"All":             {`a, args(b:d=f,c:e=g)`, field.Info{Name: "a", Params: []string{"b", "c"}, Enums: []string{"d", "e"}, Defaults: []string{"f", "g"}}},
+	"NameOnly":        {`X`, field.Info{Name: "X"}},
+	"NameOnly2":       {`joe,`, field.Info{Name: "joe"}},
+	"NameNull":        {`joe,nullable`, field.Info{Name: "joe", Nullable: true}},
+	"Params0":         {`,args()`, field.Info{Params: []string{}, Enums: []string{}, Defaults: []string{}}},
+	"Params1":         {`,args(a)`, field.Info{Params: []string{"a"}, Enums: []string{""}, Defaults: []string{""}}},
+	"Params2":         {`,args(abc,d)`, field.Info{Params: []string{"abc", "d"}, Enums: []string{"", ""}, Defaults: []string{"", ""}}},
+	"Params3":         {`,args(abc,"d e",f)`, field.Info{Params: []string{"abc", `"d e"`, "f"}, Enums: []string{"", "", ""}, Defaults: []string{"", "", ""}}},
+	"ParamsSpaced":    {`,args( a , bcd , efg )`, field.Info{Params: []string{"a", "bcd", "efg"}, Enums: []string{"", "", ""}, Defaults: []string{"", "", ""}}},
+	"Defaults1":       {`,args(one=1,2)`, field.Info{Params: []string{"one", "2"}, Enums: []string{"", ""}, Defaults: []string{"1", ""}}},
+	"Defaults2":       {`,args(one=1,two="number two")`, field.Info{Params: []string{"one", "two"}, Enums: []string{"", ""}, Defaults: []string{"1", `"number two"`}}},
+	"Defaults3":       {`,args(list=[1,2,4],obj={a:1, b:"two"})`, field.Info{Params: []string{"list", "obj"}, Enums: []string{"", ""}, Defaults: []string{"[1,2,4]", `{a:1, b:"two"}`}}},
+	"Enum":            {`unit:Unit`, field.Info{Name: "unit", GQLTypeName: "Unit"}},
+	"EnumNull":        {`unit:Unit,nullable`, field.Info{Name: "unit", GQLTypeName: "Unit", Nullable: true}},
+	"EnumDefaultName": {`:A`, field.Info{GQLTypeName: "A"}},
+	"EnumParams":      {`,args(height, unit:Unit)`, field.Info{Params: []string{"height", "unit"}, Enums: []string{"", "Unit"}, Defaults: []string{"", ""}}},
+	"EnumParams2":     {`,args(h, w, unit:Unit = FOOT)`, field.Info{Params: []string{"h", "w", "unit"}, Enums: []string{"", "", "Unit"}, Defaults: []string{"", "", "FOOT"}}},
+	"Subscript":       {`,subscript`, field.Info{Subscript: "id"}},
+	"SubscriptEmpty":  {`,subscript=`, field.Info{Subscript: "id"}},
+	"SubscriptNamed":  {`,subscript=idx`, field.Info{Subscript: "idx"}},
+	"AllOptions": {`a:b,,args(c:d=e,f=g),nullable,subscript=h`, // Note that this is invalid at a higher level as you can't use both "args" and "subscript" options together
+		field.Info{Name: "a", GQLTypeName: "b", Params: []string{"c", "f"}, Enums: []string{"d", ""}, Defaults: []string{"e", "g"}, Nullable: true, Subscript: "h"}},
 }
 
 func TestGetTagInfo(t *testing.T) {
 	for name, data := range testData {
 		got, err := field.GetTagInfo(data.in)
-		Assertf(t, err == nil, "Error   : %12s: expected no error got %v", name, err)
-		Assertf(t, got.Name == data.name, "Name    : %12s: expected %q got %q", name, data.name, got.Name)
-		Assertf(t, reflect.DeepEqual(got.Params, data.params), "Params  : %12s: expected %q got %q", name, data.params, got.Params)
-		Assertf(t, reflect.DeepEqual(got.Enums, data.enums), "Enums   : %12s: expected %q got %q", name, data.enums, got.Enums)
-		Assertf(t, reflect.DeepEqual(got.Defaults, data.defaults), "Defaults: %12s: expected %q got %q", name, data.defaults, got.Defaults)
-		Assertf(t, got.Nullable == data.nullable, "Nullable: %12s: expected %v got %v", name, data.nullable, got.Nullable)
+		Assertf(t, err == nil, "Error    : %12s: expected no error got %v", name, err)
+		Assertf(t, got.Name == data.exp.Name, "Name     : %12s: expected %q got %q", name, data.exp.Name, got.Name)
+		Assertf(t, got.GQLTypeName == data.exp.GQLTypeName, "TypeName : %12s: expected %q got %q", name, data.exp.GQLTypeName, got.GQLTypeName)
+		Assertf(t, reflect.DeepEqual(got.Params, data.exp.Params), "Params   : %12s: expected %q got %q", name, data.exp.Params, got.Params)
+		Assertf(t, reflect.DeepEqual(got.Enums, data.exp.Enums), "Enums    : %12s: expected %q got %q", name, data.exp.Enums, got.Enums)
+		Assertf(t, reflect.DeepEqual(got.Defaults, data.exp.Defaults), "Defaults : %12s: expected %q got %q", name, data.exp.Defaults, got.Defaults)
+		Assertf(t, got.Nullable == data.exp.Nullable, "Nullable : %12s: expected %v got %v", name, data.exp.Nullable, got.Nullable)
+		Assertf(t, got.Subscript == data.exp.Subscript, "Subscript: %12s: expected %q got %q", name, data.exp.Subscript, got.Subscript)
 	}
 }
 

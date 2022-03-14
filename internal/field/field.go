@@ -18,9 +18,10 @@ import (
 // Note that since Go has no native enums the GraphQL enum names are handled in metadata for
 // both resolver return value and arguments (see metadata examples).
 type Info struct {
-	Name        string       // field name for use in GraphQL queries - based on metadata (tag) or Go struct field name
-	GQLTypeName string       // GraphQL type name (may be empty but is required for GraphQL enums)
-	Kind        reflect.Kind // Kind of Go Type of the field (or the element type for array/slice fields)
+	Name        string // field name for use in GraphQL queries - based on metadata (tag) or Go struct field name
+	GQLTypeName string // GraphQL type name (may be empty but is required for GraphQL enums)
+	//Kind        reflect.Kind
+	ResultType reflect.Type // Type (Go) used to generate the resolver (GraphQL) type = field type, func return type, or element type for array/slice
 
 	// The following are for function resolvers only
 	Params     []string // name(s) of args to resolver function obtained from metadata
@@ -31,6 +32,10 @@ type Info struct {
 
 	Embedded bool // embedded struct (which we use as a template for a GraphQL "interface")
 	Nullable bool // pointer fields or those with the "nullable" tag are allowed to be null
+
+	// Subscript holds the result of the "subscript" option (for a slice/array/map)
+	Subscript     string       // name resolver arg (default is "id")
+	SubscriptType reflect.Type // arg type - int for slice/array, type of the key for maps
 }
 
 // contextType is used to check if a resolver function takes a context.Context (1st) parameter
@@ -59,7 +64,7 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 
 	// if no type name was provided in the tag generate a GraphQL name from the field name
 	if fieldInfo.Name == "" {
-		// make GraphQL name of Go field name with lower-case first letter
+		// make GraphQL name from Go field name (can't be empty string) with lower-case first letter
 		first, n := utf8.DecodeRuneInString(f.Name)
 		fieldInfo.Name = string(unicode.ToLower(first)) + f.Name[n:]
 	}
@@ -76,6 +81,8 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 		fieldInfo.Nullable = true // Pointer types can be null
 		t = t.Elem()              // follow indirection
 	}
+
+	// For a func we need to check for the correct number of args and use the func return type as the resolver type
 	if t.Kind() == reflect.Func {
 		firstIndex := 0
 		// Check for first parameter of context.Context
@@ -114,10 +121,33 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 		}
 	}
 
-	fieldInfo.Kind = t.Kind()
-	for fieldInfo.Kind == reflect.Slice || fieldInfo.Kind == reflect.Array {
-		t = t.Elem()
-		fieldInfo.Kind = t.Kind()
+	fieldInfo.ResultType = t
+	if fieldInfo.Subscript != "" {
+		if t.Kind() != reflect.Slice && t.Kind() != reflect.Array && t.Kind() != reflect.Map {
+			return nil, errors.New("cannot use subscript option since field " + f.Name + " is not a slice, array, or map")
+		}
+		// Note that "subscript" option can be used with a function but the function should have no parameters (except for
+		// and optional context) since the GraphQL "arguments" are used to provide the subscripting value.
+		// A subscript function can have a context (HasContext) and error return (HasError) but must return a slice/array/map.
+		if len(fieldInfo.Params) > 0 {
+			return nil, errors.New(`cannot use "args" option with "subscript" option with field ` + f.Name)
+		}
+
+		fieldInfo.ResultType = t.Elem()
+
+		// Get the "subscript" type - int (slice/array) or scalar type for map key
+		fieldInfo.SubscriptType = reflect.TypeOf(1)
+		if t.Kind() == reflect.Map {
+			fieldInfo.SubscriptType = t.Key()
+			if (fieldInfo.SubscriptType.Kind() < reflect.Int || fieldInfo.SubscriptType.Kind() > reflect.Float64) &&
+				fieldInfo.SubscriptType.Kind() != reflect.String {
+				// TODO allow any comparable type for map subscripts?
+				return nil, errors.New("map key for subscript option " + f.Name + " must be a scalar")
+			}
+		}
+	} else if t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
+		// a GraphQL list has the type of it's elements
+		fieldInfo.ResultType = t.Elem()
 	}
 
 	return
@@ -148,6 +178,14 @@ func GetTagInfo(tag string) (*Info, error) {
 		}
 		if part == "" {
 			continue // ignore empty sections
+		}
+		if strings.HasPrefix(part, "subscript") {
+			subParts := strings.Split(part, "=")
+			fieldInfo.Subscript = "id" // default argument name used to access slice or map elements
+			if len(subParts) > 1 && subParts[1] != "" {
+				fieldInfo.Subscript = subParts[1]
+			}
+			continue
 		}
 		if part == "nullable" {
 			fieldInfo.Nullable = true

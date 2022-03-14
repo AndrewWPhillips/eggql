@@ -114,9 +114,9 @@ func SplitNested(s string) ([]string, error) {
 
 // getBracketedList gets a list of values from a string enclosed in brackets and preceded by a keyword
 // This is used to extract info from the metadata (tag) of a struct field used
-// for GraphQL resolvers, such as parameters and default parameter values.
-// Eg for getBracketedList("args(a,b)", "args") it will return the list
-// of strings {"a", "b"}. It may return an error for badly formatted metadata.
+// for GraphQL resolvers, such as resolver arguments.
+// Eg for getBracketedList("args(a,b=2)", "args") it will return the list
+// of strings {"a", "b=2"}. It may return an error for badly formatted metadata.
 // If the keyword does not match it returns nil (and no error).
 func getBracketedList(s, keyword string) ([]string, error) {
 	if !strings.HasPrefix(s, keyword+"(") {

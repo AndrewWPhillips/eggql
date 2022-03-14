@@ -94,10 +94,9 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, inpu
 	// AND get a sorted list of resolver keys so resolvers are always written in the same order
 	required := len(inputType) + 1 + len(name) + len(openString) + len(closeString)
 	if len(interfaces) > 0 {
-		required += len(implementsString)
-		required += (len(interfaces) - 1) * 2
+		required += len(implementsString) + (len(interfaces)-1)*2 // keyword + separator ( &)
 		for _, iface := range interfaces {
-			required += 1 + len(iface)
+			required += 1 + len(iface) // name of interface + 1 space
 		}
 	}
 	keys := make([]string, 0, len(resolvers))
@@ -189,7 +188,7 @@ func (s schema) getResolvers(t reflect.Type, enums map[string][]string, gqlType 
 		}
 		if _, isEnum := enums[fieldInfo.GQLTypeName]; isEnum {
 			// For enums the resolver must have a Go integer type
-			if fieldInfo.Kind < reflect.Int || fieldInfo.Kind > reflect.Uintptr {
+			if fieldInfo.ResultType.Kind() < reflect.Int || fieldInfo.ResultType.Kind() > reflect.Uintptr {
 				err = errors.New("resolver with enum type must be an integer field " + f.Name)
 				return
 			}
@@ -207,7 +206,7 @@ func (s schema) getResolvers(t reflect.Type, enums map[string][]string, gqlType 
 			}
 			for k, v := range resolvers {
 				if _, ok := r[k]; ok {
-					// Interface filed has same name as normal (or other interface) field
+					// Interface field has the same name as normal (or other interface) field
 					err = fmt.Errorf("two fields with the same name %q", k)
 					return
 				}
@@ -219,28 +218,45 @@ func (s schema) getResolvers(t reflect.Type, enums map[string][]string, gqlType 
 			continue
 		}
 
-		// Get resolver arguments (if any) from the "args" option of the GraphQL tag
-		params, err3 := s.getParams(f.Name, f.Type, enums, fieldInfo)
-		if err3 != nil {
-			err = fmt.Errorf("%w getting args for type %q", err3, fieldInfo.Name)
-			return
-		}
-		// Get the resolver return type
-		if fieldInfo.GQLTypeName != "" {
-			if err = s.validateTypeName(fieldInfo.GQLTypeName, enums); err != nil {
-				err = fmt.Errorf("type of resolver %q was not found: %w", fieldInfo.Name, err)
-				return
-			}
-		}
+		// Use the specified resolver return type
 		typeName := fieldInfo.GQLTypeName
-		if typeName == "" {
-			typeName, err = getTypeName(f.Type)
-			if err != nil {
-				err = fmt.Errorf("%w getting name for %q", err, fieldInfo.Name)
+		if typeName != "" {
+			// Ensure the name given is valid
+			if err2 = s.validateTypeName(fieldInfo.GQLTypeName, enums); err2 != nil {
+				err = fmt.Errorf("type of resolver %q was not found: %w", fieldInfo.Name, err2)
 				return
 			}
 		}
+
+		var params string
+		var effectiveType reflect.Type
+		if fieldInfo.Subscript != "" {
+			// Get the resolver arg (subscript) - eg "(id:Int!)"
+			params, err2 = s.getSubscript(fieldInfo)
+			if err2 != nil {
+				err = fmt.Errorf("%w subscript for %q", err2, fieldInfo.Name)
+				return
+			}
+			effectiveType = fieldInfo.ResultType
+		} else {
+			// Get resolver arguments (if any) from the "args" option - eg "(p1:String!, p2:Int!=42)"
+			params, err2 = s.getParams(f.Type, enums, fieldInfo)
+			if err2 != nil {
+				err = fmt.Errorf("%w getting args for %q", err2, fieldInfo.Name)
+				return
+			}
+			effectiveType = f.Type
+		}
 		if typeName == "" {
+			// Get resolver return type
+			typeName, err2 = getTypeName(effectiveType)
+			if err2 != nil {
+				err = fmt.Errorf("%w getting name for %q", err2, fieldInfo.Name)
+				return
+			}
+		}
+
+		if typeName == "" { // TODO: check if this is always correct thing to do
 			typeName = f.Name // use field name for anon structs
 		}
 
@@ -261,7 +277,7 @@ func (s schema) getResolvers(t reflect.Type, enums map[string][]string, gqlType 
 		if nestedType == gqlInterfaceType {
 			nestedType = gqlObjectType // a field inside an embedded struct is not itself treated as an interface
 		}
-		if err = s.add(typeName, f.Type, enums, nestedType); err != nil {
+		if err = s.add(typeName, effectiveType, enums, nestedType); err != nil {
 			return
 		}
 	}
@@ -287,10 +303,20 @@ func (s schema) validateTypeName(typeName string, enums map[string][]string) err
 	return fmt.Errorf("type %q was not found", typeName)
 }
 
-// getParams creates the list of GraphQL parameters for a resolver function
-// For struct parameters it also adds the corresponding GraphQL "input" type.
-func (s schema) getParams(name string, t reflect.Type, enums map[string][]string, fieldInfo *field.Info) (string, error) {
-	const paramStart, paramSep, paramEnd = "(", ", ", ")"
+const paramStart, paramSep, paramEnd = "(", ", ", ")"
+
+// getSubscript creates the arg list (just one arg) for "subscript" option on a slice/array/map
+func (s schema) getSubscript(fieldInfo *field.Info) (string, error) {
+	typeName, err := getTypeName(fieldInfo.SubscriptType)
+	if err != nil {
+		return "", fmt.Errorf("%w getting subscript type for %q", err, fieldInfo.Name)
+	}
+	return fmt.Sprintf("(%s: %s!)", fieldInfo.Subscript, typeName), nil
+}
+
+// getParams creates the list of GraphQL arguments for a resolver function
+// If any arg uses a Go struct then it also adds the corresponding GraphQL "input" type to the schemaTypes collection
+func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *field.Info) (string, error) {
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem() // follow indirection
 	}
@@ -310,7 +336,7 @@ func (s schema) getParams(name string, t reflect.Type, enums map[string][]string
 			continue
 		}
 		if !validGraphQLName(fieldInfo.Params[paramNum]) {
-			return "", fmt.Errorf("for %q parameter %d argument %q is not a valid name", name, i, fieldInfo.Params[paramNum])
+			return "", fmt.Errorf("parameter %d argument %q is not a valid name", i, fieldInfo.Params[paramNum])
 		}
 		builder.WriteString(sep)
 		// the next line will panic if not enough arguments were given in "args" part of tag
@@ -331,11 +357,11 @@ func (s schema) getParams(name string, t reflect.Type, enums map[string][]string
 				enumName = enumName[1 : len(enumName)-1]
 			}
 			if kind < reflect.Int || kind > reflect.Uintptr {
-				return "", fmt.Errorf("for %q parameter %d (%s) must be an integer for enum %q", name, i, param.Name(), fieldInfo.Enums[paramNum])
+				return "", fmt.Errorf("parameter %d (%s) must be an integer for enum %q", i, param.Name(), fieldInfo.Enums[paramNum])
 			}
 			values, ok := enums[enumName]
 			if !ok {
-				return "", fmt.Errorf("for %q parameter %d (%s) enum %q was not found", name, i, param.Name(), fieldInfo.Enums[paramNum])
+				return "", fmt.Errorf("parameter %d (%s) enum %q was not found", i, param.Name(), fieldInfo.Enums[paramNum])
 			}
 			// If there is a default value then check it's in the enum's value list
 			if fieldInfo.Defaults[paramNum] != "" {
@@ -376,7 +402,7 @@ func (s schema) getParams(name string, t reflect.Type, enums map[string][]string
 					}
 				}
 				if !ok {
-					return "", fmt.Errorf("for %q parameter %d default value %q not found in enum %q", name, i, fieldInfo.Defaults[paramNum], fieldInfo.Enums[paramNum])
+					return "", fmt.Errorf("parameter %d default value %q not found in enum %q", i, fieldInfo.Defaults[paramNum], fieldInfo.Enums[paramNum])
 				}
 			}
 		} else {
@@ -384,7 +410,7 @@ func (s schema) getParams(name string, t reflect.Type, enums map[string][]string
 			if fieldInfo.Defaults[paramNum] != "" {
 				// Check that the default value is a valid literal for the type
 				if !validLiteral(param.Kind(), fieldInfo.Defaults[paramNum]) {
-					return "", fmt.Errorf("for %q parameter %d default value %q is not of the correct type", name, i, fieldInfo.Defaults[paramNum])
+					return "", fmt.Errorf("parameter %d default value %q is not of the correct type", i, fieldInfo.Defaults[paramNum])
 				}
 			}
 		}
@@ -393,7 +419,7 @@ func (s schema) getParams(name string, t reflect.Type, enums map[string][]string
 			var err error
 			typeName, err = getTypeName(param)
 			if err != nil {
-				return "", fmt.Errorf("for %q parameter %d (%s) error: %w", name, i, param.Name(), err)
+				return "", fmt.Errorf("parameter %d (%s) error: %w", i, param.Name(), err)
 			}
 		}
 		if typeName == "" {
@@ -421,8 +447,7 @@ func (s schema) getParams(name string, t reflect.Type, enums map[string][]string
 		paramNum++
 	}
 	if paramNum < len(fieldInfo.Params) {
-		return "", fmt.Errorf("expected %d parameters but function %s only has %d",
-			len(fieldInfo.Params), name, paramNum)
+		return "", fmt.Errorf("not enough args (%d) expected %d", paramNum, len(fieldInfo.Params))
 	}
 	if sep != paramStart { // if we got any args
 		builder.WriteString(paramEnd)

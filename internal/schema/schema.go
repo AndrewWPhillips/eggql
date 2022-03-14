@@ -36,10 +36,9 @@ const (
 
 // MustBuild is the same as Build but panics on error
 func MustBuild(qms ...interface{}) string {
-	var enums map[string][]string
-	if e, ok := qms[0].(map[string][]string); ok {
-		enums = e
-		qms = qms[1:]
+	enums, ok := qms[0].(map[string][]string) // check if enums given
+	if ok {
+		qms = qms[1:] // separate enums from the rest (query/mutation/subscription)
 	}
 	s, err := Build(enums, qms...)
 	if err != nil {
@@ -101,7 +100,6 @@ func Build(enums map[string][]string, qms ...interface{}) (string, error) {
 			return "", fmt.Errorf("%w adding %q building schema for %s", err, typeName, entryPointName)
 		}
 
-		//builder.WriteString(" ")
 		builder.WriteString(typeName)
 		builder.WriteRune('\n')
 	}
