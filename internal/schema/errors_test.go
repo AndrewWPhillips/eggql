@@ -100,6 +100,12 @@ type (
 		M string
 		Embedded
 	}
+	QueryBadTypeName struct {
+		V int `graphql:":UnknownType"`
+	}
+	QueryBadSquareBrackets struct {
+		V []int `graphql:":[]Int"`
+	}
 )
 
 var (
@@ -152,6 +158,8 @@ var errorData = map[string]struct {
 	"DupeField2":      {QueryDupeField2{}, nil, "same name"},
 	"DupeEmbedded1":   {QueryDupe1{}, nil, "same name"},
 	"DupeEmbedded2":   {QueryDupe2{}, nil, "same name"},
+	"BadTypeName":     {QueryBadTypeName{}, nil, "resolver type (UnknownType)"},
+	"SquareBrackets":  {QueryBadSquareBrackets{}, nil, "did you mean [Int]"},
 
 	// TODO: test defaults errors: input, list
 }

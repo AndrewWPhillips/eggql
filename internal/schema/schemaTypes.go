@@ -230,7 +230,11 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 		if typeName != "" {
 			// Ensure the name given is valid
 			if err2 = s.validateTypeName(fieldInfo.GQLTypeName, enums); err2 != nil {
-				err = fmt.Errorf("type of resolver %q was not found: %w", fieldInfo.Name, err2)
+				var help string
+				if strings.HasPrefix(fieldInfo.GQLTypeName, "[]") { // probably used []Type when [Type] was meant
+					help = fmt.Sprintf("(did you mean %s)", "["+fieldInfo.GQLTypeName[2:]+"]")
+				}
+				err = fmt.Errorf("resolver type (%s) of field %q not recognized: %w %s", fieldInfo.GQLTypeName, fieldInfo.Name, err2, help)
 				return
 			}
 		}

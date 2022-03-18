@@ -107,8 +107,8 @@ func Build(enums map[string][]string, qms ...interface{}) (string, error) {
 	builder.WriteString(closeString) // close schema clause
 
 	// Work out space needed for the types and get a list of names to sort
-	objectsLength := 0
 	names := make([]string, 0, len(schemaTypes.declaration))
+	objectsLength := 0
 	for k, obj := range schemaTypes.declaration {
 		objectsLength += len(obj) + 1
 		names = append(names, k)

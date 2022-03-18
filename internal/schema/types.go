@@ -28,6 +28,8 @@ func getTypeName(t reflect.Type) (string, error) {
 			return tmp, nil // use struct's type name
 		}
 		return "", nil // not an error but struct is anon
+	case reflect.Map:
+		return "", errors.New(`can't handle map (did you forget the "subscript" option`)
 	case reflect.Ptr:
 		return getTypeName(t.Elem())
 	case reflect.Array, reflect.Slice: // TODO: check if we can also handle Map
