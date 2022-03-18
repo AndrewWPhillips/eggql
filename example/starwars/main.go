@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"github.com/andrewwphillips/eggql"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -19,6 +21,7 @@ const (
 type (
 	Query struct {
 		_ Character // needed so eggql knows about Character struct which is returned (in an interface{}) from Hero()
+
 		// Hero is a function used to implement the GraphQL resolver: "hero(episode: Episode = JEDI): Character", where:
 		//   hero = the resolver name taken from the 1st tag option (but could have been deduced from the field name "Hero")
 		//   episode = the name of the resolver argument (can't be deduced from the func parameter name as Go reflection only includes types, not names, of parameters)
@@ -27,6 +30,7 @@ type (
 		//   Character = the resolver return type (taken from the 1st tag option after the colon)
 		//    - this can't be deduced from the func return type which must be an interface{} when implementing a GraphQL interface
 		Hero func(episode int) (interface{}, error) `graphql:"hero:Character,args(episode:Episode=JEDI)"`
+
 		// Human is a function used to implement the GraphQl resolver: "human(id: Int! = 1000): Human"
 		//   human = the resolver name, derived from the field name "Human", with the 1st letter lower-cased
 		//   id = the first (and only) argument name obtained from the "args" option of the "graphql" tag
@@ -34,22 +38,29 @@ type (
 		//   1000 = default value for id, which means that Luke is returned is the argument is not given in a query
 		//   Human = return type, deduced from the 1st return value of the func (nullable because a pointer is returned)
 		Human func(int) (*Human, error) `graphql:",args(id = 1000)"`
+
 		// Droid is a function used to implement the GraphQl resolver: "droid(id: Int!): Droid"
 		//   droid = the resolver name, derived from the field name "Droid"
 		//   id = the argument name which must be supplied in a GraphQL query as there is no default value
 		//   Int! = the type of the argument, the exclamation mark (!) means it is required (NULL can't be used)
 		//   Droid = return type, deduced from the 1st return value of the func (nullable because a pointer is returned)
 		Droid func(int) (*Droid, error) `graphql:",args(id)"` // id is required
+
 		// Starship is a function used to implement the GraphQl resolver: "starship(id: Int! = 3000): Starship"
 		Starship func(int) (*Starship, error) `graphql:",args(id = 3000)"`
+
 		// Reviews is a function used to implement the GraphQl resolver: "reviews(episode: Episode): [Review]"
 		//  reviews = resolver name, deduced from the field name "Reviews"
 		//  episode = argument name (from 1st value of "args" option before the colon)
 		//  Episode = argument type (from 1st value of "args" option after the colon)
 		//  [Review] = return type is a list of Reviews, deduced from the fact that the func returns a slice ([]Review)
 		Reviews func(int) ([]Review, error) `graphql:",args(episode:Episode)"`
+
+		// Search implements the resolver: "search(text: String!): [SearchResult]"
+		Search func(context.Context, string) ([]interface{}, error) `graphql:":[SearchResult],args(text)"`
 	}
-	Character struct {
+	SearchResult struct{}
+	Character    struct {
 		Name              string
 		Friends           []*Character
 		FriendsConnection func(first int, after string) FriendsConnection `graphql:",args(first=-1, after=\"\")"`
@@ -57,6 +68,7 @@ type (
 		SecretBackstory   func() (string, error)
 	}
 	Human struct {
+		SearchResult
 		Character
 		Height     func(int) (float64, error) `graphql:",args(unit:LengthUnit=METER)"`
 		height     float64                    // meters
@@ -64,6 +76,7 @@ type (
 		Starships  []*Starship
 	}
 	Droid struct {
+		SearchResult
 		Character
 		PrimaryFunction string
 	}
@@ -78,6 +91,7 @@ type (
 		Commentary string
 	}
 	Starship struct {
+		SearchResult
 		Name   string
 		Length func(int) (float64, error) `graphql:",args(unit:LengthUnit=METER)"`
 		length float64                    // meters
@@ -261,6 +275,33 @@ func main() {
 					r = append(r, Review{Stars: episodes[episode].Stars[i], Commentary: episodes[episode].Commentary[i]})
 				}
 				return r, nil
+			},
+			Search: func(ctx context.Context, text string) (r []interface{}, err error) {
+				for _, h := range humans {
+					if e := ctx.Err(); e != nil {
+						return nil, e
+					}
+					if strings.Contains(strings.ToLower(h.Name), strings.ToLower(text)) {
+						r = append(r, h)
+					}
+				}
+				for _, d := range droids {
+					if e := ctx.Err(); e != nil {
+						return nil, e
+					}
+					if strings.Contains(strings.ToLower(d.Name), strings.ToLower(text)) {
+						r = append(r, d)
+					}
+				}
+				for _, ss := range starships {
+					if e := ctx.Err(); e != nil {
+						return nil, e
+					}
+					if strings.Contains(strings.ToLower(ss.Name), strings.ToLower(text)) {
+						r = append(r, ss)
+					}
+				}
+				return
 			},
 		},
 		Mutation{
