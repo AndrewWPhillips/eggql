@@ -14,6 +14,7 @@ import (
 
 const (
 	AllowIntrospection = true
+	AllowConcurrentQueries = true
 )
 
 type (
@@ -42,6 +43,8 @@ type (
 //   ctx = a Go context that could expire at any time
 //   set = list of selections from a GraphQL query to be resolved
 //   v = value of Go struct whose (exported) fields are the resolvers
+//   vIntro = Go struct with values for introspection (only supplied at root level)
+//   introOp = gqlOperation struct to be used with vIntro (contains some required enums)
 func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, v, vIntro reflect.Value, introOp *gqlOperation) (jsonmap.Ordered, error) {
 	// Get the struct that contains the resolvers that we can use
 	for v.Type().Kind() == reflect.Ptr {
@@ -166,8 +169,7 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 		}
 		if fieldInfo.Name == astField.Name {
 			// resolver found so run it (concurrently)
-			if op.isMutation {
-				// Mutations are run sequentially
+			if op.isMutation || !AllowConcurrentQueries { // Mutations are run sequentially
 				r := make(chan gqlValue, 1)
 				if value := op.resolve(ctx, astField, vField, fieldInfo); value != nil {
 					r <- *value
