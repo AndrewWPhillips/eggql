@@ -14,6 +14,7 @@ import (
 
 const (
 	AllowIntrospection = true
+	AllowConcurrentQueries = true
 )
 
 type (
@@ -168,8 +169,7 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 		}
 		if fieldInfo.Name == astField.Name {
 			// resolver found so run it (concurrently)
-			if op.isMutation {
-				// Mutations are run sequentially
+			if op.isMutation || !AllowConcurrentQueries { // Mutations are run sequentially
 				r := make(chan gqlValue, 1)
 				if value := op.resolve(ctx, astField, vField, fieldInfo); value != nil {
 					r <- *value
