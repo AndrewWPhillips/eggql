@@ -31,7 +31,8 @@ const (
 	gqlObjectType    = "type"
 	gqlInputType     = "input"
 	gqlEnumType      = "enum"
-	gqlInterfaceType = "interface"
+	gqlInterfaceKeyword = "interface"
+	gqlUnionKeyword     = "union"
 )
 
 // MustBuild is the same as Build but panics on error
@@ -118,6 +119,33 @@ func Build(enums map[string][]string, qms ...interface{}) (string, error) {
 	sort.Strings(names) // we need to always output the types in the same order (eg for consistency in tests)
 	for _, name := range names {
 		builder.WriteString(schemaTypes.declaration[name])
+	}
+
+	// Unions - work out order and length
+	names = make([]string, 0, len(schemaTypes.unions))
+	objectsLength = 0
+	for unionName, unionValues := range schemaTypes.unions {
+		objectsLength += len(gqlUnionKeyword) + 1 + len(unionName) // union <name>
+		names = append(names, unionName)
+		for _, v := range unionValues {
+			objectsLength += 3 + len(v)
+		}
+		objectsLength += 1 // eoln
+	}
+	builder.Grow(objectsLength)
+
+	sort.Strings(names)
+	for _, unionName := range names {
+		builder.WriteString(gqlUnionKeyword)
+		builder.WriteRune(' ')
+		builder.WriteString(unionName)
+		sep := " = "
+		for _, v := range schemaTypes.unions[unionName] {
+			builder.WriteString(sep)
+			builder.WriteString(v)
+			sep = " | "
+		}
+		builder.WriteRune('\n')
 	}
 
 	// Work out how much space the enums will need and grow the string builder

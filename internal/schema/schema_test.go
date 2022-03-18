@@ -122,6 +122,20 @@ type (
 	QuerySubscriptMap struct {
 		M map[string]float64 `graphql:",subscript=s"`
 	}
+
+	U  struct{}
+	U1 struct {
+		U
+		V int
+	}
+	U2 struct {
+		U
+		W string
+	}
+	QueryUnion struct {
+		A U1
+		B U2
+	}
 )
 
 var testData = map[string]struct {
@@ -177,6 +191,8 @@ var testData = map[string]struct {
 	"SubscriptSlice": {QuerySubscriptSlice{}, "schema{ query:QuerySubscriptSlice } type QuerySubscriptSlice{slice(id:Int!):String! }"},
 	"SubscriptArray": {QuerySubscriptArray{}, "schema{ query:QuerySubscriptArray } type QuerySubscriptArray{a(id:Int!):Boolean! }"},
 	"SubscriptMap":   {QuerySubscriptMap{}, "schema{ query:QuerySubscriptMap } type QuerySubscriptMap{m(s:String!):Float! }"},
+	"Union": {QueryUnion{},
+		"schema{query:QueryUnion} type QueryUnion{a:U1! b:U2!} type U1{v:Int!} type U2{w:String!} union U = U1 | U2"},
 }
 
 func TestBuildSchema(t *testing.T) {
