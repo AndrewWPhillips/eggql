@@ -56,10 +56,10 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 
 	resultChans := make([]<-chan gqlValue, 0, len(set)) // TODO: allow extra cap. for fragment sets > 1 in length
 
-	var result jsonmap.Ordered
-	var err error
 	// resolve each (sub)query
 	for _, s := range set {
+		var result jsonmap.Ordered
+		var err error
 		switch astType := s.(type) {
 		case *ast.Field:
 			// Find and execute the "resolver" in the struct (or recursively in embedded structs)
@@ -71,7 +71,11 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 			continue
 
 		case *ast.InlineFragment:
+			if v.Type().Name() != astType.TypeCondition {
+				continue
+			}
 			result, err = op.GetSelections(ctx, astType.SelectionSet, v, reflect.Value{}, nil)
+
 		case *ast.FragmentSpread:
 			result, err = op.GetSelections(ctx, astType.Definition.SelectionSet, v, reflect.Value{}, nil)
 		}
@@ -82,7 +86,7 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 			ch <- gqlValue{err: err}
 		} else {
 			if len(result.Order) != len(result.Data) {
-				panic("slice and map must have same number of elts")
+				panic("slice and map must have the same number of elts")
 			}
 			ch = make(chan gqlValue, len(result.Order))
 			for _, v := range result.Order {
@@ -132,7 +136,8 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 	if astField.Name == "__typename" {
 		// Special "introspection" field
 		r := make(chan gqlValue, 1)
-		r <- gqlValue{name: astField.Alias, value: astField.ObjectDefinition.Name}
+		//r <- gqlValue{name: astField.Alias, value: astField.ObjectDefinition.Name}
+		r <- gqlValue{name: astField.Alias, value: v.Type().Name()} // TODO: check if this is always correct
 		close(r)
 		return r
 	}
