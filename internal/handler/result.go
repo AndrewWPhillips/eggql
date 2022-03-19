@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	AllowIntrospection = true
+	AllowIntrospection     = true
 	AllowConcurrentQueries = true
 )
 
@@ -58,8 +58,6 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 
 	// resolve each (sub)query
 	for _, s := range set {
-		var result jsonmap.Ordered
-		var err error
 		switch astType := s.(type) {
 		case *ast.Field:
 			// Find and execute the "resolver" in the struct (or recursively in embedded structs)
@@ -68,33 +66,16 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 			} else {
 				resultChans = append(resultChans, op.FindSelection(ctx, astType, v))
 			}
-			continue
 
 		case *ast.InlineFragment:
 			if v.Type().Name() != astType.TypeCondition {
 				continue
 			}
-			result, err = op.GetSelections(ctx, astType.SelectionSet, v, reflect.Value{}, nil)
+			resultChans = append(resultChans, op.FindFragments(ctx, astType.SelectionSet, v))
 
 		case *ast.FragmentSpread:
-			result, err = op.GetSelections(ctx, astType.Definition.SelectionSet, v, reflect.Value{}, nil)
+			resultChans = append(resultChans, op.FindFragments(ctx, astType.Definition.SelectionSet, v))
 		}
-		// This code (until end of loop) is shared code for fragments only
-		var ch chan gqlValue
-		if err != nil {
-			ch = make(chan gqlValue, 1)
-			ch <- gqlValue{err: err}
-		} else {
-			if len(result.Order) != len(result.Data) {
-				panic("slice and map must have the same number of elts")
-			}
-			ch = make(chan gqlValue, len(result.Order))
-			for _, v := range result.Order {
-				ch <- gqlValue{name: v, value: result.Data[v]}
-			}
-		}
-		close(ch)
-		resultChans = append(resultChans, ch)
 	}
 
 	// Now extract the values (will block until all channels have closed)
@@ -112,6 +93,9 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 				}
 				if v.err != nil {
 					return r, v.err
+				}
+				if _, ok := r.Data[v.name]; ok {
+					panic("We should only ever add new elements to jsonmap.Ordered")
 				}
 				r.Data[v.name] = v.value
 				r.Order = append(r.Order, v.name)
@@ -151,7 +135,7 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 		if err != nil {
 			panic(err) // TODO: return an error (no panics)
 		}
-		if fieldInfo == nil {
+		if fieldInfo == nil { // TODO: if embedded and empty then continue
 			continue // unexported field
 		}
 		// Recursively check fields of embedded struct
@@ -204,6 +188,26 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 	r := make(chan gqlValue)
 	close(r)
 	return r
+}
+
+func (op *gqlOperation) FindFragments(ctx context.Context, set ast.SelectionSet, v reflect.Value) <-chan gqlValue {
+	result, err := op.GetSelections(ctx, set, v, reflect.Value{}, nil)
+
+	var ch chan gqlValue
+	if err != nil {
+		ch = make(chan gqlValue, 1)
+		ch <- gqlValue{err: err}
+	} else {
+		if len(result.Order) != len(result.Data) {
+			panic("slice and map must have the same number of elts")
+		}
+		ch = make(chan gqlValue, len(result.Order))
+		for _, v := range result.Order {
+			ch <- gqlValue{name: v, value: result.Data[v]}
+		}
+	}
+	close(ch)
+	return ch
 }
 
 // resolve calls a resolver given a query to obtain the results of the query (incl. listed and nested queries)
@@ -274,7 +278,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 		// resolve for all values in the list
 		var results []interface{}
 		if v.Type().Kind() == reflect.Array || !v.IsNil() {
-			results = make([]interface{}, 0) // to distinguish empty slice from nil slice
+			results = make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
 			for i := 0; i < v.Len(); i++ {
 				if value := op.resolve(ctx, astField, v.Index(i), fieldInfo); value != nil {
 					results = append(results, value.value)
