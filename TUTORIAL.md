@@ -727,7 +727,7 @@ func (h *Human) getHeight(unit int) float64 {
 }
 ```
 
-This method is assigned to the `Height` field.  Since we have a slice of `Human`s we have to do it for each element of the slice.
+This method is assigned to the `Height` field.  Since we have a slice of `Human`s we have to do it for each element of the slice in the initialisation.
 
 ```Go
 	for i := range humans {
@@ -757,6 +757,102 @@ You will get Luke's height in feet instead of meters:
             "name": "Luke Skywalker",
             "height": 5.4790028
         }
+    }
+}
+```
+
+### Unions
+
+Unions in GraphQL are like **interfaces**, but without any common fields.  In fact you can implement the functionality of a union by using an empty interface, except that GraphQL does not allow empty interfaces.  A common use of unions is a query the returns objects of different types without the requirement (as with interfaces) of a common field/
+
+In **eggql** you signify a union in the same way as an interface - by embedding a struct in another object (struct).  But for a union the embedded `struct` must be empty.
+
+In essence, if you embed a `struct` you get an interface unless it's empty, whence you get a union.
+
+Will demonstrate this by adding a `search` query as is seen in the standard **Star Wars** tutorial. This allows you to search all humans, droids and starships.  It returns a list of `SearchResult` which is a union of Human | Droid | Starship.  (Note that we haven't seen starships in this tutorial but the final code in example\StarWars\main.go includes them.)
+
+Here's the relevant change to the data:
+
+```Go
+type (
+    SearchResult struct {} // union SearchResult = Human | Droid
+	Human struct {
+		SearchResult
+		...
+	}
+	Droid struct {
+		SearchResult
+		...
+	}
+)
+```
+
+To enable the `search` query we need to declare a `Search() func` in the Query:
+
+```Go
+	Query struct {
+	    ...
+		// Search implements the resolver: "search(text: String!): [SearchResult]"
+		Search func(string) []interface{} `graphql:":[SearchResult],args(text)"`
+	}
+```
+
+`Search()` returns a slice of interface{}, each of which is either a `Human` or a `Droid`.  The `args` option says that the query takes one argument called "text".  The square brackets in GraphQL query return type (`[SearchResult]`) says that it returns a list.
+
+The function that implements the `search` query is straightforward:
+
+```Go
+func Search(text string) (r []interface{}) {
+	for _, h := range humans {
+		if strings.Contains(strings.ToLower(h.Name), strings.ToLower(text)) {
+			r = append(r, h)
+		}
+	}
+	for _, d := range droids {
+		if strings.Contains(strings.ToLower(d.Name), strings.ToLower(text)) {
+			r = append(r, d)
+		}
+	}
+	return
+},
+```
+
+The returned objects can be differentiated using inline fragments like this:
+
+```
+{
+  search(text: "o") {
+    ... on Human {
+      name
+      height
+    }
+    ... on Droid {
+      name
+      primaryFunction
+    }
+  }
+}
+```
+
+which will list everyone with "o" in their name:
+
+```json
+{
+    "data": {
+        "search": [
+            {
+                "name": "Han Solo",
+                "height": 1.85
+            },
+            {
+                "name": "Leia Organa",
+                "height": 1.65
+            },
+            {
+                "name": "C-3PO",
+                "primaryFunction": "Protocol"
+            }
+        ]
     }
 }
 ```
@@ -817,6 +913,7 @@ import (
 	"fmt"
 	"github.com/andrewwphillips/eggql"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -826,18 +923,22 @@ type (
 		_    Character
 		_    Human
 		_    Droid
+		Search func(string) []interface{} `graphql:":[SearchResult],args(text)"`
 	}
 	Character struct {
 		Name    string
 		Friends []*Character
 		Appears []int `graphql:"appearsIn:[Episode]"`
 	}
+	SearchResult struct{}
 	Human struct {
+		SearchResult
 		Character
 		Height func(int) float64 `graphql:",args(unit:Unit=METER)"`
 		height float64           // meters
 	}
 	Droid struct {
+		SearchResult
 		Character
 		PrimaryFunction string
 	}
@@ -935,6 +1036,19 @@ func main() {
 					}
 				}
 				return nil, fmt.Errorf("internal error: no character with ID %d in episode %d", ID, episode)
+			},
+			Search: func(text string) (r []interface{}) {
+				for _, h := range humans {
+					if strings.Contains(strings.ToLower(h.Name), strings.ToLower(text)) {
+						r = append(r, h)
+					}
+				}
+				for _, d := range droids {
+					if strings.Contains(strings.ToLower(d.Name), strings.ToLower(text)) {
+						r = append(r, d)
+					}
+				}
+				return
 			},
 		},
 		Mutation{
