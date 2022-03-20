@@ -32,14 +32,28 @@ type (
 	}
 
 	QueryObjectAndInput struct { // the same struct can't be used as Object type and Input
-		A SingleInt
+		A SingleInt              // SingleInt is used as a (nested) object type
 		B func(SingleInt) string `graphql:",args(i)"`
+	}
+	QueryInterfaceAndInput struct {
+		SingleInt                        // SingleInt is embedded to be used as an interface type
+		B         func(SingleInt) string `graphql:",args(i)"`
+	}
+	QueryDupeInterface struct {
+		SingleInt
+		Query `graphql:":SingleInt"`
+	}
+	QueryBadInterface struct {
+		QueryBadName
 	}
 	QueryBadOption struct {
 		Fa func(int8) string `graphql:",params(i)"` // params should be args
 	}
 	QueryReservedName struct {
 		Message string `graphql:"__message"`
+	}
+	QueryNoReturn struct {
+		Fa func()
 	}
 	QueryBadParam1 struct {
 		Fb func(int8) string `graphql:",args(a b)"` // no comma
@@ -124,6 +138,8 @@ var errorData = map[string]struct {
 }{
 	"NonStruct":       {1, nil, "must be struct"},
 	"BadType":         {struct{ C complex128 }{}, nil, "unhandled type"},
+	"BadType2":        {struct{ C []interface{} }{}, nil, "bad element type"},
+	"BadSliceType":    {struct{ C []complex128 }{}, nil, "unhandled type"},
 	"DupeQuery":       {struct{ Q Query }{}, nil, "same name"}, // two different types with same name "Query"
 	"NoArgs":          {QueryNoArgs{}, nil, "no args"},
 	"TooFewArgs":      {QueryTooFewArgs{}, nil, "argument count"},
@@ -133,8 +149,12 @@ var errorData = map[string]struct {
 	"Return2":         {QueryReturn2{}, nil, "must be error type"},
 	"Return3":         {QueryReturn3{}, nil, "returns too many values"},
 	"ObjectInput":     {QueryObjectAndInput{}, nil, "different GraphQL types"},
+	"InterfaceInput":  {QueryInterfaceAndInput{}, nil, "different GraphQL types"},
+	"DupeInterface":   {QueryDupeInterface{}, nil, "same name"},
+	"BadInterface":    {QueryBadInterface{}, nil, "not a valid name"},
 	"BadReserved":     {QueryReservedName{}, nil, "not a valid name"},
 	"UnknownOption":   {QueryBadOption{}, nil, "unknown option"},
+	"NoReturn":        {QueryNoReturn{}, nil, "must return a value"},
 	"BadParam1":       {QueryBadParam1{}, nil, "not a valid name"},
 	"BadParam2":       {QueryBadParam2{}, nil, "unmatched left bracket"},
 	"BadParam3":       {QueryBadParam3{}, nil, "not in brackets"},
@@ -171,7 +191,7 @@ func TestSchemaErrors(t *testing.T) {
 		ok := err != nil
 		if ok {
 			// we got an error (good), but we should still make sure it's the right one
-			ok = strings.Contains(err.Error(), data.problem)
+			ok = data.problem != "" && strings.Contains(err.Error(), data.problem)
 		}
 		Assertf(t, ok, "TestSchemaErrors: %12s: expected an error, got: %v", name, err)
 	}

@@ -37,6 +37,9 @@ func getTypeName(t reflect.Type) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		if elemType == "" {
+			return "", errors.New("bad element type for slice/array " + t.Name())
+		}
 		return "[" + elemType + "]", nil
 	case reflect.Func:
 		// For functions the (1st) return type is the type of the resolver
