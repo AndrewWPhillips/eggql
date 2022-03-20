@@ -34,6 +34,9 @@ const (
 	inputParamSchema       = "type Query { inputQuery(param: inputType!): Int! } input inputType { field: String! }"
 	inputParam2FieldSchema = "type Query { q(p: R!): String! } input R{s:String! f:Float!}"
 	interfaceSchema        = "type Query { a: D! } interface X { x1: Int! } type D implements X { x1: Int! e: String! }"
+	union1Schema           = "type Query { a: U! } type U1 { v: Int! } union U = U1"
+	union2Schema           = "type Query { b: U! } type U1 { v: Int! } type U2 { v: Int! w: String!} union U = U1|U2"
+	union3Schema           = "type Query { c: [U] } type U1 { v: Int! } type U2 { v: Int! w: String!} union U = U1|U2"
 	subscriptSlice         = "schema {query: QuerySubscript} type QuerySubscript { slice(id: Int!): String! }"
 	subscriptMap           = "schema {query: QuerySubscript} type QuerySubscript { map(number: String!): Float! }"
 )
@@ -65,6 +68,17 @@ type (
 	QuerySubscript struct {
 		Slice []string           `graphql:",subscript"`
 		Map   map[string]float64 `graphql:",subscript=number"`
+	}
+
+	U  struct{} // U is embedded in other structs to implement a union
+	U1 struct {
+		U
+		V int
+	}
+	U2 struct {
+		U
+		V int
+		W string
 	}
 )
 
@@ -104,7 +118,7 @@ var (
 	}{func(parm inputParam2FieldType) string { return parm.S + strconv.FormatFloat(parm.F, 'g', 10, 64) }}
 	interfaceData  = struct{ A D }{D{X{4}, "fff"}}
 	interfaceFunc  = struct{ A func() D }{func() D { return D{X{5}, "ggg"} }}
-	inlineFragFunc = struct{ A func() interface{} }{func() interface{} { return D{X{1}, "e in d"} }}
+	inlineFragFunc = struct{ A func() interface{} }{func() interface{} { return D{X{1}, "e in D"} }}
 
 	contextFunc  = struct{ Value func(context.Context) int }{func(ctx context.Context) int { return 100 }}
 	contextFunc1 = struct {
@@ -205,9 +219,19 @@ var happyData = map[string]struct {
 	"InterfaceFunc": {interfaceSchema, interfaceFunc, `{ a { x1 e } }`, "",
 		JsonObject{"a": JsonObject{"x1": 5.0, "e": "ggg"}}},
 	"InlineFrag": {interfaceSchema, inlineFragFunc, `{ a { ... on D { e } } }`, "",
-		JsonObject{"a": JsonObject{"e": "e in d"}}},
+		JsonObject{"a": JsonObject{"e": "e in D"}}},
 	"InlineFrag2Fields": {interfaceSchema, inlineFragFunc, `{ a { ... on D { x1 e } } }`, "",
-		JsonObject{"a": JsonObject{"x1": 1.0, "e": "e in d"}}},
+		JsonObject{"a": JsonObject{"x1": 1.0, "e": "e in D"}}},
+	"Union1": {union1Schema, struct{ A interface{} }{U1{V: 87}}, `{ a { ... on U1 { v } } }`, "",
+		JsonObject{"a": JsonObject{"v": 87.0}}},
+	"Union2": {union2Schema, struct{ B interface{} }{U2{W: "U2 w"}}, `{b{... on U1{v} ... on U2{w}}}`, "",
+		JsonObject{"b": JsonObject{"w": "U2 w"}}},
+	"Union3": {union3Schema, struct{ C []interface{} }{C: []interface{}{U1{V: 6}, U2{V: 7}}},
+		`{c{... on U1{v} ... on U2{v}}}`, "",
+		JsonObject{"c": []interface{}{JsonObject{"v": 6.0}, JsonObject{"v": 7.0}}}},
+	"Union4": {union3Schema, struct{ C []interface{} }{C: []interface{}{U1{V: 1}, U2{V: 2, W: "w"}, U1{V: 3}}},
+		`{c{... on U1{v} ... on U2{v}}}`, "",
+		JsonObject{"c": []interface{}{JsonObject{"v": 1.0}, JsonObject{"v": 2.0}, JsonObject{"v": 3.0}}}},
 
 	"Context0": {intSchema, contextFunc, `{ value }`, "",
 		JsonObject{"value": float64(100)}},

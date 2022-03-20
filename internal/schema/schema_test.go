@@ -136,6 +136,11 @@ type (
 		A U1
 		B U2
 	}
+	QueryUnion2 struct {
+		_ U1
+		_ U2
+		S []interface{} `graphql:":[U]"`
+	}
 )
 
 var testData = map[string]struct {
@@ -193,6 +198,8 @@ var testData = map[string]struct {
 	"SubscriptMap":   {QuerySubscriptMap{}, "schema{ query:QuerySubscriptMap } type QuerySubscriptMap{m(s:String!):Float! }"},
 	"Union": {QueryUnion{},
 		"schema{query:QueryUnion} type QueryUnion{a:U1! b:U2!} type U1{v:Int!} type U2{w:String!} union U = U1 | U2"},
+	"Union2": {QueryUnion2{},
+		"schema{query:QueryUnion2} type QueryUnion2{s:[U]} type U1{v:Int!} type U2{w:String!} union U = U1 | U2"},
 }
 
 func TestBuildSchema(t *testing.T) {
