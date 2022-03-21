@@ -90,6 +90,7 @@ var (
 	floatData     = struct{ F float64 }{1.5}
 	sliceData     = struct{ Values []int }{[]int{1, 8, 3}}
 	arrayData     = struct{ Values [1]int }{[1]int{42}}
+	mapData       = struct{ Values map[string]int }{map[string]int{"": 42}}
 	real          = 1.73205 // must be var not const so we can take it's address
 	ptrData       = struct{ F *float64 }{&real}
 	funcData      = struct{ Message func() string }{func() string { return "hi" }}
@@ -166,6 +167,9 @@ var happyData = map[string]struct {
 	"Slice": {listSchema, sliceData, `{ values }`, "",
 		JsonObject{"values": []interface{}{1.0, 8.0, 3.0}}},
 	"Array": {listSchema, arrayData, `{ values }`, "",
+		JsonObject{"values": []interface{}{42.0}}},
+	// TODO: write test for map with more than one element (order of returned map elements is indeterminate)
+	"Map": {listSchema, mapData, `{ values }`, "",
 		JsonObject{"values": []interface{}{42.0}}},
 	"Pointer": {floatSchema, ptrData, `{ f }`, "",
 		JsonObject{"f": real}},

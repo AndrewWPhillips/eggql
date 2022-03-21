@@ -28,17 +28,15 @@ func getTypeName(t reflect.Type) (string, error) {
 			return tmp, nil // use struct's type name
 		}
 		return "", nil // not an error but struct is anon
-	case reflect.Map:
-		return "", errors.New(`can't handle map (did you forget the "subscript" option`)
 	case reflect.Ptr:
 		return getTypeName(t.Elem())
-	case reflect.Array, reflect.Slice: // TODO: check if we can also handle Map
+	case reflect.Map, reflect.Array, reflect.Slice:
 		elemType, err := getTypeName(t.Elem())
 		if err != nil {
 			return "", err
 		}
 		if elemType == "" {
-			return "", errors.New("bad element type for slice/array " + t.Name())
+			return "", errors.New("bad element type for slice/array/map " + t.Name())
 		}
 		return "[" + elemType + "]", nil
 	case reflect.Func:

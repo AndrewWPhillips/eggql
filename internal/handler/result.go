@@ -94,11 +94,11 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 				if v.err != nil {
 					return r, v.err
 				}
-				if _, ok := r.Data[v.name]; ok {
-					panic("We should only ever add new elements to jsonmap.Ordered")
-				}
 				r.Data[v.name] = v.value
 				r.Order = append(r.Order, v.name)
+				if len(r.Order) != len(r.Data) {
+					panic("map and slice in the jsonmap.Ordered should be the same size (map element replaced?)")
+				}
 			case <-ctx.Done():
 				return r, ctx.Err()
 			}
@@ -237,11 +237,13 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 		v = v.Elem() // follow indirection
 	}
 
+	// For "subscript" option if v is a map/slice convert it to an element using the "subscript" to index into the container
 	if fieldInfo.Subscript != "" {
 		if len(astField.Arguments) != 1 || astField.Arguments[0].Name != fieldInfo.Subscript {
 			return &gqlValue{err: fmt.Errorf("subscript resolver %q must supply an argument called %q", fieldInfo.Name, fieldInfo.Subscript)}
 		}
-		arg, err := op.getValue(fieldInfo.SubscriptType, fieldInfo.Subscript, "qqq", astField.Arguments[0].Value.Raw)
+		// TODO: check if we should allow an enum as a subscript
+		arg, err := op.getValue(fieldInfo.SubscriptType, fieldInfo.Subscript, "", astField.Arguments[0].Value.Raw)
 		if err != nil {
 			return &gqlValue{err: err}
 		}
@@ -283,6 +285,16 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 				if value := op.resolve(ctx, astField, v.Index(i), fieldInfo); value != nil {
 					results = append(results, value.value)
 				}
+			}
+		}
+		return &gqlValue{name: astField.Alias, value: results}
+
+	case reflect.Map:
+		// resolve for all values in the map
+		results := make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
+		for it := v.MapRange(); it.Next(); {
+			if value := op.resolve(ctx, astField, it.Value(), fieldInfo); value != nil {
+				results = append(results, value.value)
 			}
 		}
 		return &gqlValue{name: astField.Alias, value: results}
