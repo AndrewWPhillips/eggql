@@ -83,7 +83,7 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 		default:
 			panic("unexpected")
 		}
-		result, err := op.GetSelections(ctx, operation.SelectionSet, v, vIntro, introOp)
+		result, err := op.GetSelections(ctx, operation.SelectionSet, v, vIntro, introOp, nil)
 
 		// TODO: don't stop on 1st error but record all errors to save the client debug time
 		if err != nil {

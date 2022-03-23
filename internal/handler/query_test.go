@@ -39,6 +39,8 @@ const (
 	union3Schema           = "type Query { c: [U] } type U1 { v: Int! } type U2 { v: Int! w: String!} union U = U1|U2"
 	subscriptSlice         = "schema {query: QuerySubscript} type QuerySubscript { slice(id: Int!): String! }"
 	subscriptMap           = "schema {query: QuerySubscript} type QuerySubscript { map(number: String!): Float! }"
+	sliceFieldSchema       = "schema {query:QuerySliceFieldID} type QuerySliceFieldID{ s:[Element]! } type Element{ id:String! b:Int!}"
+	mapFieldSchema         = "schema {query:QueryMapFieldID} type QueryMapFieldID{ m:[Element]! } type Element{ id:String! b:Int!}"
 )
 
 type (
@@ -68,6 +70,13 @@ type (
 	QuerySubscript struct {
 		Slice []string           `graphql:",subscript"`
 		Map   map[string]float64 `graphql:",subscript=number"`
+	}
+	Element           struct{ B byte }
+	QuerySliceFieldID struct {
+		S []Element `graphql:",field_id"`
+	}
+	QueryMapFieldID struct {
+		M map[string]Element `graphql:",field_id"`
 	}
 
 	U  struct{} // U is embedded in other structs to implement a union
@@ -135,6 +144,8 @@ var (
 		Slice: []string{"zero", "", "two"},
 		Map:   map[string]float64{"pi": 3.14159265359, "root2": 1.41421356237},
 	}
+	sliceFieldID = QuerySliceFieldID{[]Element{{11}, {12}}}
+	mapFieldID   = QueryMapFieldID{map[string]Element{"a": {1}}}
 )
 
 func (p *ParentRef) valueFunc() int {
@@ -254,6 +265,14 @@ var happyData = map[string]struct {
 		JsonObject{"slice": "two"}},
 	"SubscriptMap": {subscriptMap, subscript, `{ map(number:\"pi\") }`, "",
 		JsonObject{"map": 3.14159265359}},
+	"SliceFieldID": {sliceFieldSchema, sliceFieldID, `{ s { id b } }`, "",
+		JsonObject{"s": []interface{}{JsonObject{"id": 0.0, "b": 11.0}, JsonObject{"id": 1.0, "b": 12.0}}}},
+	"MapFieldID": {mapFieldSchema, mapFieldID, `{ m { id } }`, "",
+		JsonObject{"m": []interface{}{JsonObject{"id": "a"}}}},
+	"MapFieldID1": {mapFieldSchema, mapFieldID, `{ m { b } }`, "",
+		JsonObject{"m": []interface{}{JsonObject{"b": 1.0}}}},
+	"MapFieldID2": {mapFieldSchema, mapFieldID, `{ m { b id } }`, "",
+		JsonObject{"m": []interface{}{JsonObject{"b": 1.0, "id": "a"}}}},
 }
 
 func TestQuery(t *testing.T) {

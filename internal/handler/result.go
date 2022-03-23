@@ -31,6 +31,12 @@ type (
 		value interface{} // scalar, nested result (jsonmap.Ordered), list ([]interface{})
 		err   error       // non-nil if something went wrong whence the contents of value should be ignored
 	}
+
+	// idField stores name and type of fabricated id field (if required) for maps/slices/arrays
+	idField struct {
+		name  string
+		value reflect.Value
+	}
 )
 
 // GetSelections resolves the selections in a query by finding and evaluating the corresponding resolver(s)
@@ -45,7 +51,8 @@ type (
 //   v = value of Go struct whose (exported) fields are the resolvers
 //   vIntro = Go struct with values for introspection (only supplied at root level)
 //   introOp = gqlOperation struct to be used with vIntro (contains some required enums)
-func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, v, vIntro reflect.Value, introOp *gqlOperation) (jsonmap.Ordered, error) {
+//   idField = name/type of fabricated "id" field (see "field_id" option for lists of objects)
+func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, v reflect.Value, vIntro reflect.Value, introOp *gqlOperation, id *idField) (jsonmap.Ordered, error) {
 	// Get the struct that contains the resolvers that we can use
 	for v.Type().Kind() == reflect.Ptr {
 		v = v.Elem() // follow indirection
@@ -61,7 +68,12 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 		switch astType := s.(type) {
 		case *ast.Field:
 			// Find and execute the "resolver" in the struct (or recursively in embedded structs)
-			if vIntro.IsValid() && strings.HasPrefix(astType.Name, "__") {
+			if id != nil && astType.Name == id.name {
+				ch := make(chan gqlValue, 1)
+				ch <- gqlValue{name: id.name, value: id.value.Interface()}
+				close(ch)
+				resultChans = append(resultChans, ch)
+			} else if vIntro.IsValid() && strings.HasPrefix(astType.Name, "__") {
 				resultChans = append(resultChans, introOp.FindSelection(ctx, astType, vIntro))
 			} else {
 				resultChans = append(resultChans, op.FindSelection(ctx, astType, v))
@@ -160,7 +172,7 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 			// resolver found so run it (concurrently)
 			if op.isMutation || !AllowConcurrentQueries { // Mutations are run sequentially
 				r := make(chan gqlValue, 1)
-				if value := op.resolve(ctx, astField, vField, fieldInfo); value != nil {
+				if value := op.resolve(ctx, astField, vField, reflect.Value{}, fieldInfo); value != nil {
 					r <- *value
 				}
 				close(r)
@@ -176,7 +188,7 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 						}
 						close(r)
 					}()
-					if value := op.resolve(ctx, astField, vField, fieldInfo); value != nil {
+					if value := op.resolve(ctx, astField, vField, reflect.Value{}, fieldInfo); value != nil {
 						r <- *value
 					}
 				}()
@@ -191,7 +203,7 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 }
 
 func (op *gqlOperation) FindFragments(ctx context.Context, set ast.SelectionSet, v reflect.Value) <-chan gqlValue {
-	result, err := op.GetSelections(ctx, set, v, reflect.Value{}, nil)
+	result, err := op.GetSelections(ctx, set, v, reflect.Value{}, nil, nil)
 
 	var ch chan gqlValue
 	if err != nil {
@@ -217,8 +229,9 @@ func (op *gqlOperation) FindFragments(ctx context.Context, set ast.SelectionSet,
 //   ctx = a Go context that could expire at any time
 //   astField = a query or sub-query - a field of a GraphQL object
 //   v = value of the resolver (field of Go struct)
+//   vID = value of "id" (only supplied if an element of a list)
 //   fieldInfo = metadata for the resolver (eg parameter name) obtained from the struct field tag
-func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info) *gqlValue {
+func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID reflect.Value, fieldInfo *field.Info) *gqlValue {
 	if op.directiveBypass(astField) {
 		return nil
 	}
@@ -243,7 +256,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 			return &gqlValue{err: fmt.Errorf("subscript resolver %q must supply an argument called %q", fieldInfo.Name, fieldInfo.Subscript)}
 		}
 		// TODO: check if we should allow an enum as a subscript
-		arg, err := op.getValue(fieldInfo.SubscriptType, fieldInfo.Subscript, "", astField.Arguments[0].Value.Raw)
+		arg, err := op.getValue(fieldInfo.ElementType, fieldInfo.Subscript, "", astField.Arguments[0].Value.Raw)
 		if err != nil {
 			return &gqlValue{err: err}
 		}
@@ -269,8 +282,13 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 
 	switch v.Type().Kind() {
 	case reflect.Struct:
+		// Check if we have to fabricate an "id" field
+		var id *idField
+		if fieldInfo.FieldID != "" {
+			id = &idField{name: fieldInfo.FieldID, value: vID}
+		}
 		// Look up all sub-queries in this object
-		if result, err := op.GetSelections(ctx, astField.SelectionSet, v, reflect.Value{}, nil); err != nil {
+		if result, err := op.GetSelections(ctx, astField.SelectionSet, v, reflect.Value{}, nil, id); err != nil {
 			return &gqlValue{err: err}
 		} else {
 			return &gqlValue{name: astField.Alias, value: result}
@@ -280,7 +298,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 		// resolve for all values in the map
 		results := make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
 		for it := v.MapRange(); it.Next(); {
-			if value := op.resolve(ctx, astField, it.Value(), fieldInfo); value != nil {
+			if value := op.resolve(ctx, astField, it.Value(), it.Key(), fieldInfo); value != nil {
 				results = append(results, value.value)
 			}
 		}
@@ -292,7 +310,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 		if v.Type().Kind() == reflect.Array || !v.IsNil() {
 			results = make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
 			for i := 0; i < v.Len(); i++ {
-				if value := op.resolve(ctx, astField, v.Index(i), fieldInfo); value != nil {
+				if value := op.resolve(ctx, astField, v.Index(i), reflect.ValueOf(i), fieldInfo); value != nil {
 					results = append(results, value.value)
 				}
 			}

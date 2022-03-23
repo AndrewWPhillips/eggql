@@ -18,12 +18,21 @@ var albums = map[string]Album{
 	"3": {Title: "Sarah Vaughan and Clifford Brown", Artist: "Sarah Vaughan", Price: 39_99},
 }
 
-type Query struct {
-	Albums map[string]Album // query list of all albums
-	Album  map[string]Album `graphql:",subscript"` // query one album using arg "id"
+var q = struct {
+	// This works with latest "id_field" code but only if the Album (struct) is seen in the field with "field_id" specified.
+	// If the order of fields below is reversed then the "Album" type is added to the schema without any "id" field.
+	// But there is a bigger problem with "field_id": if we use the same struct as element of different maps/slices
+	//  - we can have different names for the fabricated "id" field but can only have one name in the schema
+	//  - the "id" field might need different types - eg int for a slice, string (etc) for map key
+
+	Albums map[string]Album `graphql:",field_id"`
+	Album  map[string]Album `graphql:",subscript"`
+}{
+	Album:  albums,
+	Albums: albums,
 }
 
 func main() {
-	http.Handle("/graphql", eggql.MustRun(Query{Albums: albums, Album: albums}))
+	http.Handle("/graphql", eggql.MustRun(q))
 	http.ListenAndServe(":8080", nil)
 }

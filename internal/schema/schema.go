@@ -97,7 +97,7 @@ func Build(enums map[string][]string, qms ...interface{}) (string, error) {
 			typeName = entryPointName // use default name for anon struct
 		}
 		// TODO omit "schema definition" if we're using Default Root Operation Type Names
-		if err := schemaTypes.add(typeName, t, enums, gqlObjectType); err != nil {
+		if err := schemaTypes.add(typeName, t, enums, gqlObjectType, nil); err != nil {
 			return "", fmt.Errorf("%w adding %q building schema for %s", err, typeName, entryPointName)
 		}
 

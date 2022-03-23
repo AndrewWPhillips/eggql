@@ -34,6 +34,13 @@ type (
 	}
 	QuerySlice     struct{ Slice []int }
 	QueryMap       struct{ Map map[string]int }
+	QueryFieldID struct {
+		Slice []QueryString `graphql:",field_id"`
+	}
+	QueryMapFieldID struct {
+		Map map[int]QueryString `graphql:",field_id"`
+	}
+
 	QueryIntFunc   struct{ F func() int }
 	QueryBoolFunc  struct{ F func() bool }
 	QueryErrorFunc struct{ F func() (int, error) }
@@ -168,6 +175,11 @@ var testData = map[string]struct {
 	//"Slice":       {QuerySlice{}, "schema{ query:QuerySlice } type QuerySlice{ slice:[Int!]!}"}, // TODO make non-ptr non-nullable!
 	"Slice":     {QuerySlice{}, "schema{ query:QuerySlice } type QuerySlice{ slice:[Int]! }"},
 	"Map":       {QueryMap{}, "schema{ query:QueryMap } type QueryMap{ map:[Int]! }"},
+	"SliceFieldID": {QueryFieldID{}, "schema{ query:QueryFieldID }" +
+		"type QueryFieldID{ slice:[QueryString]! } type QueryString{ id:Int! m:String! }"},
+	"MapFieldID": {QueryMapFieldID{}, "schema{ query:QueryMapFieldID }" +
+		"type QueryMapFieldID{ map:[QueryString]! } type QueryString{ id:Int! m:String! }"},
+
 	"Int Func":  {QueryIntFunc{}, "schema{ query:QueryIntFunc } type QueryIntFunc{ f:Int! }"},
 	"BoolFunc":  {QueryBoolFunc{}, "schema{ query:QueryBoolFunc } type QueryBoolFunc{ f:Boolean! }"},
 	"ErrorFunc": {QueryErrorFunc{}, "schema{ query:QueryErrorFunc } type QueryErrorFunc{ f:Int! }"},

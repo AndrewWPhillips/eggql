@@ -34,9 +34,12 @@ type Info struct {
 	Empty    bool // embedded struct has no fields (which we use for a GraphQL "union")
 	Nullable bool // pointer fields or those with the "nullable" tag are allowed to be null
 
+	// FieldID holds the result of the "field_id" option (for a slice/array/map)
+	FieldID string // name of id field (default is "id")
 	// Subscript holds the result of the "subscript" option (for a slice/array/map)
-	Subscript     string       // name resolver arg (default is "id")
-	SubscriptType reflect.Type // arg type - int for slice/array, type of the key for maps
+	Subscript string // name of resolver arg (default is "id")
+	// ElementType is the type of elements if the field is a map/slice/array - only used if FieldID or Subscript are not empty
+	ElementType reflect.Type //  int for slice/array, type of the key for maps
 }
 
 // contextType is used to check if a resolver function takes a context.Context (1st) parameter
@@ -131,31 +134,41 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 		}
 	}
 
-	fieldInfo.ResultType = t
+	if fieldInfo.FieldID != "" && fieldInfo.Subscript != "" {
+		return nil, errors.New(`cannot use "field_id"" and "subscript"" options together in field ` + f.Name)
+	}
+	if fieldInfo.FieldID != "" {
+		if t.Kind() != reflect.Map && t.Kind() != reflect.Slice && t.Kind() != reflect.Array {
+			return nil, errors.New("cannot use field_id option since field " + f.Name + " is not a slice, array, or map")
+		}
+	}
 	if fieldInfo.Subscript != "" {
-		if t.Kind() != reflect.Slice && t.Kind() != reflect.Array && t.Kind() != reflect.Map {
+		if t.Kind() != reflect.Map && t.Kind() != reflect.Slice && t.Kind() != reflect.Array {
 			return nil, errors.New("cannot use subscript option since field " + f.Name + " is not a slice, array, or map")
 		}
 		// Note that "subscript" option can be used with a function but the function should have no parameters (except for
 		// and optional context) since the GraphQL "arguments" are used to provide the subscripting value.
 		// A subscript function can have a context (HasContext) and error return (HasError) but must return a slice/array/map.
 		if len(fieldInfo.Params) > 0 {
-			return nil, errors.New(`cannot use "args" option with "subscript" option with field ` + f.Name)
+			return nil, errors.New(`cannot use "args" and "subscript" options together in field ` + f.Name)
+		}
 		}
 
-		fieldInfo.ResultType = t.Elem()
-
+	if fieldInfo.FieldID != "" || fieldInfo.Subscript != "" {
 		// Get the "subscript" type - int (slice/array) or scalar type for map key
-		fieldInfo.SubscriptType = reflect.TypeOf(1)
+		fieldInfo.ElementType = reflect.TypeOf(1)
 		if t.Kind() == reflect.Map {
-			fieldInfo.SubscriptType = t.Key()
-			if (fieldInfo.SubscriptType.Kind() < reflect.Int || fieldInfo.SubscriptType.Kind() > reflect.Float64) &&
-				fieldInfo.SubscriptType.Kind() != reflect.String {
+			fieldInfo.ElementType = t.Key()
+			if (fieldInfo.ElementType.Kind() < reflect.Int || fieldInfo.ElementType.Kind() > reflect.Float64) &&
+				fieldInfo.ElementType.Kind() != reflect.String {
 				// TODO allow any comparable type for map subscripts?
 				return nil, errors.New("map key for subscript option " + f.Name + " must be a scalar")
 			}
 		}
-	} else if t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
+	}
+
+	fieldInfo.ResultType = t
+	if t.Kind() == reflect.Map || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
 		// a GraphQL list has the type of it's elements
 		fieldInfo.ResultType = t.Elem()
 	}
@@ -188,6 +201,14 @@ func GetTagInfo(tag string) (*Info, error) {
 		}
 		if part == "" {
 			continue // ignore empty sections
+		}
+		if strings.HasPrefix(part, "field_id") {
+			subParts := strings.Split(part, "=")
+			fieldInfo.FieldID = "id" // default field name for ID field
+			if len(subParts) > 1 && subParts[1] != "" {
+				fieldInfo.FieldID = subParts[1]
+			}
+			continue
 		}
 		if strings.HasPrefix(part, "subscript") {
 			subParts := strings.Split(part, "=")
