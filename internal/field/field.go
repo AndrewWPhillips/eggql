@@ -31,7 +31,7 @@ type Info struct {
 	HasError   bool     // has 2 return values the 2nd of which is a Go error
 
 	Embedded bool // embedded struct (which we use as a template for a GraphQL "interface")
-	Empty    bool // embedded struct has no fields (whih we use for a GraphQL "union")
+	Empty    bool // embedded struct has no fields (which we use for a GraphQL "union")
 	Nullable bool // pointer fields or those with the "nullable" tag are allowed to be null
 
 	// Subscript holds the result of the "subscript" option (for a slice/array/map)
@@ -73,7 +73,15 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 	if f.Type.Kind() == reflect.Struct && f.Anonymous {
 		// Embedded (anon) struct
 		fieldInfo.Embedded = true
-		fieldInfo.Empty = f.Type.NumField() == 0
+		// Determine if the struct is empty (no exported fields)
+		fieldInfo.Empty = true
+		for i := 0; i < f.Type.NumField(); i++ {
+			first, _ := utf8.DecodeRuneInString(f.Type.Field(i).Name)
+			if unicode.IsUpper(first) {
+				fieldInfo.Empty = false
+				break
+			}
+		}
 		return
 	}
 
