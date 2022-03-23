@@ -45,11 +45,11 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 		name = t.Name()
 	}
 	// follow indirection(s) and function return(s)
-	for k := t.Kind(); k == reflect.Ptr || k == reflect.Func || k == reflect.Array || k == reflect.Slice; k = t.Kind() {
+	for k := t.Kind(); k == reflect.Ptr || k == reflect.Func || k == reflect.Map || k == reflect.Slice || k == reflect.Array; k = t.Kind() {
 		switch k {
 		case reflect.Ptr:
 			t = t.Elem() // follow indirection
-		case reflect.Array, reflect.Slice:
+		case reflect.Map, reflect.Slice, reflect.Array:
 			if !needName {
 				// Get the element type name from within the square brackets
 				if len(name) < 2 || name[0] != '[' || name[len(name)-1] != ']' {
@@ -91,7 +91,7 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 	// Get all the resolvers from the exported struct fields
 	resolvers, interfaces, err := s.getResolvers(name, t, enums, gqlType)
 	if err != nil {
-		return err // TODO add more info to error
+		return fmt.Errorf("%w getting resolvers for %q", err, name)
 	}
 
 	// Work out how much string space we need for the resolvers etc.
