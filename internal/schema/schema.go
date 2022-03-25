@@ -51,8 +51,9 @@ func MustBuild(qms ...interface{}) string {
 // Build generates a string containing a GraphQL schema from Go structs.
 // It analyses a Go "query" struct (and optionally mutation and subscription) using
 // any public fields to be used as queries.
-func Build(enums map[string][]string, qms ...interface{}) (string, error) {
-	if err := validateEnums(enums); err != nil {
+func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
+	enums, err := validateEnums(rawEnums)
+	if err != nil {
 		return "", err
 	}
 	builder := &strings.Builder{}   // where the (text) schema is generated
@@ -148,28 +149,47 @@ func Build(enums map[string][]string, qms ...interface{}) (string, error) {
 		builder.WriteRune('\n')
 	}
 
-	// Work out how much space the enums will need and grow the string builder
-	names = make([]string, 0, len(enums))
+	// calc. space for enum strings (to grow the string builder) and make list of enums to sort
+	names = make([]string, 0, len(rawEnums))
 	objectsLength = 0
-	for enumName, enumValues := range enums {
+	for enumName, enumValues := range rawEnums {
 		names = append(names, enumName)
 		objectsLength += 12 + len(enumName)
+		if strings.Contains(enumName, "#") {
+			objectsLength += 3
+		}
 		for _, v := range enumValues {
 			objectsLength += 2 + len(v)
+			if strings.Contains(v, "#") {
+				objectsLength += 4
+			}
 		}
 	}
 	builder.Grow(objectsLength)
+	sort.Strings(names) // this ensures we always output the enums in the same order
 
 	// Add the enums to the schema
-	sort.Strings(names) // this ensures we always output the enums in the same order
+	var parts []string
 	for _, enumName := range names {
+		parts = strings.SplitN(enumName, "#", 2)
+		if len(parts) > 1 && parts[1] != "" {
+			builder.WriteRune('"')
+			builder.WriteString(parts[1])
+			builder.WriteString("\"\n")
+		}
 		builder.WriteString(gqlEnumType)
 		builder.WriteRune(' ')
-		builder.WriteString(enumName)
+		builder.WriteString(parts[0])
 		builder.WriteString(openString)
-		for _, v := range enums[enumName] {
+		for _, v := range rawEnums[enumName] {
+			parts = strings.SplitN(v, "#", 2)
+			if len(parts) > 1 && parts[1] != "" {
+				builder.WriteString(" \"")
+				builder.WriteString(parts[1])
+				builder.WriteString("\"\n")
+			}
 			builder.WriteRune(' ')
-			builder.WriteString(v)
+			builder.WriteString(parts[0])
 			builder.WriteRune('\n')
 		}
 		builder.WriteString(closeString)
