@@ -56,13 +56,9 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	builder := &strings.Builder{}   // where the (text) schema is generated
-	schemaTypes := newSchemaTypes() // all generated GraphQL types
 
-	// Create the "schema" clause of the schema document with query name etc
-	builder.Grow(256) // Even simple schemas are at least this big
-	builder.WriteString("schema ")
-	builder.WriteString(openString)
+	var entry [3]string
+	schemaTypes := newSchemaTypes() // all generated GraphQL types
 
 	for i, v := range qms {
 		if v == nil {
@@ -76,56 +72,77 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 		if t.Kind() != reflect.Struct {
 			return "", errors.New("parameters to schema.Build must be structs")
 		}
+		entry[i], _ = getTypeName(t) // no need to check the error as we know it's a struct
 
-		// This switch means that query/mutation/subscription must be supplied in that order
-		var entryPointName string
-		switch EntryPoint(i) {
-		case Query:
-			builder.WriteString(" query: ")
-			entryPointName = "Query"
-		case Mutation:
-			builder.WriteString(" mutation: ")
-			entryPointName = "Mutation"
-		case Subscription:
-			return "", errors.New("Subscriptions are not yet supported")
-			//builder.WriteString(" subscription: ") // TODO: implement subscriptions
-			//entryPointName = "Subscription"
-		default:
-			return "", errors.New("More than 3 structs provided for schema (can only have query, mutation, subscription)")
+		if entry[i] == "" {
+			// This switch means that query/mutation/subscription must be supplied in that order
+			switch EntryPoint(i) {
+			case Query:
+				entry[i] = "Query"
+			case Mutation:
+				entry[i] = "Mutation"
+			case Subscription:
+				//entry[i] = "Subscription"
+				return "", errors.New("Subscriptions are not yet supported")
+			default:
+				return "", errors.New("More than 3 structs provided for schema (can only have query, mutation, subscription)")
+			}
 		}
-		typeName, _ := getTypeName(t)
-		if typeName == "" {
-			typeName = entryPointName // use default name for anon struct
+		if err := schemaTypes.add(entry[i], t, enums, gqlObjectTypeKeyword); err != nil {
+			return "", fmt.Errorf("%w adding entry point %d %q", err, i, entry[i])
 		}
-		// TODO omit "schema definition" if we're using Default Root Operation Type Names
-		if err := schemaTypes.add(typeName, t, enums, gqlObjectTypeKeyword); err != nil {
-			return "", fmt.Errorf("%w adding %q building schema for %s", err, typeName, entryPointName)
-		}
-
-		builder.WriteString(typeName)
-		builder.WriteRune('\n')
 	}
-	builder.WriteString(closeString) // close schema clause
 
-	// Work out space needed for the types and get a list of names to sort
-	names := make([]string, 0, len(schemaTypes.declaration))
+	return schemaTypes.build(rawEnums, entry)
+}
+
+func (s schema) build(rawEnums map[string][]string, entry [3]string) (string, error) {
+	builder := &strings.Builder{} // where the (text) schema is generated
+	builder.Grow(256)             // Even simple schemas are at least this big
+
+	// First write schema definition if using any non-std entry names
+	if entry[0] != "" && entry[0] != "Query" || entry[1] != "" && entry[1] != "Mutation" { // TODO subscription
+		builder.WriteString("schema ")
+		builder.WriteString(openString)
+		for i := range entry {
+			if entry[i] != "" {
+				switch EntryPoint(i) {
+				case Query:
+					builder.WriteString(" query: ")
+				case Mutation:
+					builder.WriteString(" mutation: ")
+				case Subscription:
+					builder.WriteString(" subscription: ")
+				}
+				builder.WriteString(entry[i])
+				builder.WriteRune('\n')
+			}
+		}
+		builder.WriteString(closeString) // close schema clause
+	}
+
+	// Now write all the schema types. NOTE: where values are stored in maps (objects, unions and
+	// enums) we get a slice of the keys and sort them so that we can write them in the same order
+	// each time.  This ensures consistent schema text for checking test results.
+
+	// *** Objects - work out space needed for the objects and get a list of names to sort
+	names := make([]string, 0, len(s.declaration))
 	objectsLength := 0
-	for k, obj := range schemaTypes.declaration {
+	for k, obj := range s.declaration {
 		objectsLength += len(obj) + 1
 		names = append(names, k)
 	}
 	builder.Grow(objectsLength)
 
-	// Add the GraphQL type to the schema
-	sort.Strings(names) // we need to always output the types in the same order (eg for consistency in tests)
-	for _, name := range names {
-		builder.WriteString(schemaTypes.declaration[name])
+	sort.Strings(names)
+	for _, name := range names { // append each "type" to the schema
+		builder.WriteString(s.declaration[name])
 	}
 
-	// Unions - work out order and length
-	names = make([]string, 0, len(schemaTypes.unions))
+	// *** Unions - work out order of unions and length
+	names = make([]string, 0, len(s.unions))
 	objectsLength = 0
-	for unionName, unionValues := range schemaTypes.unions {
+	for unionName, unionValues := range s.unions {
 		names = append(names, unionName)
 		objectsLength += len(gqlUnionKeyword) + 1 + len(unionName) // union <name>
 		if unionValues.desc != "" {
@@ -139,10 +156,10 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 	builder.Grow(objectsLength)
 
 	sort.Strings(names)
-	for _, unionName := range names {
-		if schemaTypes.unions[unionName].desc != "" {
+	for _, unionName := range names { // append all the unions to the schema
+		if s.unions[unionName].desc != "" {
 			builder.WriteString(`"""`)
-			builder.WriteString(schemaTypes.unions[unionName].desc)
+			builder.WriteString(s.unions[unionName].desc)
 			builder.WriteString(`"""`)
 			builder.WriteRune('\n')
 
@@ -151,7 +168,7 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 		builder.WriteRune(' ')
 		builder.WriteString(unionName)
 		sep := " = "
-		for _, v := range schemaTypes.unions[unionName].objects {
+		for _, v := range s.unions[unionName].objects {
 			builder.WriteString(sep)
 			builder.WriteString(v)
 			sep = " | "
@@ -159,7 +176,7 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 		builder.WriteRune('\n')
 	}
 
-	// calc. space for enum strings (to grow the string builder) and make list of enums to sort
+	// *** Enums - calc. space for enum strings (to grow the string builder) and make list of enums to sort
 	names = make([]string, 0, len(rawEnums))
 	objectsLength = 0
 	for enumName, enumValues := range rawEnums {
@@ -176,11 +193,10 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 		}
 	}
 	builder.Grow(objectsLength)
-	sort.Strings(names) // this ensures we always output the enums in the same order
 
-	// Add the enums to the schema
+	sort.Strings(names) // this ensures we always output the enums in the same order
 	var parts []string
-	for _, enumName := range names {
+	for _, enumName := range names { // add all the enums
 		parts = strings.SplitN(enumName, "#", 2)
 		if len(parts) > 1 && parts[1] != "" {
 			builder.WriteRune('"')

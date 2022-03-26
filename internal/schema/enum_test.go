@@ -54,8 +54,8 @@ var enumData = map[string]struct {
 	expected string
 }{
 	// Just testing the GraphQL enum declaration
-	"single":   {data: struct{}{}, enums: unitEnum, expected: "schema{query:Query} type Query{} enum Unit{FOOT METER}"},
-	"multiple": {data: struct{}{}, enums: multiple, expected: "schema{query:Query} type Query{} enum A{A0 A1 A2} enum B{B0}"},
+	"single":   {data: struct{}{}, enums: unitEnum, expected: "type Query{} enum Unit{FOOT METER}"},
+	"multiple": {data: struct{}{}, enums: multiple, expected: "type Query{} enum A{A0 A1 A2} enum B{B0}"},
 
 	// Tests of returning an enum
 	"Unit": {data: QueryUnit{}, enums: unitEnum,
@@ -79,7 +79,7 @@ var enumData = map[string]struct {
 
 	// Tests of enum descriptions
 	"desc": {data: struct{}{}, enums: descEnums,
-		expected: `schema{query:Query} type Query{} "a" enum A{"a0"A0 A1 "a2"A2} enum B{" A description "B0} enum C{C}`},
+		expected: `type Query{} "a" enum A{"a0"A0 A1 "a2"A2} enum B{" A description "B0} enum C{C}`},
 }
 
 func TestEnumSchema(t *testing.T) {
