@@ -34,21 +34,33 @@ var testData = map[string]struct {
 	"Subscript":       {`,subscript`, field.Info{Subscript: "id"}},
 	"SubscriptEmpty":  {`,subscript=`, field.Info{Subscript: "id"}},
 	"SubscriptNamed":  {`,subscript=idx`, field.Info{Subscript: "idx"}},
+
 	"AllOptions": {`a:b,,args(c:d=e,f=g),nullable,subscript=h`, // Note that this is invalid at a higher level as you can't use both "args" and "subscript" options together
 		field.Info{Name: "a", GQLTypeName: "b", Params: []string{"c", "f"}, Enums: []string{"d", ""}, Defaults: []string{"e", "g"}, Nullable: true, Subscript: "h"}},
 }
 
+// TestTagInfo checks parsing of graphql options tags (metadata)
 func TestGetTagInfo(t *testing.T) {
 	for name, data := range testData {
 		got, err := field.GetTagInfo(data.in)
 		Assertf(t, err == nil, "Error    : %12s: expected no error got %v", name, err)
 		Assertf(t, got.Name == data.exp.Name, "Name     : %12s: expected %q got %q", name, data.exp.Name, got.Name)
-		Assertf(t, got.GQLTypeName == data.exp.GQLTypeName, "TypeName : %12s: expected %q got %q", name, data.exp.GQLTypeName, got.GQLTypeName)
-		Assertf(t, reflect.DeepEqual(got.Params, data.exp.Params), "Params   : %12s: expected %q got %q", name, data.exp.Params, got.Params)
-		Assertf(t, reflect.DeepEqual(got.Enums, data.exp.Enums), "Enums    : %12s: expected %q got %q", name, data.exp.Enums, got.Enums)
-		Assertf(t, reflect.DeepEqual(got.Defaults, data.exp.Defaults), "Defaults : %12s: expected %q got %q", name, data.exp.Defaults, got.Defaults)
+		if got.GQLTypeName != "" || data.exp.GQLTypeName != "" {
+			Assertf(t, got.GQLTypeName == data.exp.GQLTypeName, "TypeName : %12s: expected %q got %q", name, data.exp.GQLTypeName, got.GQLTypeName)
+		}
+		if got.Params != nil || data.exp.Params != nil {
+			Assertf(t, reflect.DeepEqual(got.Params, data.exp.Params), "Params   : %12s: expected %q got %q", name, data.exp.Params, got.Params)
+		}
+		if got.Enums != nil || data.exp.Enums != nil {
+			Assertf(t, reflect.DeepEqual(got.Enums, data.exp.Enums), "Enums    : %12s: expected %q got %q", name, data.exp.Enums, got.Enums)
+		}
+		if got.Defaults != nil || data.exp.Defaults != nil {
+			Assertf(t, reflect.DeepEqual(got.Defaults, data.exp.Defaults), "Defaults : %12s: expected %q got %q", name, data.exp.Defaults, got.Defaults)
+		}
 		Assertf(t, got.Nullable == data.exp.Nullable, "Nullable : %12s: expected %v got %v", name, data.exp.Nullable, got.Nullable)
-		Assertf(t, got.Subscript == data.exp.Subscript, "Subscript: %12s: expected %q got %q", name, data.exp.Subscript, got.Subscript)
+		if got.Subscript != "" || data.exp.Subscript != "" {
+			Assertf(t, got.Subscript == data.exp.Subscript, "Subscript: %12s: expected %q got %q", name, data.exp.Subscript, got.Subscript)
+		}
 	}
 }
 
