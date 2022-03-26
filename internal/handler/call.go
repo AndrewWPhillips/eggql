@@ -196,7 +196,7 @@ func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, v
 // getStruct converts a map (eg a from JSON decoder) to a struct including any nested structs, and slices
 // Parameters
 //  t = type of the struct that we need to fill in from the GraphQL object
-//  name = name of the argument // TODO unnec. so remove
+//  name = name of the argument
 //  m = map key is field names of the object, map value is field values
 func (op *gqlOperation) getStruct(t reflect.Type, name string, m map[string]interface{}) (reflect.Value, error) {
 	if t.Kind() != reflect.Struct {
@@ -240,24 +240,43 @@ func (op *gqlOperation) getStruct(t reflect.Type, name string, m map[string]inte
 //  enumName = name of enum if list is a list of enums
 //  list = slice of element from the GraphQL list
 func (op *gqlOperation) getList(t reflect.Type, name string, enumName string, list []interface{}) (reflect.Value, error) {
-	if t.Kind() != reflect.Slice { // TODO also handle arrays
+	switch t.Kind() {
+	case reflect.Slice:
+		// Create an instance of the slice and fill in the elements from 'list'
+		r := reflect.MakeSlice(t, len(list), len(list))
+		for i, value := range list {
+			goElement := r.Index(i)
+
+			// Get the field value as the type of the element
+			v, err := op.getValue(goElement.Type(), fmt.Sprintf("%s[%d]", name, i), enumName, value)
+			if err != nil {
+				return reflect.Value{}, fmt.Errorf("getting slice value %s[%d]: %w", name, i, err)
+			}
+			goElement.Set(v)
+		}
+		return r, nil
+	case reflect.Array:
+		// Create an instance of the array and fill in it's elements from 'list'
+		pr := reflect.New(t)
+		if len(list) != pr.Elem().Len() {
+			return reflect.Value{}, fmt.Errorf("argument %q expecting list of length %d but got %d", name, pr.Elem().Len(), len(list))
+		}
+		for i, value := range list {
+			goElement := pr.Elem().Index(i)
+
+			// Get the field value as the type of the Go struct's field
+			v, err := op.getValue(goElement.Type(), fmt.Sprintf("%s[%d]", name, i), enumName, value)
+			if err != nil {
+				return reflect.Value{}, fmt.Errorf("getting slice value %s[%d]: %w", name, i, err)
+			}
+			goElement.Set(v)
+		}
+		return pr.Elem(), nil
+	// TODO handle reflect.Map?
+	default:
 		return reflect.Value{}, fmt.Errorf("argument %q is not a list", name)
 	}
 
-	// Create an instance of the struct and fill in the fields that we were given
-	//	r := reflect.New(t).Elem()
-	r := reflect.MakeSlice(t, len(list), len(list))
-	for i, value := range list {
-		goElement := r.Index(i)
-
-		// Get the field value as the type of the Go struct's field
-		v, err := op.getValue(goElement.Type(), fmt.Sprintf("%s[%d]", name, i), enumName, value)
-		if err != nil {
-			return reflect.Value{}, fmt.Errorf("getting slice value %s[%d]: %w", name, i, err)
-		}
-		goElement.Set(v)
-	}
-	return r, nil
 }
 
 // getInt takes an integer and returns the value as the desired Go type (incl. ints, floats, bool, & string types).

@@ -33,6 +33,7 @@ const (
 	default2Schema         = "type Query { f(i: Int! = 87, s: String! = \"ijk\"): String! }"
 	inputParamSchema       = "type Query { inputQuery(param: inputType!): Int! } input inputType { field: String! }"
 	inputParam2FieldSchema = "type Query { q(p: R!): String! } input R{s:String! f:Float!}"
+	listParamSchema        = "type Query { listQuery(list: [Int!]!): Int! }"
 	interfaceSchema        = "type Query { a: D! } interface X { x1: Int! } type D implements X { x1: Int! e: String! }"
 	union1Schema           = "type Query { a: U! } type U1 { v: Int! } union U = U1"
 	union2Schema           = "type Query { b: U! } type U1 { v: Int! } type U2 { v: Int! w: String!} union U = U1|U2"
@@ -117,6 +118,13 @@ var (
 	inputParam2FieldData = struct {
 		Q func(inputParam2FieldType) string `graphql:",args(p)"`
 	}{func(parm inputParam2FieldType) string { return parm.S + strconv.FormatFloat(parm.F, 'g', 10, 64) }}
+	sliceParamData = struct {
+		ListQuery func([]int) int `graphql:",args(list)"`
+	}{func(list []int) int { return len(list) }}
+	arrayParamData = struct {
+		ListQuery func([3]int) int `graphql:",args(list)"`
+	}{func(list [3]int) int { return len(list) }}
+
 	interfaceData  = struct{ A D }{D{X{4}, "fff"}}
 	interfaceFunc  = struct{ A func() D }{func() D { return D{X{5}, "ggg"} }}
 	inlineFragFunc = struct{ A func() interface{} }{func() interface{} { return D{X{1}, "e in D"} }}
@@ -201,6 +209,10 @@ var happyData = map[string]struct {
 		JsonObject{"inputQuery": 55.0}},
 	"InputParam2": {inputParam2FieldSchema, inputParam2FieldData, `{ q(p: {s: \"a\", f: 1.25}) }`, "",
 		JsonObject{"q": "a1.25"}},
+	"SliceParam": {listParamSchema, sliceParamData, `{ listQuery(list: [1, 2, 3]) }`, "",
+		JsonObject{"listQuery": 3.0}},
+	"ArrayParam": {listParamSchema, arrayParamData, `{ listQuery(list: [1, 2, 3]) }`, "",
+		JsonObject{"listQuery": 3.0}},
 
 	// Resolvers with variable arguments
 	"VarInt": {paramSchema, paramData, `query Test($value: Int!) {dbl(v: $value)}`, `{"value": -2}`,
