@@ -35,19 +35,37 @@ type (
 	}
 )
 
-var unitEnum = map[string][]string{"Unit": {"FOOT", "METER"}}
+var (
+	unitEnum = map[string][]string{"Unit": {"FOOT", "METER"}}
+	multiple = map[string][]string{
+		"A": {"A0", "A1", "A2"},
+		"B": {"B0"},
+	}
+	descEnums = map[string][]string{
+		"A#a": {"A0#a0", "A1", "A2#a2"},
+		"B":   {"B0# A description "},
+		"C":   {"C"},
+	}
+)
 
 var enumData = map[string]struct {
 	data     interface{}
 	enums    map[string][]string
 	expected string
 }{
+	// Just testing the GraphQL enum declaration
+	"single":   {data: struct{}{}, enums: unitEnum, expected: "schema{query:Query} type Query{} enum Unit{FOOT METER}"},
+	"multiple": {data: struct{}{}, enums: multiple, expected: "schema{query:Query} type Query{} enum A{A0 A1 A2} enum B{B0}"},
+
+	// Tests of returning an enum
 	"Unit": {data: QueryUnit{}, enums: unitEnum,
 		expected: "schema{ query:QueryUnit } type QueryUnit{ e: Unit! } enum Unit { FOOT METER }"},
 	"List": {data: QueryListE{}, enums: unitEnum,
 		expected: "schema{ query:QueryListE } type QueryListE{ e: [Unit]! } enum Unit { FOOT METER }"},
 	"Named": {data: QueryNamed{}, enums: unitEnum,
 		expected: "schema{ query:QueryNamed } type QueryNamed{ name: Unit! } enum Unit { FOOT METER }"},
+
+	// Tests of enums as resolver args
 	"Param": {data: QueryParam{}, enums: unitEnum,
 		expected: "schema{ query:QueryParam } type QueryParam{ f(u:Unit!): String! } enum Unit { FOOT METER }"},
 	"ListParam": {data: QueryListParam{}, enums: unitEnum,
@@ -58,6 +76,10 @@ var enumData = map[string]struct {
 		expected: "schema{ query:QueryListDefault } type QueryListDefault{ f(u:[Unit]!=[METER, FOOT, FOOT]): String! } enum Unit { FOOT METER }"},
 	"DefaultEmpty": {data: QueryDefaultEmpty{}, enums: unitEnum,
 		expected: "schema{ query:QueryDefaultEmpty } type QueryDefaultEmpty{ f(u:[Unit]!=[]): String! } enum Unit { FOOT METER }"},
+
+	// Tests of enum descriptions
+	"desc": {data: struct{}{}, enums: descEnums,
+		expected: `schema{query:Query} type Query{} "a" enum A{"a0"A0 A1 "a2"A2} enum B{" A description "B0} enum C{C}`},
 }
 
 func TestEnumSchema(t *testing.T) {
