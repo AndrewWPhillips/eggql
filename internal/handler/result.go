@@ -276,6 +276,16 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 			return &gqlValue{name: astField.Alias, value: result}
 		}
 
+	case reflect.Map:
+		// resolve for all values in the map
+		results := make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
+		for it := v.MapRange(); it.Next(); {
+			if value := op.resolve(ctx, astField, it.Value(), fieldInfo); value != nil {
+				results = append(results, value.value)
+			}
+		}
+		return &gqlValue{name: astField.Alias, value: results}
+
 	case reflect.Slice, reflect.Array:
 		// resolve for all values in the list
 		var results []interface{}
@@ -285,16 +295,6 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 				if value := op.resolve(ctx, astField, v.Index(i), fieldInfo); value != nil {
 					results = append(results, value.value)
 				}
-			}
-		}
-		return &gqlValue{name: astField.Alias, value: results}
-
-	case reflect.Map:
-		// resolve for all values in the map
-		results := make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
-		for it := v.MapRange(); it.Next(); {
-			if value := op.resolve(ctx, astField, it.Value(), fieldInfo); value != nil {
-				results = append(results, value.value)
 			}
 		}
 		return &gqlValue{name: astField.Alias, value: results}

@@ -2,17 +2,17 @@
 
 This tutorial will show you how to implement a GraphQL service using Go and **eggql**.  It goes hand-in-hand with the official **Star Wars** GraphQL tutorial at https://graphql.org/learn/ which shows how a client might query this service.  It shows how to implement every feature of GraphQL except for subscriptions.  (Subscriptions are also not covered in the official **Star Wars** tutorial.)
 
-Since we're implementing the backend (GraphQL service) I'll focus on that, not on using it.  So it's just Go code with a few test queries.  We **won't** look at aliases, fragments, inline fragments, variables, directives, schemas and introspection, but rest assured that all these things work.  But you can try any of the queries of the official **Star Wars** tutorial.
+Since we're implementing the backend (GraphQL service) I'll focus on that, not on using it.  So it's just Go code with a few test queries.  We **won't** look at aliases, fragments, inline fragments, variables, directives, schemas and introspection, but rest assured that these all are all handled for you by **eggql**.  You can try any of the queries of the official **Star Wars** tutorial.
 
-Note: the final code for the tutorial is in the git repo (https://github.com/AndrewWPhillips/eggql/tree/main/example/starwars).  It's less than 250 lines of code (and most of that is just data field initialization since all the data is stored in memory).  This is much smaller (and I think much simpler) than the same Star Wars example written for other Go packages and even in other languages (though most of these have a database and other complications).  It's also running *right now* in GCP (Google Cloud Platform), so you can try any of the queries below in Postman (or Curl etc) using the address https://aphillips801-eggql-sw.uc.r.appspot.com/graphql.
+Note: the final code for this tutorial is in the git repo (https://github.com/AndrewWPhillips/eggql/tree/main/example/starwars).  It's less than 250 lines of code (and most of that is just data field initialization since all the data is stored in memory).  This is much smaller (and I think much simpler) than the same Star Wars example written for other Go packages and even in other languages (though most of these have a database and other complications).  It's also running *right now* in GCP (Google Cloud Platform), so you can try any Star Wars queries in Postman (or Curl etc) using the address https://aphillips801-eggql-sw.uc.r.appspot.com/graphql.
 
 ### Basic Types
 
 GraphQL is all about types - scalar types (int, string, etc), object types which are composed of fields of other types (a bit like Go structs), lists (a bit like a Go slices) and more specialized types like interfaces and input types (which we will get to later).
 
-Traditionally when building a GraphQL service, you first create a schema which defines your types, but with **eggql** you just use Go structs and the schema is created for you.  (You can view the schema as mentioned in the README.)  The first thing you need is a root query which is just an object type, but in this case its fields define the queries that can be submitted to the GraphQL server.
+Traditionally when building a GraphQL service, you first create a schema which defines your types, but with **eggql** you just use Go structs; *the schema is created for you*.  (To view the you schema see [Viewing the Schema](https://github.com/AndrewWPhillips/eggql#viewing-errors-and-the-schema) in the README.)  The first thing you need is a root query which is just a GraphQL object type, but in this case its fields define the queries that can be submitted to the GraphQL server.
 
-First, we'll look at basic types (scalars, lists and nested objects).  Then we'll look at how to implement query arguments (including defaults and input types), enums, interfaces, mutations, etc.  We'll also look at the sorts of errors you can get and how to handle them.
+First we'll add queries returning basic types (scalars, lists and nested objects).  Then we'll look at how to implement query arguments (including defaults and input types), enums, interfaces, mutations, etc.  We'll also look at the sorts of errors you can get and how to handle them.
 
 Here's a Go program that will handle the first (`hero`) query of the GraphQL Star Wars tutorial (see https://graphql.org/learn/queries/).
 
@@ -763,7 +763,7 @@ You will get Luke's height in feet instead of meters:
 
 ### Unions
 
-Unions in GraphQL are like **interfaces**, but without any common fields.  In fact you can implement the functionality of a union by using an empty interface, except that GraphQL does not allow empty interfaces.  A common use of unions is a query the returns objects of different types without the requirement (as with interfaces) of a common field/
+Unions in GraphQL are like **interfaces**, but without any common fields.  In fact you can implement the functionality of a union by using an empty interface, except that GraphQL does not allow empty interfaces.  A common use of unions is a query that returns objects of different types without the requirement (as with interfaces) of a common field.
 
 In **eggql** you signify a union in the same way as an interface - by embedding a struct in another object (struct).  But for a union the embedded `struct` must be empty.
 

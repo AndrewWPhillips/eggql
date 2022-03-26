@@ -25,8 +25,8 @@ type Info struct {
 
 	// The following are for function resolvers only
 	Params     []string // name(s) of args to resolver function obtained from metadata
-	Defaults   []string // corresp. default value(s) (as strings) where an empty string means there is no default
 	Enums      []string // corresp. enum name if the parameter is of an enum type
+	Defaults   []string // corresp. default value(s) (as strings) where an empty string means there is no default
 	HasContext bool     // 1st function parameter is a context.Context (not a query argument)
 	HasError   bool     // has 2 return values the 2nd of which is a Go error
 
@@ -207,8 +207,8 @@ func GetTagInfo(tag string) (*Info, error) {
 			return nil, fmt.Errorf("%w getting args in %q", err, tag)
 		} else if list != nil {
 			fieldInfo.Params = make([]string, len(list))
-			fieldInfo.Defaults = make([]string, len(list))
 			fieldInfo.Enums = make([]string, len(list))
+			fieldInfo.Defaults = make([]string, len(list))
 			for paramIndex, s := range list {
 				// Strip of default value (if any) after equals sign (=)
 				subParts := strings.Split(s, "=")

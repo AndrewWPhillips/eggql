@@ -19,10 +19,11 @@ var albums = map[string]Album{
 }
 
 type Query struct {
-	Album map[string]Album `graphql:",subscript"`
+	Albums map[string]Album // query list of all albums
+	Album  map[string]Album `graphql:",subscript"` // query one album using arg "id"
 }
 
 func main() {
-	http.Handle("/graphql", eggql.MustRun(Query{Album: albums}))
+	http.Handle("/graphql", eggql.MustRun(Query{Albums: albums, Album: albums}))
 	http.ListenAndServe(":8080", nil)
 }
