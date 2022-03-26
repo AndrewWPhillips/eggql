@@ -28,11 +28,11 @@ const (
 	closeString      = "}\n"
 	implementsString = " implements"
 
-	gqlObjectType    = "type"
-	gqlInputType     = "input"
-	gqlEnumType      = "enum"
-	gqlInterfaceKeyword = "interface"
-	gqlUnionKeyword     = "union"
+	gqlObjectTypeKeyword = "type"
+	gqlInputKeyword      = "input"
+	gqlEnumKeyword       = "enum"
+	gqlInterfaceKeyword  = "interface"
+	gqlUnionKeyword      = "union"
 )
 
 // MustBuild is the same as Build but panics on error
@@ -98,7 +98,7 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 			typeName = entryPointName // use default name for anon struct
 		}
 		// TODO omit "schema definition" if we're using Default Root Operation Type Names
-		if err := schemaTypes.add(typeName, t, enums, gqlObjectType); err != nil {
+		if err := schemaTypes.add(typeName, t, enums, gqlObjectTypeKeyword); err != nil {
 			return "", fmt.Errorf("%w adding %q building schema for %s", err, typeName, entryPointName)
 		}
 
@@ -126,10 +126,13 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 	names = make([]string, 0, len(schemaTypes.unions))
 	objectsLength = 0
 	for unionName, unionValues := range schemaTypes.unions {
-		objectsLength += len(gqlUnionKeyword) + 1 + len(unionName) // union <name>
 		names = append(names, unionName)
-		for _, v := range unionValues {
-			objectsLength += 3 + len(v)
+		objectsLength += len(gqlUnionKeyword) + 1 + len(unionName) // union <name>
+		if unionValues.desc != "" {
+			objectsLength += 7 + len(unionValues.desc) // six quotes + newline
+		}
+		for _, v := range unionValues.objects {
+			objectsLength += 3 + len(v) // enum value + 2 spaces and either '=' or '|'
 		}
 		objectsLength += 1 // eoln
 	}
@@ -137,11 +140,18 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 
 	sort.Strings(names)
 	for _, unionName := range names {
+		if schemaTypes.unions[unionName].desc != "" {
+			builder.WriteString(`"""`)
+			builder.WriteString(schemaTypes.unions[unionName].desc)
+			builder.WriteString(`"""`)
+			builder.WriteRune('\n')
+
+		}
 		builder.WriteString(gqlUnionKeyword)
 		builder.WriteRune(' ')
 		builder.WriteString(unionName)
 		sep := " = "
-		for _, v := range schemaTypes.unions[unionName] {
+		for _, v := range schemaTypes.unions[unionName].objects {
 			builder.WriteString(sep)
 			builder.WriteString(v)
 			sep = " | "
@@ -156,12 +166,12 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 		names = append(names, enumName)
 		objectsLength += 12 + len(enumName)
 		if strings.Contains(enumName, "#") {
-			objectsLength += 3
+			objectsLength += 3 // 2 quote characters + a newline (we've already including the length of desc string above)
 		}
 		for _, v := range enumValues {
 			objectsLength += 2 + len(v)
 			if strings.Contains(v, "#") {
-				objectsLength += 4
+				objectsLength += 4 // space, 2 quotes, newline (we've already added desc string length)
 			}
 		}
 	}
@@ -177,7 +187,7 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 			builder.WriteString(parts[1])
 			builder.WriteString("\"\n")
 		}
-		builder.WriteString(gqlEnumType)
+		builder.WriteString(gqlEnumKeyword)
 		builder.WriteRune(' ')
 		builder.WriteString(parts[0])
 		builder.WriteString(openString)

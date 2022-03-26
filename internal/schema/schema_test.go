@@ -2,6 +2,7 @@ package schema_test
 
 import (
 	"context"
+	"github.com/andrewwphillips/eggql"
 	"github.com/andrewwphillips/eggql/internal/schema"
 	"strconv"
 	"strings"
@@ -71,7 +72,7 @@ type (
 		P *QueryRecurse // recursive data structure: P is (ptr to) type of enclosed struct
 	}
 
-	IInt struct{ I int }
+	IInt struct{ I int } // embed for interface
 	M1   struct {
 		IInt
 		S string
@@ -107,12 +108,13 @@ type (
 		PrimaryFunction string
 	}
 	Character struct {
+		_       eggql.TagField `# star wars character`
 		Name    string
 		Friends []*Character
 	}
 	QueryInterface2 struct {
-		Hero Character
 		_    *Person // this is the only way for the schema builder to know about the Person type
+		Hero Character
 	}
 	QuerySubscriptSlice struct {
 		Slice []string `graphql:",subscript"`
@@ -141,6 +143,35 @@ type (
 		_ U1
 		_ U2
 		S []interface{} `graphql:":[U]"`
+	}
+	QueryDescOnly struct {
+		_ eggql.TagField `graphql:"# no fields"`
+	}
+	QueryDescObject struct {
+		Nested struct {
+			_ eggql.TagField `graphql:"# nested object"`
+			I int
+		}
+	}
+	IDesc struct {
+		_ eggql.TagField `graphql:"# interface"` // How we attach a description to an interface type
+		I int
+	}
+	QueryDescInterface struct {
+		IDesc
+	}
+	UDesc struct {
+		_ eggql.TagField `graphql:"# a union"` // How we attach a description to a union
+	}
+	UDesc1 struct {
+		UDesc
+	}
+	UDesc2 struct {
+		UDesc
+	}
+	QueryDescUnion struct {
+		A UDesc1
+		B UDesc2
 	}
 )
 
@@ -202,6 +233,14 @@ var testData = map[string]struct {
 		"schema{query:QueryUnion} type QueryUnion{a:U1! b:U2!} type U1{v:Int!} type U2{w:String!} union U = U1 | U2"},
 	"Union2": {QueryUnion2{},
 		"schema{query:QueryUnion2} type QueryUnion2{s:[U]} type U1{v:Int!} type U2{w:String!} union U = U1 | U2"},
+	"Desc0": {QueryDescOnly{}, `schema{query:QueryDescOnly} """ no fields""" type QueryDescOnly{}`},
+	"DescObject": {QueryDescObject{},
+		`schema{query:QueryDescObject} """ nested object""" type Nested{i:Int!} type QueryDescObject{nested:Nested!}`},
+	"DescInterface": {QueryDescInterface{},
+		`schema{query:QueryDescInterface} """ interface""" interface IDesc {i:Int!} type QueryDescInterface implements IDesc {i:Int!} `},
+	"DescUnion": {QueryDescUnion{},
+		//		`schema{query:QueryDescUnion} type QueryDescUnion {} """ a union""" union UDesc=QueryDescUnion`},
+		`schema{query:QueryDescUnion}type QueryDescUnion{a:UDesc1! b:UDesc2!} type UDesc1{} type UDesc2{} """a union""" union UDesc=UDesc1|UDesc2`},
 }
 
 func TestBuildSchema(t *testing.T) {

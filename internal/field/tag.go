@@ -10,12 +10,15 @@ import (
 
 // SplitNested splits a string (similarly to strings.Split) but on commas and skipping "nested structures" - ie anything
 // inside round brackets, square brackets or braces. For example "a,b(c,d),e"  => []string{ "a", "b(c,d)", "e" }
+// The first encountered hash (#) (outside of brackets) designates that the rest of the string is a description (2nd return value)
 // If there is a problem with the input string such as unmatched brackets then it returns an error.
-func SplitNested(s string) ([]string, error) {
+func SplitNested(s string) ([]string, string, error) {
 	// First count the number of commas that aren't within brackets
 	var count, round, square, brace int
 	var inString bool
-	for _, c := range s {
+	hash := -1
+loop:
+	for i, c := range s {
 		if inString {
 			if c == '"' {
 				inString = false
@@ -34,35 +37,46 @@ func SplitNested(s string) ([]string, error) {
 		case ')':
 			round--
 			if round < 0 {
-				return nil, fmt.Errorf("unmatched right bracket ')` in %q", s)
+				return nil, "", fmt.Errorf("unmatched right bracket ')` in %q", s)
 			}
 		case ']':
 			square--
 			if square < 0 {
-				return nil, fmt.Errorf("unmatched right square bracket ']' in %q", s)
+				return nil, "", fmt.Errorf("unmatched right square bracket ']' in %q", s)
 			}
 		case '}':
 			brace--
 			if brace < 0 {
-				return nil, fmt.Errorf("unmatched right brace '}' in %q", s)
+				return nil, "", fmt.Errorf("unmatched right brace '}' in %q", s)
 			}
 		case ',':
 			if round == 0 && square == 0 && brace == 0 { // only count "top-level" commas
 				count++
 			}
+		case '#':
+			if hash == -1 && round == 0 && square == 0 && brace == 0 { // ignore # in brackets
+				hash = i
+				break loop
+			}
 		}
 	}
 	if inString {
-		return nil, fmt.Errorf("unmatched quote (unterminated string) in %q", s)
+		return nil, "", fmt.Errorf("unmatched quote (unterminated string) in %q", s)
 	}
 	if round > 0 {
-		return nil, fmt.Errorf("unmatched left bracket '(' in %q", s)
+		return nil, "", fmt.Errorf("unmatched left bracket '(' in %q", s)
 	}
 	if square > 0 {
-		return nil, fmt.Errorf("unmatched left square bracket '[' in %q", s)
+		return nil, "", fmt.Errorf("unmatched left square bracket '[' in %q", s)
 	}
 	if brace > 0 {
-		return nil, fmt.Errorf("unmatched left brace '{' in %q", s)
+		return nil, "", fmt.Errorf("unmatched left brace '{' in %q", s)
+	}
+
+	desc := ""
+	if hash > -1 {
+		desc = s[hash+1:]
+		s = s[:hash]
 	}
 
 	retval := make([]string, 0, count+1)
@@ -101,7 +115,7 @@ func SplitNested(s string) ([]string, error) {
 			}
 		}
 		if end == -1 {
-			return nil, fmt.Errorf("comma not found in %q", s)
+			return nil, "", fmt.Errorf("comma not found in %q", s)
 		}
 		retval = append(retval, strings.Trim(s[:end], " "))
 		s = s[end+1:]
@@ -109,7 +123,7 @@ func SplitNested(s string) ([]string, error) {
 	// Add last (or only) segment
 	retval = append(retval, strings.Trim(s, " "))
 
-	return retval, nil
+	return retval, desc, nil
 }
 
 // getBracketedList gets a list of values from a string enclosed in brackets and preceded by a keyword
@@ -134,7 +148,7 @@ func getBracketedList(s, keyword string) ([]string, error) {
 		// Avoid behaviour of strings.Split on boundary condition (empty string)
 		return []string{}, nil // empty parameter list
 	}
-	retval, err := SplitNested(s)
+	retval, _, err := SplitNested(s)
 	if err != nil {
 		return nil, err
 	}
