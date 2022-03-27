@@ -124,12 +124,15 @@ func (s schema) build(rawEnums map[string][]string, entry [3]string) (string, er
 
 	// Now write all the schema types. NOTE: where values are stored in maps (objects, unions and
 	// enums) we get a slice of the keys and sort them so that we can write them in the same order
-	// each time.  This ensures consistent schema text for checking test results.
+	// each time.  This is nec. to ensure consistent schema text for checking automated test results.
 
 	// *** Objects - work out space needed for the objects and get a list of names to sort
 	names := make([]string, 0, len(s.declaration))
 	objectsLength := 0
 	for k, obj := range s.declaration {
+		if s.description[k] != "" {
+			objectsLength += 7 + len(s.description[k])
+		}
 		objectsLength += len(obj) + 1
 		names = append(names, k)
 	}
@@ -137,6 +140,12 @@ func (s schema) build(rawEnums map[string][]string, entry [3]string) (string, er
 
 	sort.Strings(names)
 	for _, name := range names { // append each "type" to the schema
+		if s.description[name] != "" {
+			builder.WriteString(`"""`)
+			builder.WriteString(s.description[name])
+			builder.WriteString(`"""`)
+			builder.WriteRune('\n')
+		}
 		builder.WriteString(s.declaration[name])
 	}
 
