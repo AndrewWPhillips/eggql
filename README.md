@@ -217,11 +217,13 @@ Note that there are further ways to increase the robustness of your service, suc
 
 There are 5 excellent mature GraphQL packages for Go which may suit you better.
 
-* [graphql](https://github.com/graphql-go/graphql) by "graphql-go" (not to be confused with the project "graphql-go" below)
-* [graphql-go](https://github.com/graph-gophers/graphql-go) by graph-gophers
-* [gqlgen](https://github.com/99designs/gqlgen)  by 99 Designs
-* [thunder](https://github.com/samsarahq/thunder) by Samsara Networks
-* [jaal](https://github.com/appointy/jaal) - a branch of thunder I believe
+|                          Project                          | Developer(s)                                                        |
+|:---------------------------------------------------------:|:--------------------------------------------------------------------|
+|     [graphql](https://github.com/graphql-go/graphql)      | graphql-go (not to be confused with the project "graphql-go" below) |
+| [graphql-go](https://github.com/graph-gophers/graphql-go) | graph-gophers                                                    |
+|       [gqlgen](https://github.com/99designs/gqlgen)       | 99 Designs                                                       |
+|      [thunder](https://github.com/samsarahq/thunder)      | Samsara Networks                                                 |
+|         [jaal](https://github.com/appointy/jaal)          | a branch of thunder I believe                                       |
 
 I particularly like **gqlgen** of **99 Designs** as it uses "go generate" to avoid the inefficiencies of reflection and the lack of type safety that is inevitable when using `interface{}` for polymorphism.  **thunder** is similar to **eggql** (using reflection etc) but implements resolvers using Go interfaces rather than closures.
 
