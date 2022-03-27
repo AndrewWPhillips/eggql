@@ -217,15 +217,19 @@ Note that there are further ways to increase the robustness of your service, suc
 
 There are 5 excellent mature GraphQL packages for Go which may suit you better.
 
-* [graphql](https://github.com/graphql-go/graphql) by "graphql-go" (not to be confused with the project "graphql-go" below)
-* [graphql-go](https://github.com/graph-gophers/graphql-go) by graph-gophers
-* [gqlgen](https://github.com/99designs/gqlgen)  by 99 Designs
-* [thunder](https://github.com/samsarahq/thunder) by Samsara Networks
-* [jaal](https://github.com/appointy/jaal) - a branch of thunder I believe
+|                          Project                          | Developer(s)                                                        |
+|:---------------------------------------------------------:|:--------------------------------------------------------------------|
+|     [graphql](https://github.com/graphql-go/graphql)      | graphql-go (not to be confused with the project "graphql-go" below) |
+| [graphql-go](https://github.com/graph-gophers/graphql-go) | graph-gophers                                                       |
+|       [gqlgen](https://github.com/99designs/gqlgen)       | 99 Designs                                                          |
+|      [thunder](https://github.com/samsarahq/thunder)      | Samsara Networks                                                    |
+|         [jaal](https://github.com/appointy/jaal)          | Appointy (a branch of thunder I believe)                            |
 
-I particularly like **gqlgen** of **99 Designs** as it uses "go generate" to avoid the inefficiencies of reflection and the lack of type safety that is inevitable when using `interface{}` for polymorphism.  **thunder** is similar to **eggql** (using reflection etc) but implements resolvers using Go interfaces rather than closures.
+I particularly like **gqlgen** of **99 Designs** as it uses "go generate" to avoid the inefficiencies of reflection and the lack of type safety that is inevitable when using `interface{}` for polymorphism.
 
-The "pros" for **eggql** are, I believe, that it is simple to use (though I may be biased due to my familiarity with it :) and complete (except for subscriptions), and allows you to write robust GraphQL services due to support for `context.Context` parameters and `error` return values, handling panics, etc.  It also has special capabilities for working with in-memory slices and maps.  I have also found it surprisingly performant.
+I recently discovered **thunder** which is based on the same premise **eggql** (using reflection etc, but implementing resolvers using Go interfaces rather than closures).  I wish I had found it earlier as I may have just used/modified it instead of writing my own package.
+
+The "pros" for **eggql** are, I believe, that it is simple to use (though I may be biased due to my familiarity with it :) and complete (except for subscriptions), and allows you to write robust GraphQL services due to support for `context.Context` parameters and `error` return values, handling panics, etc.  It also has special capabilities for working with in-memory slices and maps.  It's pretty fast, so may be fast enough for your needs, but there are areas where it can be improved.
 
 The "cons" for **eggql** are that it *may not* be as performant as other packages such as **gqlgen** as it uses reflection and does not have performance options such as caching and data-loader (database).  Also resolver lookups use slices and linear searches - this could be improved by using a map.  Common extensions like a **Date** type and custom directives are not (yet) supported.
 
