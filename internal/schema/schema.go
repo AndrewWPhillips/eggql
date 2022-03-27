@@ -25,7 +25,7 @@ const (
 
 const (
 	openString       = " {\n"
-	closeString      = "}\n"
+	closeString      = "}\n\n"
 	implementsString = " implements"
 
 	gqlObjectTypeKeyword = "type"
@@ -57,7 +57,7 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 		return "", err
 	}
 
-	var entry [3]string
+	var entry [3]string             // the names of the 3 root entry points
 	schemaTypes := newSchemaTypes() // all generated GraphQL types
 
 	for i, v := range qms {
@@ -74,8 +74,7 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 		}
 		entry[i], _ = getTypeName(t) // no need to check the error as we know it's a struct
 
-		if entry[i] == "" {
-			// This switch means that query/mutation/subscription must be supplied in that order
+		if entry[i] == "" { // if given an unnamed struct we use the default name
 			switch EntryPoint(i) {
 			case Query:
 				entry[i] = "Query"
@@ -183,7 +182,7 @@ func (s schema) build(rawEnums map[string][]string, entry [3]string) (string, er
 			builder.WriteString(v)
 			sep = " | "
 		}
-		builder.WriteRune('\n')
+		builder.WriteString("\n\n")
 	}
 
 	// *** Enums - calc. space for enum strings (to grow the string builder) and make list of enums to sort
