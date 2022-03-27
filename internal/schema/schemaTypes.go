@@ -14,19 +14,27 @@ import (
 	"unicode/utf8"
 )
 
-// schema stores all the types of the schema accumulated so far
-type schema struct {
-	declaration map[string]string       // store the text declaration of all types generated
-	usedAs      map[reflect.Type]string // tracks which types (structs) we have seen (mainly to handle recursive data structures)
-	unions      map[string][]string     // key is union name, value are types involved in the union
-}
+type (
+	// schema stores all the types of the schema accumulated so far
+	schema struct {
+		declaration map[string]string       // store the text declaration of all types generated
+		usedAs      map[reflect.Type]string // tracks which types (structs) we have seen (mainly to handle recursive data structures)
+		unions      map[string]union        // key is union name
+	}
+
+	// union contains details used to generate one GraphQL union
+	union struct {
+		desc    string
+		objects []string // names of all GraphQL object types involved in the union
+	}
+)
 
 // newSchemaTypes initialises an instance of the schemaTypes (by making the maps)
 func newSchemaTypes() schema {
 	return schema{
 		declaration: make(map[string]string),
 		usedAs:      make(map[reflect.Type]string),
-		unions:      make(map[string][]string),
+		unions:      make(map[string]union),
 	}
 }
 
@@ -73,13 +81,13 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 
 	// Check if we have already seen this struct
 	if previousType, ok := s.usedAs[t]; ok {
-		if previousType == gqlObjectType && gqlType == gqlInterfaceKeyword {
+		if previousType == gqlObjectTypeKeyword && gqlType == gqlInterfaceKeyword {
 			// switch type of declaration from "type" to "interface"
 			s.usedAs[t] = gqlInterfaceKeyword
 			if decl, ok := s.declaration[name]; ok {
-				s.declaration[name] = gqlInterfaceKeyword + strings.TrimPrefix(decl, gqlObjectType)
+				s.declaration[name] = gqlInterfaceKeyword + strings.TrimPrefix(decl, gqlObjectTypeKeyword)
 			}
-		} else if previousType == gqlInterfaceKeyword && gqlType == gqlObjectType {
+		} else if previousType == gqlInterfaceKeyword && gqlType == gqlObjectTypeKeyword {
 			// nothing required here
 		} else if previousType != gqlType {
 			return fmt.Errorf("can't use %q for different GraphQL types (%s and %s)", name, previousType, gqlType)
@@ -89,30 +97,38 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 	s.usedAs[t] = gqlType
 
 	// Get all the resolvers from the exported struct fields
-	resolvers, interfaces, err := s.getResolvers(name, t, enums, gqlType)
+	resolvers, interfaces, desc, err := s.getResolvers(name, t, enums, gqlType)
 	if err != nil {
 		return fmt.Errorf("%w getting resolvers for %q", err, name)
 	}
 
 	// Work out how much string space we need for the resolvers etc.
-	// AND get a sorted list of resolver keys so resolvers are always written in the same order
 	required := len(gqlType) + 1 + len(name) + len(openString) + len(closeString)
+	if desc != "" {
+		required += 7 + len(desc)
+	}
 	if len(interfaces) > 0 {
 		required += len(implementsString) + (len(interfaces)-1)*2 // keyword + separator ( &)
 		for _, iface := range interfaces {
 			required += 1 + len(iface) // name of interface + 1 space
 		}
 	}
+	// Get space for resolvers AND get a sorted list of resolver keys so resolvers are always written in the same order
 	keys := make([]string, 0, len(resolvers))
 	for k, v := range resolvers {
 		keys = append(keys, k)
-		required += 3 + len(k) + len(v)
+		required += len(v)
 	}
 	sort.Strings(keys)
 
 	builder := &strings.Builder{}
 	builder.Grow(required)
 
+	if desc != "" {
+		builder.WriteString("\"\"\"")
+		builder.WriteString(desc)
+		builder.WriteString("\"\"\"\n")
+	}
 	builder.WriteString(gqlType)
 	builder.WriteRune(' ')
 	builder.WriteString(name)
@@ -130,9 +146,6 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 	// Add resolvers in order of (sorted) keys
 	builder.WriteString(openString)
 	for _, k := range keys {
-		builder.WriteString("  ")
-		builder.WriteString(k)
-		builder.WriteRune(' ')
 		builder.WriteString(resolvers[k])
 	}
 	builder.WriteString(closeString)
@@ -163,17 +176,24 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 // Returns:
 //  map of resolvers: key is the resolver name; value is the rest of the GraphQL resolver declaration
 //  names of GraphQL interface(s) that the type implements (using Go embedded structs)
+//  text to be added (to the GraphQL schema) as a "description" of the type
 //  error: non-nil if something went wrong
-func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string][]string, gqlType string) (r map[string]string, iface []string, err error) {
+func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string][]string, gqlType string) (r map[string]string, iface []string, desc string, err error) {
 	r = make(map[string]string)
 
 	// First get type info from all dummy fields - those with blank ID (_) as their name
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		if f.Name == "_" {
-			// A struct with name "_" is just included for its type (for implementing GraphQL interfaces)
-			if err = s.add("", f.Type, enums, gqlObjectType); err != nil {
-				return
+			if f.Type.Name() == "TagField" { // name must match the type declared in run.go
+				// this field (zero size) is just included to allow us to get the description from the field tag
+				fieldInfo, _ := field.Get(&f) // TODO handle error
+				desc = fieldInfo.Description
+			} else {
+				// This field is just included for its type so that eggql know about it (currently just used for implementing GraphQL interfaces)
+				if err = s.add("", f.Type, enums, gqlObjectTypeKeyword); err != nil {
+					return
+				}
 			}
 		}
 	}
@@ -184,7 +204,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			err = fmt.Errorf("%w getting field %q", err2, f.Name)
 			return
 		}
-		if fieldInfo == nil {
+		if f.Name == "_" || fieldInfo == nil {
 			continue // ignore unexported field
 		}
 		if fieldInfo.Name != "" && !validGraphQLName(fieldInfo.Name) {
@@ -199,8 +219,19 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			}
 		}
 		if fieldInfo.Embedded && fieldInfo.Empty {
-			// Add parent type to "union"
-			s.unions[f.Name] = append(s.unions[f.Name], parentType)
+			// Add parent type to union f.Name
+			u := s.unions[f.Name]
+			u.objects = append(u.objects, parentType)
+			// Check for any "description" tag field in the union
+			for j := 0; j < f.Type.NumField(); j++ {
+				f2 := f.Type.Field(j)
+				fieldInfo2, err2 := field.Get(&f2)
+				if u.desc != "" && u.desc != fieldInfo2.Description || err2 != nil {
+					return nil, nil, "", errors.New("Error in union description for " + f2.Name)
+				}
+				u.desc = fieldInfo2.Description
+			}
+			s.unions[f.Name] = u
 			continue // embedding empty struct just signals a "union" so don't add a resolver for this
 		} else if fieldInfo.Embedded {
 			// Add struct to our collection as an "interface"
@@ -210,11 +241,11 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			}
 
 			// Get the resolvers from the embedded struct (GraphQL "interface")
-			resolvers, interfaces, err2 := s.getResolvers(parentType, f.Type, enums, gqlType)
+			resolvers, interfaces, _, err2 := s.getResolvers(parentType, f.Type, enums, gqlType)
 			if err2 != nil {
-				// We can't get here - getResolvers for this struct has already been called w/o error in above s.add() method call
+				// We should't ever get to here - getResolvers for this struct has already been called w/o error in above s.add() method call
 				//err = fmt.Errorf("%w adding embedded resolvers for %q", err2, f.Name); return
-				return nil, nil, err2
+				return nil, nil, "", err2
 			}
 			for k, v := range resolvers {
 				if _, ok := r[k]; ok {
@@ -241,6 +272,11 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 				err = fmt.Errorf("resolver type (%s) of field %q not recognized: %w %s", fieldInfo.GQLTypeName, fieldInfo.Name, err2, help)
 				return
 			}
+		}
+
+		var resolverDesc string
+		if fieldInfo.Description != "" {
+			resolverDesc = "  \"\"\"" + fieldInfo.Description + "\"\"\"\n"
 		}
 
 		var params string
@@ -285,12 +321,12 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			err = fmt.Errorf("two fields with the same name %q", fieldInfo.Name)
 			return
 		}
-		r[fieldInfo.Name] = params + ":" + typeName + endStr
+		r[fieldInfo.Name] = resolverDesc + "  " + fieldInfo.Name + " " + params + ":" + typeName + endStr
 
 		// Also add nested struct types (if any) to our collection
 		nestedType := gqlType
 		if nestedType == gqlInterfaceKeyword {
-			nestedType = gqlObjectType // a field inside an embedded struct is not itself treated as an interface
+			nestedType = gqlObjectTypeKeyword // a field inside an embedded struct is not itself treated as an interface
 		}
 		if err = s.add(typeName, effectiveType, enums, nestedType); err != nil {
 			return
@@ -458,7 +494,7 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 			builder.WriteString(value)
 		}
 		// If it's a struct we also need to add the "input" type to our collection
-		if err := s.add(typeName, param, enums, gqlInputType); err != nil {
+		if err := s.add(typeName, param, enums, gqlInputKeyword); err != nil {
 			return "", fmt.Errorf("%w adding INPUT type %q", err, typeName)
 		}
 

@@ -37,6 +37,8 @@ type Info struct {
 	// Subscript holds the result of the "subscript" option (for a slice/array/map)
 	Subscript     string       // name resolver arg (default is "id")
 	SubscriptType reflect.Type // arg type - int for slice/array, type of the key for maps
+	// Description is text used as a GraphQL description for the field - taken from the tag string after any # character (outside brackets)
+	Description string
 }
 
 // contextType is used to check if a resolver function takes a context.Context (1st) parameter
@@ -52,7 +54,7 @@ var errorType = reflect.TypeOf((*error)(nil)).Elem()
 // An error may be returned e.g. for malformed metadata, or a resolver function returning multiple values.
 // If the field is not exported or the field name (1st tag value) is a dash (-) then nil is returned, but no error.
 func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
-	if f.PkgPath != "" {
+	if f.Name != "_" && f.PkgPath != "" {
 		return // unexported field
 	}
 
@@ -170,11 +172,11 @@ func GetTagInfo(tag string) (*Info, error) {
 	if tag == "-" {
 		return nil, nil // this field is to be ignored
 	}
-	parts, err := SplitNested(tag)
+	parts, desc, err := SplitNested(tag)
 	if err != nil {
 		return nil, fmt.Errorf("%w splitting tag %q", err, tag)
 	}
-	fieldInfo := &Info{}
+	fieldInfo := &Info{Description: desc}
 	for i, part := range parts {
 		if i == 0 { // first string is the name
 			// Check for enum by splitting on a colon (:)

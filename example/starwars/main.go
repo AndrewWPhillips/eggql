@@ -20,7 +20,15 @@ const (
 
 type (
 	Query struct {
-		_ Character // needed so eggql knows about Character struct which is returned (in an interface{}) from Hero()
+		// Attaching a "graphql" tag to a field named "_" in the "Query" struct allows adding a description to the GraphQL type
+		_ eggql.TagField `graphql:"# The root query object stores all the queries that can be made"`
+
+		// We need to reference the `Character` struct so that eggql can find it (using reflection) and can generate
+		// the GraphQL Character "interface" for the schema.  This is necessary as Hero() has to return a Go interface
+		// in order to return anything that implements the Character GraphQL interface (ie, Human or Droid objects).
+		// NOTE: unnamed fields (ie, with name "_") cannot be used except with reflection and since this one is the
+		// 1st field of the struct and is declared as a zero-length array it uses no memory.
+		_ [0]Character
 
 		// Hero is a function used to implement the GraphQL resolver: "hero(episode: Episode = JEDI): Character", where:
 		//   hero = the resolver name taken from the 1st tag option (but could have been deduced from the field name "Hero")
@@ -53,55 +61,65 @@ type (
 		//  reviews = resolver name, deduced from the field name "Reviews"
 		//  episode = argument name (from 1st value of "args" option before the colon)
 		//  Episode = argument type (from 1st value of "args" option after the colon)
-		//  [Review] = return type is a list of Reviews, deduced from the fact that the func returns a slice ([]Review)
+		//  [Review] = return type is a list of Review, deduced from the fact that the func returns a slice ([]Review)
 		Reviews func(int) ([]Review, error) `graphql:",args(episode:Episode)"`
 
 		// Search implements the resolver: "search(text: String!): [SearchResult]"
 		Search func(context.Context, string) ([]interface{}, error) `graphql:":[SearchResult],args(text)"`
 	}
-	SearchResult struct{}
-	Character    struct {
-		Name              string
+	SearchResult struct { // SearchResult has no exported fields so represents a Union of all types in which it is embedded
+		_ eggql.TagField `graphql:"# Union that defines which object types are searchable"`
+	}
+	Character struct {
+		_                 eggql.TagField `graphql:"# Represents a character (human or droid) in the Star Wars trilogy"`
+		Name              string         `graphql:"# Name of the character"`
 		Friends           []*Character
 		FriendsConnection func(first int, after string) FriendsConnection `graphql:",args(first=-1, after=\"\")"`
 		Appears           []int                                           `graphql:"appearsIn:[Episode]"`
 		SecretBackstory   func() (string, error)
 	}
 	Human struct {
-		SearchResult
-		Character
-		Height     func(int) (float64, error) `graphql:",args(unit:LengthUnit=METER)"`
-		height     float64                    // meters
-		HomePlanet string
-		Starships  []*Starship
+		_            eggql.TagField             `graphql:"# A humanoid creature from Star Wars"`
+		SearchResult                            // Human is part of the SearchResult union so can be returned from a search query
+		Character                               // Human implements the Character interface
+		Height       func(int) (float64, error) `graphql:",args(unit:LengthUnit=METER)"`
+		height       float64                    // meters
+		HomePlanet   string
+		Starships    []*Starship
 	}
 	Droid struct {
-		SearchResult
-		Character
+		_               eggql.TagField `graphql:"# An autonomous device from Star Wars"`
+		SearchResult                   // Droid is part of the SearchResult union so can be returned from a search query
+		Character                      // Droid implements the Character interface
 		PrimaryFunction string
 	}
 	EpisodeDetails struct {
+		_          eggql.TagField `graphql:"# Stores info and reviews of each of the movies"`
 		Name       string
 		HeroId     int
 		Stars      []int
 		Commentary []string
 	}
 	Review struct {
+		_          eggql.TagField `graphql:"# One person's rating and review for a movie"`
 		Stars      int
 		Commentary string
 	}
 	Starship struct {
-		SearchResult
-		Name   string
-		Length func(int) (float64, error) `graphql:",args(unit:LengthUnit=METER)"`
-		length float64                    // meters
+		_            eggql.TagField `graphql:"# Machines for inter-planetary and inter-stellar travel"`
+		SearchResult                // Starship is part of the SearchResult union so can be returned from a search query
+		Name         string
+		Length       func(int) (float64, error) `graphql:",args(unit:LengthUnit=METER)"`
+		length       float64                    // meters
 	}
 
 	// Movie reviews
 	Mutation struct {
+		_            eggql.TagField                                  `graphql:"# Represents all the updates that can be made to the data"`
 		CreateReview func(int, ReviewInput) (*EpisodeDetails, error) `graphql:",args(episode:Episode,review)"`
 	}
 	ReviewInput struct {
+		_          eggql.TagField `graphql:"# The input object sent when someone is creating a new review"`
 		Stars      int
 		Commentary string
 		//Time TODO
@@ -109,16 +127,19 @@ type (
 
 	// The following are for pagination of a list of friends
 	FriendsConnection struct {
-		TotalCount int           // total number of friends
-		Edges      []FriendsEdge // list of (subset of) friends
-		Friends    []*Character  // same friends as Characters
-		PageInfo   PageInfo
+		_          eggql.TagField `graphql:"# A connection object for a character's friends"`
+		TotalCount int            `graphql:"# The total number of friends"`
+		Edges      []FriendsEdge  `graphql:"# Edges for eahc of the character's friends"`
+		Friends    []*Character   `graphql:"# A list of the friends, as a convenience when edges are not needed"`
+		PageInfo   PageInfo       `graphql:"# Information for paginating this connection"`
 	}
 	FriendsEdge struct {
+		_      eggql.TagField `graphql:"# An edge object for a character's friends"`
 		Cursor string
 		Node   *Character
 	}
 	PageInfo struct {
+		_           eggql.TagField `graphql:"# Information for paginating this connection"`
 		StartCursor *string
 		EndCursor   *string
 		HasNextPage bool
@@ -127,8 +148,12 @@ type (
 
 var (
 	gqlEnums = map[string][]string{
-		"Episode":    {"NEWHOPE", "EMPIRE", "JEDI"}, // order should match order EpisodeDetails in the episodes slice below
-		"LengthUnit": {"METER", "FOOT"},             // order of strings in the slice should match METER, etc consts below
+		"Episode# Movies of the Star Wars trilogy": {
+			"NEWHOPE# A New Hope (1977)",
+			"EMPIRE# The Empire Strikes Back (1980)",
+			"JEDI# Return of the Jedi (1983)",
+		}, // order should match order EpisodeDetails in the episodes slice below
+		"LengthUnit# Units for spatial measurements": {"METER# Standard metric spatial unit", "FOOT# Imperial spatial unit used mainly in the US"}, // order of strings in the slice should match METER, etc consts below
 	}
 )
 
@@ -277,11 +302,12 @@ func main() {
 				return r, nil
 			},
 			Search: func(ctx context.Context, text string) (r []interface{}, err error) {
+				toFind := strings.ToLower(text)
 				for _, h := range humans {
 					if e := ctx.Err(); e != nil {
 						return nil, e
 					}
-					if strings.Contains(strings.ToLower(h.Name), strings.ToLower(text)) {
+					if strings.Contains(strings.ToLower(h.Name), toFind) {
 						r = append(r, h)
 					}
 				}
@@ -289,7 +315,7 @@ func main() {
 					if e := ctx.Err(); e != nil {
 						return nil, e
 					}
-					if strings.Contains(strings.ToLower(d.Name), strings.ToLower(text)) {
+					if strings.Contains(strings.ToLower(d.Name), toFind) {
 						r = append(r, d)
 					}
 				}
@@ -297,7 +323,7 @@ func main() {
 					if e := ctx.Err(); e != nil {
 						return nil, e
 					}
-					if strings.Contains(strings.ToLower(ss.Name), strings.ToLower(text)) {
+					if strings.Contains(strings.ToLower(ss.Name), toFind) {
 						r = append(r, ss)
 					}
 				}

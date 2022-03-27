@@ -34,9 +34,10 @@ var testData = map[string]struct {
 	"Subscript":       {`,subscript`, field.Info{Subscript: "id"}},
 	"SubscriptEmpty":  {`,subscript=`, field.Info{Subscript: "id"}},
 	"SubscriptNamed":  {`,subscript=idx`, field.Info{Subscript: "idx"}},
+	"Desc":            {`# abc`, field.Info{Description: " abc"}},
 
-	"AllOptions": {`a:b,,args(c:d=e,f=g),nullable,subscript=h`, // Note that this is invalid at a higher level as you can't use both "args" and "subscript" options together
-		field.Info{Name: "a", GQLTypeName: "b", Params: []string{"c", "f"}, Enums: []string{"d", ""}, Defaults: []string{"e", "g"}, Nullable: true, Subscript: "h"}},
+	"AllOptions": {`a:b,,args(c:d=e,f=g),nullable,subscript=h#d #d`, // Note that this is invalid at a higher level as you can't use both "args" and "subscript" options together
+		field.Info{Name: "a", GQLTypeName: "b", Params: []string{"c", "f"}, Enums: []string{"d", ""}, Defaults: []string{"e", "g"}, Nullable: true, Subscript: "h", Description: "d #d"}},
 }
 
 // TestTagInfo checks parsing of graphql options tags (metadata)
@@ -60,6 +61,9 @@ func TestGetTagInfo(t *testing.T) {
 		Assertf(t, got.Nullable == data.exp.Nullable, "Nullable : %12s: expected %v got %v", name, data.exp.Nullable, got.Nullable)
 		if got.Subscript != "" || data.exp.Subscript != "" {
 			Assertf(t, got.Subscript == data.exp.Subscript, "Subscript: %12s: expected %q got %q", name, data.exp.Subscript, got.Subscript)
+		}
+		if got.Description != "" || data.exp.Description != "" {
+			Assertf(t, got.Description == data.exp.Description, "Descript: %12s: expected %q got %q", name, data.exp.Description, got.Description)
 		}
 	}
 }
