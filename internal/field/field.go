@@ -27,6 +27,7 @@ type Info struct {
 	Params     []string // name(s) of args to resolver function obtained from metadata
 	Enums      []string // corresp. enum name if the parameter is of an enum type
 	Defaults   []string // corresp. default value(s) (as strings) where an empty string means there is no default
+	DescArgs   []string // corresp. description of the argument
 	HasContext bool     // 1st function parameter is a context.Context (not a query argument)
 	HasError   bool     // has 2 return values the 2nd of which is a Go error
 
@@ -172,7 +173,7 @@ func GetTagInfo(tag string) (*Info, error) {
 	if tag == "-" {
 		return nil, nil // this field is to be ignored
 	}
-	parts, desc, err := SplitNested(tag)
+	parts, desc, err := SplitWithDesc(tag)
 	if err != nil {
 		return nil, fmt.Errorf("%w splitting tag %q", err, tag)
 	}
@@ -209,9 +210,16 @@ func GetTagInfo(tag string) (*Info, error) {
 			fieldInfo.Params = make([]string, len(list))
 			fieldInfo.Enums = make([]string, len(list))
 			fieldInfo.Defaults = make([]string, len(list))
+			fieldInfo.DescArgs = make([]string, len(list))
 			for paramIndex, s := range list {
+				// Strip description after hash (#)
+				subParts := strings.SplitN(s, "#", 2)
+				s = subParts[0]
+				if len(subParts) > 1 {
+					fieldInfo.DescArgs[paramIndex] = subParts[1]
+				}
 				// Strip of default value (if any) after equals sign (=)
-				subParts := strings.Split(s, "=")
+				subParts = strings.Split(s, "=")
 				s = subParts[0]
 				if len(subParts) > 1 {
 					fieldInfo.Defaults[paramIndex] = strings.Trim(subParts[1], " ")

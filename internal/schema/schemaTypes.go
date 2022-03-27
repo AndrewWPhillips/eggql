@@ -17,7 +17,8 @@ import (
 type (
 	// schema stores all the types of the schema accumulated so far
 	schema struct {
-		declaration map[string]string       // store the text declaration of all types generated
+		declaration map[string]string       // stores the text declaration of all types generated
+		description map[string]string       // corresponding description of the types
 		usedAs      map[reflect.Type]string // tracks which types (structs) we have seen (mainly to handle recursive data structures)
 		unions      map[string]union        // key is union name
 	}
@@ -33,6 +34,7 @@ type (
 func newSchemaTypes() schema {
 	return schema{
 		declaration: make(map[string]string),
+		description: make(map[string]string),
 		usedAs:      make(map[reflect.Type]string),
 		unions:      make(map[string]union),
 	}
@@ -104,9 +106,6 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 
 	// Work out how much string space we need for the resolvers etc.
 	required := len(gqlType) + 1 + len(name) + len(openString) + len(closeString)
-	if desc != "" {
-		required += 7 + len(desc)
-	}
 	if len(interfaces) > 0 {
 		required += len(implementsString) + (len(interfaces)-1)*2 // keyword + separator ( &)
 		for _, iface := range interfaces {
@@ -124,11 +123,6 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 	builder := &strings.Builder{}
 	builder.Grow(required)
 
-	if desc != "" {
-		builder.WriteString("\"\"\"")
-		builder.WriteString(desc)
-		builder.WriteString("\"\"\"\n")
-	}
 	builder.WriteString(gqlType)
 	builder.WriteRune(' ')
 	builder.WriteString(name)
@@ -158,6 +152,7 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 		}
 	}
 	s.declaration[name] = builder.String()
+	s.description[name] = desc
 	actual := len(s.declaration[name])
 	if required != actual {
 		log.Fatalln("string buffer size was incorrect (TODO: remove this)", required, actual)
@@ -225,7 +220,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			// Check for any "description" tag field in the union
 			for j := 0; j < f.Type.NumField(); j++ {
 				f2 := f.Type.Field(j)
-				fieldInfo2, err2 := field.Get(&f2)
+				fieldInfo2, err2 := field.Get(&f2) // just call this to get description
 				if u.desc != "" && u.desc != fieldInfo2.Description || err2 != nil {
 					return nil, nil, "", errors.New("Error in union description for " + f2.Name)
 				}
@@ -276,7 +271,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 
 		var resolverDesc string
 		if fieldInfo.Description != "" {
-			resolverDesc = "  \"\"\"" + fieldInfo.Description + "\"\"\"\n"
+			resolverDesc = `  """` + fieldInfo.Description + `"""` + "\n"
 		}
 
 		var params string
@@ -394,7 +389,11 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 			return "", fmt.Errorf("parameter %d argument %q is not a valid name", i, fieldInfo.Params[paramNum])
 		}
 		builder.WriteString(sep)
-		// the next line will panic if not enough arguments were given in "args" part of tag
+		if fieldInfo.DescArgs[paramNum] != "" {
+			builder.WriteString(`"""`)
+			builder.WriteString(fieldInfo.DescArgs[paramNum])
+			builder.WriteString(`"""`)
+		}
 		builder.WriteString(fieldInfo.Params[paramNum])
 		builder.WriteString(": ")
 

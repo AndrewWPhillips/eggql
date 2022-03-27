@@ -857,18 +857,93 @@ which will list everyone with "o" in their name:
 }
 ```
 
+### Descriptions
+
+A GraphQL schema can have descriptions for any of it's elements.  This can be used to help clients of the service learn about the types and queries and how to use them.  (In my experience most GraphQL schemas do not contain many, or any, descriptions but adding them can make you service far more useable.)
+
+With **eggql** you can include descriptions that are added to the generated GraphQL schema. Descriptions can be added to the following GraphQL elements in various ways (as discussed below) but the description text always begins with a hash character (#).
+
+* Types - objects, interfaces and unions
+* Fields (resolvers) and each of their parameters (if any)
+* Enum types and each of their values
+
+#### Types
+
+We use metadata (tags) to attach descriptions to types for adding to the schema.  Unfortunately Go only allows attaching metadata to **fields** of a `struct`, so to add a description we add a special field to the `struct`  with a name of "_" (single underscore) and a type of `eggql.TagField`.  (This type will not increase the size of your struct if you add it at the top.)  Here is an example using the `Query` struct:
+
+```Go
+type Query struct {
+	_    eggql.TagField `graphql:"# The root query object"`
+```
+
+This adds the description " The root query object" to the `Query` type in the GraphQl schema.  The same method is used in structs for input, interface and union types.
+
+#### Fields
+
+For resolvers you just add the description preceded by a hash character (#) to the end of the graphql: tag.  For example, this adds the description " How tall they are" to the `height` field of the `Human` type.
+
+```Go
+	Height  func(int) float64 `graphql:"height,args(unit:LengthUnit=METER) # How tall they are"`
+```
+
+#### Arguments
+
+For resolver arguments, just add the description at the end of each argument using the `args` option of the `graphql` tag.  For example, this add "units used for the returned height" to the `unit` argument of the `height` resolver.
+
+```Go
+	Height  func(int) float64 `graphql:"height,args(unit:LengthUnit=METER# units used for the returned height)"`
+```
+
+#### Enums
+
+Descriptions for enums are done a bit differently since enums are just stored as a slice of strings (since Go does not have enums as part of the language).  For both the enum type's name and the enum values you can add a description after the name.  Eg:
+
+```Go
+	gqlEnums = map[string][]string{
+		"Unit# Units of spatial measurements": {"METER# metric unit", "FOOT# Imperial (US customary) unit"},
+```
+
+#### Using Introspection to Obtain Descriptions
+
+You can check the descriptions in the generated schema by using the `GetSchema()` method (see [Viewing the Schema](https://github.com/AndrewWPhillips/eggql#viewing-errors-and-the-schema) in the README). Or you can use introspection to query the running service, for example to get the description of the root query object use this introspection query:
+
+```graphql
+{
+    __schema {
+        queryType {
+            name
+            description
+        }
+    }
+}
+```
+which should return:
+
+```JSON
+{
+  "data": {
+    "__schema": {
+      "queryType": {
+        "name": "Query",
+        "description": "The root query object"
+      }
+    }
+  }
+}
+```
+
 ### Error Handling
 
 #### Resolver errors
 
-Resolver `func`s return a single value, but they can optionally return an `error` which will be reported in the "errors" section of the query result.  For example, in the `Hero` function we used above, when there is an error we return `nil` instead of a pointer to a `Character`, which results in a `NULL` `Character` being seen in the GraphQL query results.
+Resolver `func`s return a single value, but they can optionally return an `error` which will be reported in the "errors" section of the query result.  For example, in the `Hero` function we used above, when there is an error we return `nil`  which results in a `NULL` `Character` being seen in the GraphQL query results.  An improvement would be to give an explanation of the cause of the error.
 
 There are two error conditions in the `Hero` resolver.
 
-1. the client provides an invalid episode as the query parameter
-2. the hero ID stored in the `EpisodeDetails` does not refer to a real character
+1. an invalid episode is supplied as the query parameter - this is an error made by the caller (client)
+2. the hero ID stored in the `EpisodeDetails` is invalid - this is an internal error due to data inconsistency
 
-So to distinguish between these errors we add a 2nd (`error`) return value to the `Hero` function (see the complete program below).  Now if there is an error the query will return an error message instead of just a `NULL` character.
+To distinguish between these errors we add a 2nd (`error`) return value to the `Hero` function (see the complete program below).  Now if there is an error the query will return an error message instead of just a `NULL` character.
 
 #### Contexts
 
@@ -876,7 +951,7 @@ A critical part of any server in Go is using the `context.Context` type.  It all
 
 Using **eggql** a resolver function can (optionally) take a 1st parameter of `context.Context`.  You would almost certainly use a context if the resolver code read from or wrote to a Go `chan`, or made a library or system call that could block on disk or network I/O such as a database query.  A less common scenario is a computationally intensive resolver in which case you can check if the context has been cancelled regularly, such as in an inner loop.
 
-Our Star Wars example works with in-memory data structures so the resolver functions do _not_ need context parameters.  (See the **Getting Started** example in the README where a `context` parameter is added to the `random` query.)  Even so, since GraphQL queries can return lists and nested queries, a single GraphQL request can cause a cascade of queries taking a long time even if each individual query does not - e.g. if you deeply nested a friends query like this:
+Our Star Wars example works with in-memory data structures so the resolver functions do _not_ need context parameters.  (See the [Getting Started](https://github.com/AndrewWPhillips/eggql#getting-started) example in the README where a `context` parameter is added to the `random` query.)  Even so, since GraphQL queries can return lists and nested queries, a single GraphQL request can cause a cascade of queries taking a long time even if each individual query does not - e.g. if you deeply nested a friends query like this:
 
 ```graphql
 {
@@ -1083,4 +1158,4 @@ func (h *Human) getHeight(unit int) float64 {
 
 I trust this tutorial has helped you to see how easy it is to create a simple GraphQL server using **eggql**.  Unlike most backend solutions you are not required to create, or even understand GraphQL schemas.  (Under the hood, a schema is generated for you which you can view if you need to.)  Unlike other Go packages this avoids getting lots of run-time panics when your schema does not match your data types.
 
-However, **eggql** may not be the best solution for you if you want something comprehensive or more efficient.  It does not have any support for databases, such as a dataloader since I wrote it to work with in-memory data.  It may also be too slow for heavy load as it uses reflection to run resolvers.  See the README for some excellent alternative Go GrapphQL packages.
+However, **eggql** may not be the best solution for you if you want something comprehensive or more efficient.  It does not have any support for databases, such as a dataloader since I wrote it to work with in-memory data.  It may also be too slow for heavy load as it uses reflection to run resolvers.  See the README for some excellent alternative Go GraphQL packages.
