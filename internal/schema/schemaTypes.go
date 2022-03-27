@@ -125,9 +125,9 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 	builder.Grow(required)
 
 	if desc != "" {
-		builder.WriteString("\"\"\"")
+		builder.WriteString(`"""`)
 		builder.WriteString(desc)
-		builder.WriteString("\"\"\"\n")
+		builder.WriteString(`"""` + "\n")
 	}
 	builder.WriteString(gqlType)
 	builder.WriteRune(' ')
@@ -225,7 +225,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			// Check for any "description" tag field in the union
 			for j := 0; j < f.Type.NumField(); j++ {
 				f2 := f.Type.Field(j)
-				fieldInfo2, err2 := field.Get(&f2)
+				fieldInfo2, err2 := field.Get(&f2) // just call this to get description
 				if u.desc != "" && u.desc != fieldInfo2.Description || err2 != nil {
 					return nil, nil, "", errors.New("Error in union description for " + f2.Name)
 				}
@@ -276,7 +276,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 
 		var resolverDesc string
 		if fieldInfo.Description != "" {
-			resolverDesc = "  \"\"\"" + fieldInfo.Description + "\"\"\"\n"
+			resolverDesc = `  """` + fieldInfo.Description + `"""` + "\n"
 		}
 
 		var params string
@@ -394,7 +394,11 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 			return "", fmt.Errorf("parameter %d argument %q is not a valid name", i, fieldInfo.Params[paramNum])
 		}
 		builder.WriteString(sep)
-		// the next line will panic if not enough arguments were given in "args" part of tag
+		if fieldInfo.DescArgs[paramNum] != "" {
+			builder.WriteString(`"""`)
+			builder.WriteString(fieldInfo.DescArgs[paramNum])
+			builder.WriteString(`"""`)
+		}
 		builder.WriteString(fieldInfo.Params[paramNum])
 		builder.WriteString(": ")
 

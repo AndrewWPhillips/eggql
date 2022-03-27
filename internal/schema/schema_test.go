@@ -250,8 +250,16 @@ var testData = map[string]struct {
 		`schema{query:QueryDescUnion}type QueryDescUnion{a:UDesc1! b:UDesc2!} type UDesc1{} type UDesc2{} """a union""" union UDesc=UDesc1|UDesc2`},
 	"DescField": {QueryDescField{},
 		`schema{query:QueryDescField}type QueryDescField{""" Test of # for description""" i:Int!}`},
-	"DescAll": {QueryDescAll{}, // TODO NULL prob? - last field's Ints should not be nullable t:[Int!] not t:[Int]!
+	"DescOjectAndFields": {QueryDescAll{}, // TODO NULL prob? - last field's Ints should not be nullable t:[Int!] not t:[Int]!
 		`schema{query:QueryDescAll} """q (type)""" type QueryDescAll{"""s (#1)""" s:String! """t (#2)""" t:[Int]!}`},
+	"DescArg": {struct {
+		R1 func(int) string `graphql:",args(p#arg 1)"`
+	}{},
+		`type Query{r1("""arg 1""" p:Int!):String!}`},
+	"DescArg2": {struct {
+		R2 func(int, float64) string `graphql:",args(intArg=1#int, floatArg=3.14#float)"`
+	}{},
+		`type Query{r2("""int""" intArg:Int!=1, """float""" floatArg:Float!=3.14):String!}`},
 }
 
 func TestBuildSchema(t *testing.T) {
