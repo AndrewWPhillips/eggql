@@ -173,6 +173,14 @@ type (
 		A UDesc1
 		B UDesc2
 	}
+	QueryDescField struct {
+		I int `graphql:"# Test of # for description"`
+	}
+	QueryDescAll struct {
+		_ eggql.TagField `graphql:"#q (type)"`
+		S func() string  `graphql:"#s (#1)"`
+		T []int          `graphql:"#t (#2) "`
+	}
 )
 
 var testData = map[string]struct {
@@ -231,16 +239,19 @@ var testData = map[string]struct {
 	"SubscriptMap":   {QuerySubscriptMap{}, "schema{ query:QuerySubscriptMap } type QuerySubscriptMap{m(s:String!):Float! }"},
 	"Union": {QueryUnion{},
 		"schema{query:QueryUnion} type QueryUnion{a:U1! b:U2!} type U1{v:Int!} type U2{w:String!} union U = U1 | U2"},
-	"Union2": {QueryUnion2{},
-		"schema{query:QueryUnion2} type QueryUnion2{s:[U]} type U1{v:Int!} type U2{w:String!} union U = U1 | U2"},
+	"Union2": {QueryUnion2{}, // TODO Null Prob? - should list be nullable if derived from slice, ie: s:[U] not s:[U]!
+		"schema{query:QueryUnion2} type QueryUnion2{s:[U]!} type U1{v:Int!} type U2{w:String!} union U = U1 | U2"},
 	"Desc0": {QueryDescOnly{}, `schema{query:QueryDescOnly} """ no fields""" type QueryDescOnly{}`},
 	"DescObject": {QueryDescObject{},
 		`schema{query:QueryDescObject} """ nested object""" type Nested{i:Int!} type QueryDescObject{nested:Nested!}`},
 	"DescInterface": {QueryDescInterface{},
 		`schema{query:QueryDescInterface} """ interface""" interface IDesc {i:Int!} type QueryDescInterface implements IDesc {i:Int!} `},
 	"DescUnion": {QueryDescUnion{},
-		//		`schema{query:QueryDescUnion} type QueryDescUnion {} """ a union""" union UDesc=QueryDescUnion`},
 		`schema{query:QueryDescUnion}type QueryDescUnion{a:UDesc1! b:UDesc2!} type UDesc1{} type UDesc2{} """a union""" union UDesc=UDesc1|UDesc2`},
+	"DescField": {QueryDescField{},
+		`schema{query:QueryDescField}type QueryDescField{""" Test of # for description""" i:Int!}`},
+	"DescAll": {QueryDescAll{}, // TODO NULL prob? - last field's Ints should not be nullable t:[Int!] not t:[Int]!
+		`schema{query:QueryDescAll} """q (type)""" type QueryDescAll{"""s (#1)""" s:String! """t (#2)""" t:[Int]!}`},
 }
 
 func TestBuildSchema(t *testing.T) {

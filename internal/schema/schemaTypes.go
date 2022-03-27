@@ -117,7 +117,7 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 	keys := make([]string, 0, len(resolvers))
 	for k, v := range resolvers {
 		keys = append(keys, k)
-		required += 3 + len(k) + len(v)
+		required += len(v)
 	}
 	sort.Strings(keys)
 
@@ -146,9 +146,6 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 	// Add resolvers in order of (sorted) keys
 	builder.WriteString(openString)
 	for _, k := range keys {
-		builder.WriteString("  ")
-		builder.WriteString(k)
-		builder.WriteRune(' ')
 		builder.WriteString(resolvers[k])
 	}
 	builder.WriteString(closeString)
@@ -277,6 +274,11 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			}
 		}
 
+		var resolverDesc string
+		if fieldInfo.Description != "" {
+			resolverDesc = "  \"\"\"" + fieldInfo.Description + "\"\"\"\n"
+		}
+
 		var params string
 		var effectiveType reflect.Type
 		if fieldInfo.Subscript != "" {
@@ -319,7 +321,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			err = fmt.Errorf("two fields with the same name %q", fieldInfo.Name)
 			return
 		}
-		r[fieldInfo.Name] = params + ":" + typeName + endStr
+		r[fieldInfo.Name] = resolverDesc + "  " + fieldInfo.Name + " " + params + ":" + typeName + endStr
 
 		// Also add nested struct types (if any) to our collection
 		nestedType := gqlType
