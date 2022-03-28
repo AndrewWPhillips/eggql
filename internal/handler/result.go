@@ -154,33 +154,19 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 				close(r)
 				return r
 			}
-			// chan closed (no match found) so continue below
+			// end of chan (no match found) so continue below
 		}
 		if fieldInfo.Name == astField.Name {
 			// resolver found so run it (concurrently)
 			if op.isMutation || !AllowConcurrentQueries { // Mutations are run sequentially
-				r := make(chan gqlValue, 1)
-				if value := op.resolve(ctx, astField, vField, fieldInfo); value != nil {
-					r <- *value
-				}
-				close(r)
-				return r
+				ch := make(chan gqlValue, 1)
+				op.wrapResolve(ctx, astField, vField, fieldInfo, ch)
+				return ch
 			} else {
-				// This go routine allows resolvers to run in parallel
-				r := make(chan gqlValue)
-				go func() {
-					defer func() {
-						// Convert any panics in resolvers into an (internal) error
-						if recoverValue := recover(); recoverValue != nil {
-							r <- gqlValue{err: fmt.Errorf("Internal error: panic %v", recoverValue)}
-						}
-						close(r)
-					}()
-					if value := op.resolve(ctx, astField, vField, fieldInfo); value != nil {
-						r <- *value
-					}
-				}()
-				return r
+				ch := make(chan gqlValue)
+				// Calling wrapResolve as a go routine allows resolvers to run in parallel
+				go op.wrapResolve(ctx, astField, vField, fieldInfo, ch)
+				return ch
 			}
 		}
 	}
@@ -188,6 +174,19 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 	r := make(chan gqlValue)
 	close(r)
 	return r
+}
+
+func (op *gqlOperation) wrapResolve(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info, ch chan<- gqlValue) {
+	defer func() {
+		// Convert any panics in resolvers into an (internal) error
+		if recoverValue := recover(); recoverValue != nil {
+			ch <- gqlValue{err: fmt.Errorf("Internal error: panic %v", recoverValue)}
+		}
+		close(ch)
+	}()
+	if value := op.resolve(ctx, astField, v, fieldInfo); value != nil {
+		ch <- *value
+	}
 }
 
 func (op *gqlOperation) FindFragments(ctx context.Context, set ast.SelectionSet, v reflect.Value) <-chan gqlValue {
