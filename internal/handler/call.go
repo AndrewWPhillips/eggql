@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/andrewwphillips/eggql/internal/field"
-	"github.com/vektah/gqlparser/ast"
+	"github.com/vektah/gqlparser/v2/ast"
 	"reflect"
 	"strconv"
 	"unicode"

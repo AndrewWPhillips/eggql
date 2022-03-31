@@ -3,7 +3,7 @@ package handler
 // introspection.go implements the introspection type which handles the GraphQL __schema and __type queries
 
 import (
-	"github.com/vektah/gqlparser/ast"
+	"github.com/vektah/gqlparser/v2/ast"
 )
 
 type (

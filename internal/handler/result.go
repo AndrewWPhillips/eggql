@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"github.com/andrewwphillips/eggql/internal/field"
 	"github.com/dolmen-go/jsonmap"
-	"github.com/vektah/gqlparser/ast"
+	"github.com/vektah/gqlparser/v2/ast"
 	"reflect"
 	"strings"
 )
