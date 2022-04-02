@@ -15,6 +15,7 @@ type (
 	}
 
 	gqlSchema struct {
+		Description      string
 		Types            []gqlType
 		QueryType        *gqlType
 		MutationType     *gqlType
@@ -127,9 +128,13 @@ func NewIntrospectionData(astSchema *ast.Schema) interface{} {
 	i := &introspection{
 		astSchema: astSchema,
 		Schema: gqlSchema{
+			Description: "A GraphQL Schema defines the capabilities of a GraphQL server. It exposes all available types and" +
+				" directives on the server, as well as the entry points for query, mutation, and subscription operations.",
 			Types: getTypes(astSchema.Types),
 		},
 	}
+	i.GetType = i.getType
+
 	if astSchema.Query != nil {
 		i.Schema.QueryType = &gqlType{
 			Kind:        getTypeKind(astSchema.Query.Kind),
@@ -146,8 +151,7 @@ func NewIntrospectionData(astSchema *ast.Schema) interface{} {
 			Fields:      getFields(astSchema.Mutation.Fields),
 		}
 	}
-	// TODO subscription
-	i.GetType = i.getType
+	// TODO subscription and directives
 	return i
 }
 
