@@ -55,7 +55,7 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 	// Now process the operation(s)
 	r.Data.Data = make(map[string]interface{})
 	for _, operation := range query.Operations {
-		op := gqlOperation{enums: g.h.enums}
+		op := gqlOperation{enums: g.h.enums, enumsInt: g.h.enumsInt}
 
 		// Get variables associated with this operation if any
 		if len(operation.VariableDefinitions) > 0 {
@@ -71,7 +71,7 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 		case ast.Query:
 			v = reflect.ValueOf(g.h.qData)
 			if AllowIntrospection {
-				introOp = &gqlOperation{enums: IntrospectionEnums}
+				introOp = &gqlOperation{enums: IntroEnums, enumsInt: IntroEnumsInt}
 				vIntro = reflect.ValueOf(NewIntrospectionData(g.h.schema))
 			}
 		case ast.Mutation:

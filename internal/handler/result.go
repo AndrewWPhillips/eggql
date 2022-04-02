@@ -23,6 +23,7 @@ type (
 		isMutation bool
 		variables  map[string]interface{}
 		enums      map[string][]string
+		enumsInt   map[string]map[string]int // each enum is a map keyed by the enum value (text)
 	}
 
 	// gqlValue contains the result of a query or queries, or an error, plus the name
@@ -302,6 +303,10 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 	if enumName := fieldInfo.GQLTypeName; enumName != "" {
 		if len(enumName) > 2 && enumName[0] == '[' && enumName[len(enumName)-1] == ']' {
 			enumName = enumName[1 : len(enumName)-1]
+		}
+		// Check that the enum exists
+		if _, ok := op.enums[enumName]; !ok {
+			return &gqlValue{err: fmt.Errorf("enum %q not found for field %q", enumName, fieldInfo.Name)}
 		}
 		idx := -1
 		switch value := v.Interface().(type) {

@@ -60,11 +60,67 @@ type (
 	}
 )
 
-var IntrospectionEnums = map[string][]string{
+// IntroEnums contains the enums for the schema used for GraphQL introspection
+// Each enum is a slice of string where the slice index is the underlying (int) value
+var IntroEnums = map[string][]string{
 	"__TypeKind": {"SCALAR", "OBJECT", "INTERFACE", "UNION", "ENUM", "INPUT_OBJECT", "LIST", "NON_NULL"},
 
 	"__DirectiveLocation": {"QUERY", "MUTATION", "SUBSCRIPTION", "FIELD", "FRAGMENT_DEFINITION", "FRAGMENT_SPREAD", "INLINE_FRAGMENT", "SCHEMA",
 		"SCALAR", "OBJECT", "FIELD_DEFINITION", "ARGUMENT_DEFINITION", "INTERFACE", "UNION", "ENUM", "ENUM_VALUE", "INPUT_OBJECT", "INPUT_FIELD_DEFINITION"},
+}
+
+// IntroEnumsInt stores the same enums as IntroEnum, as maps to facilitate fast lookup of int values
+// Each enum is a map keyed by the enum value (string) giving the underlying (int) value
+var IntroEnumsInt = map[string]map[string]int{
+	"__TypeKind": {
+		"SCALAR":       0,
+		"OBJECT":       1,
+		"INTERFACE":    2,
+		"UNION":        3,
+		"ENUM":         4,
+		"INPUT_OBJECT": 5,
+		"LIST":         6,
+		"NON_NULL":     7,
+	},
+	"__DirectiveLocation": {
+		"QUERY":                  0,
+		"MUTATION":               1,
+		"SUBSCRIPTION":           2,
+		"FIELD":                  3,
+		"FRAGMENT_DEFINITION":    4,
+		"FRAGMENT_SPREAD":        5,
+		"INLINE_FRAGMENT":        6,
+		"SCHEMA":                 7,
+		"SCALAR":                 8,
+		"OBJECT":                 9,
+		"FIELD_DEFINITION":       10,
+		"ARGUMENT_DEFINITION":    11,
+		"INTERFACE":              12,
+		"UNION":                  13,
+		"ENUM":                   14,
+		"ENUM_VALUE":             15,
+		"INPUT_OBJECT":           16,
+		"INPUT_FIELD_DEFINITION": 17,
+	},
+}
+
+func init() {
+	// validate that IntroEnums and IntroEnumsInt are consistent
+	if len(IntroEnums) != len(IntroEnumsInt) {
+		panic("different number of enums")
+	}
+	for name, list := range IntroEnums {
+		m, ok := IntroEnumsInt[name]
+		if !ok || len(list) != len(m) {
+			panic("IntroEnums inconsistency detected with " + name)
+		}
+		for i, v := range list {
+			value, ok2 := m[v]
+			if !ok2 || value != i {
+				panic("IntroEnums inconsistency detected in " + name + " value " + v)
+			}
+		}
+	}
 }
 
 func NewIntrospectionData(astSchema *ast.Schema) interface{} {
@@ -142,13 +198,13 @@ func getEnumValues(values ast.EnumValueList) (r []gqlEnumValue) {
 }
 
 func getTypeKind(kind ast.DefinitionKind) int {
-	for i, k := range IntrospectionEnums["__TypeKind"] {
-		if k == string(kind) {
-			return i
-		}
-	}
-	panic("type kind not found" + string(kind))
-	return -1
+	//for i, k := range IntroEnums["__TypeKind"] {
+	//	if k == string(kind) {
+	//		return i
+	//	}
+	//}
+	//panic("type kind not found" + string(kind))
+	return IntroEnumsInt["__TypeKind"][string(kind)]
 }
 
 func getKindFromValueKind(valueKind ast.ValueKind) int {

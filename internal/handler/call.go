@@ -131,12 +131,9 @@ func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, v
 		if !ok {
 			return reflect.Value{}, fmt.Errorf("getting enum (%s) for %q expected string", enumName, name)
 		}
-		for i, v := range op.enums[enumName] {
-			// TODO: pre-create a map for lookup rather than doing linear search
-			if v == toFind {
-				value = i // value changes from string to int
-				break
-			}
+		value, ok = op.enumsInt[enumName][toFind]
+		if !ok {
+			return reflect.Value{}, fmt.Errorf("could not find enum value %q in enum %q for %q", toFind, enumName, name)
 		}
 	}
 	kind := reflect.TypeOf(value).Kind() // expected type of value to return
