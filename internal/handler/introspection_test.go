@@ -73,7 +73,7 @@ var introspectionData = map[string]struct {
 					JsonObject{
 						"name": "list",
 						"type": JsonObject{
-							"name": nil,
+							"name": "",
 							"kind": "LIST",
 							"ofType": JsonObject{
 								"name": "Boolean",

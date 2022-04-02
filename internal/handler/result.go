@@ -15,6 +15,8 @@ import (
 const (
 	AllowIntrospection     = true
 	AllowConcurrentQueries = true
+
+	TypeNameQuery = "__typename" // Name of "introspection" query that can be performed at any level
 )
 
 type (
@@ -61,7 +63,7 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 		switch astType := s.(type) {
 		case *ast.Field:
 			// Find and execute the "resolver" in the struct (or recursively in embedded structs)
-			if vIntro.IsValid() && strings.HasPrefix(astType.Name, "__") {
+			if vIntro.IsValid() && strings.HasPrefix(astType.Name, "__") && astType.Name != TypeNameQuery {
 				resultChans = append(resultChans, introOp.FindSelection(ctx, astType, vIntro))
 			} else {
 				resultChans = append(resultChans, op.FindSelection(ctx, astType, v))
@@ -117,11 +119,11 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 	}
 
 	//r := make(chan gqlValue) //
-	if astField.Name == "__typename" {
+	if astField.Name == TypeNameQuery {
 		// Special "introspection" field
 		r := make(chan gqlValue, 1)
-		//r <- gqlValue{name: astField.Alias, value: astField.ObjectDefinition.Name}
-		r <- gqlValue{name: astField.Alias, value: v.Type().Name()} // TODO: check if this is always correct
+		//r <- gqlValue{name: astField.Alias, value: v.Type().Name()}
+		r <- gqlValue{name: astField.Alias, value: astField.ObjectDefinition.Name}
 		close(r)
 		return r
 	}

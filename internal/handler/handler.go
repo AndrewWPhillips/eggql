@@ -10,7 +10,6 @@ import (
 	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
 	"net/http"
-	"strings"
 )
 
 type (
