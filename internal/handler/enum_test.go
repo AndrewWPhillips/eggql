@@ -140,6 +140,7 @@ func TestEnumQuery(t *testing.T) {
 		// All of these tests should give status OK
 		if writer.Result().StatusCode != http.StatusOK {
 			t.Logf("%12s: Unexpected response code %d", name, writer.Code)
+			t.Fail()
 			continue
 		}
 
@@ -152,6 +153,7 @@ func TestEnumQuery(t *testing.T) {
 		decoder := json.NewDecoder(writer.Body)
 		if err := decoder.Decode(&result); err != nil {
 			t.Logf("%12s: Error decoding JSON: %v", name, err)
+			t.Fail()
 			continue
 		}
 

@@ -3,66 +3,104 @@ package handler
 // introspection.go implements the introspection type which handles the GraphQL __schema and __type queries
 
 import (
-	"github.com/vektah/gqlparser/ast"
+	"github.com/vektah/gqlparser/v2/ast"
+	"log"
 )
 
 type (
-	introspection struct {
-		astSchema *ast.Schema
-
-		Schema  gqlSchema             `graphql:"__schema"`
-		GetType func(string) *gqlType `graphql:"__type,args(name)"`
+	// introspectionSchema just embeds the gqlparser schema so that we can add methods to it
+	introspectionSchema struct{ *ast.Schema }
+	// introspectionObject can represent a named type of the schema
+	introspectionObject struct {
+		*ast.Definition
+		parent introspectionSchema
+	}
+	// introspectionField can represent a field of an object/input type
+	introspectionField struct {
+		*ast.FieldDefinition
+		parent introspectionObject
+	}
+	// introspectionArgument represents an argument to a field
+	introspectionArgument struct {
+		*ast.ArgumentDefinition
+		parent introspectionField
+	}
+	// introspectionType can represent any type of the schema including list/nullable versions of other types
+	introspectionType struct {
+		*ast.Type
+		parent introspectionSchema
 	}
 
+	// introspection represents the GraphQL root query object for introspection
+	// It only supports the "__schema" and the "__type(name)" queries.  Note that the other introspection
+	// query (__typename) can be included at any level of a query and is not handled here.
+	introspection struct {
+		iss       introspectionSchema
+		GetSchema func() gqlSchema      `graphql:"__schema"`
+		GetType   func(string) *gqlType `graphql:"__type,args(name)"`
+	}
+
+	// gqlSchema represents the GraphQL "__schema" type
 	gqlSchema struct {
 		Description      string
-		Types            []gqlType
-		QueryType        *gqlType
-		MutationType     *gqlType
-		SubscriptionType *gqlType
-		Directives       []gqlDirective
+		Types            func() []gqlType
+		QueryType        func() *gqlType
+		MutationType     func() *gqlType
+		SubscriptionType func() *gqlType
+		Directives       func() []gqlDirective
 	}
 
+	// gqlType represents the GraphQL "__Type" type
 	gqlType struct {
 		Kind              int `graphql:"kind:__TypeKind"`
 		Name, Description string
-		Fields            []gqlField
-		Interfaces        []gqlType
-		PossibleTypes     []gqlType
-		EnumValues        []gqlEnumValue
-		InputFields       []gqlInputValue
-		OfType            *gqlType
+		Fields            func(bool) []gqlField `graphql:",args(includeDeprecated=false)"`
+		Interfaces        func() []gqlType
+		PossibleTypes     func() []gqlType
+		EnumValues        func(bool) []gqlEnumValue `graphql:",args(includeDeprecated=false)"`
+		InputFields       func() []gqlInputValue
+		OfType            *gqlType // nil unless kind is "LIST" or "NON_NULL"
+		SpecifiedByUrl    string
 	}
 
+	// gqlField represents the GraphQL "__Field" type
 	gqlField struct {
 		Name, Description string
-		Args              []gqlInputValue
-		Type              gqlType
+		// Remove deprecation from arguments - not (yet?) supported by vektah/gqlparser
+		//Args              func(bool) []gqlInputValue `graphql:",args(includeDeprecated=false)"`
+		Args              func() []gqlInputValue
+		Type              func() gqlType
 		IsDeprecated      bool
 		DeprecationReason string
 	}
 
+	// gqlInputValue represents the GraphQL "__InputValue" type
 	gqlInputValue struct {
 		Name, Description string
-		Type              gqlType
+		Type              func() gqlType
 		DefaultValue      string
+		// Remove deprecation - not (yet?) supported by vektah/gqlparser
+		//IsDeprecated      bool
+		//DeprecationReason string
 	}
 
+	// gqlEnumValue represents the GraphQL "__EnumValue" type
 	gqlEnumValue struct {
 		Name, Description string
 		IsDeprecated      bool
 		DeprecationReason string
 	}
 
+	// gqlDirective represents the GraphQL "__Directive" type
 	gqlDirective struct {
 		Name, Description string
-		Locations         []int `graphql:"locations:[__DirectiveLocation!]!"`
-		Args              []gqlInputValue
+		Locations         []int           `graphql:":[__DirectiveLocation!]!"`
+		Args              []gqlInputValue `graphql:":[__InputValue!]!"`
+		IsRepeatable      bool
 	}
 )
 
-// IntroEnums contains the enums for the schema used for GraphQL introspection
-// Each enum is a slice of string where the slice index is the underlying (int) value
+// IntroEnums stores the name and values (text) of the __TypeKind and __DirectiveLocation enums
 var IntroEnums = map[string][]string{
 	"__TypeKind": {"SCALAR", "OBJECT", "INTERFACE", "UNION", "ENUM", "INPUT_OBJECT", "LIST", "NON_NULL"},
 
@@ -125,129 +163,127 @@ func init() {
 }
 
 func NewIntrospectionData(astSchema *ast.Schema) interface{} {
-	i := &introspection{
-		astSchema: astSchema,
-		Schema: gqlSchema{
-			Description: "A GraphQL Schema defines the capabilities of a GraphQL server. It exposes all available types and" +
-				" directives on the server, as well as the entry points for query, mutation, and subscription operations.",
-			Types: getTypes(astSchema.Types),
-		},
-	}
-	i.GetType = i.getType
-
-	if astSchema.Query != nil {
-		i.Schema.QueryType = &gqlType{
-			Kind:        getTypeKind(astSchema.Query.Kind),
-			Name:        astSchema.Query.Name,
-			Description: astSchema.Query.Description,
-			Fields:      getFields(astSchema.Query.Fields),
-		}
-	}
-	if astSchema.Mutation != nil {
-		i.Schema.MutationType = &gqlType{
-			Kind:        getTypeKind(astSchema.Mutation.Kind),
-			Name:        astSchema.Mutation.Name,
-			Description: astSchema.Mutation.Description,
-			Fields:      getFields(astSchema.Mutation.Fields),
-		}
-	}
-	// TODO subscription and directives
-	return i
+	pi := &introspection{iss: introspectionSchema{astSchema}}
+	pi.GetSchema = pi.iss.getSchema
+	pi.GetType = pi.iss.getType
+	return pi
 }
 
-func (pi *introspection) getType(name string) *gqlType {
-	defn := pi.astSchema.Types[name]
-	if defn == nil {
+func (iss introspectionSchema) getSchema() gqlSchema {
+	return gqlSchema{
+		Description:      iss.Description,
+		Types:            iss.getTypes,
+		QueryType:        iss.getQueryType,
+		MutationType:     iss.getMutationType,
+		SubscriptionType: iss.getSubscriptionType,
+		Directives:       nil, // TODO
+	}
+}
+
+// getType looks up a type by name
+func (iss introspectionSchema) getType(name string) *gqlType {
+	// Check the global list of "named" types
+	definition := iss.Types[name]
+	if definition == nil {
 		return nil
 	}
-	return &gqlType{
-		Kind:        getTypeKind(defn.Kind),
-		Name:        name,
-		Description: defn.Description,
-		Fields:      getFields(defn.Fields),
-		Interfaces:  getInterfaces(defn.Interfaces),
-		EnumValues:  getEnumValues(defn.EnumValues),
+	if name == "Nested" {
+		log.Println("qqq remove this", definition.Kind) // TODO
+	}
+
+	r := introspectionObject{definition, iss}.getType()
+	return &r
+}
+
+// getTypes gets a list of all (named) types in the schema
+func (iss introspectionSchema) getTypes() []gqlType {
+	r := make([]gqlType, 0, len(iss.Types))
+	for _, definition := range iss.Types {
+		r = append(r, introspectionObject{definition, iss}.getType())
+	}
+	return r
+}
+
+// getQueryType gets the schema query type
+func (iss introspectionSchema) getQueryType() *gqlType {
+	if iss.Query == nil {
+		return nil
+	}
+	r := introspectionObject{iss.Query, iss}.getType()
+	return &r
+}
+
+// getMutationType gets the mutation object's type
+func (iss introspectionSchema) getMutationType() *gqlType {
+	if iss.Mutation == nil {
+		return nil
+	}
+	r := introspectionObject{iss.Mutation, iss}.getType()
+	return &r
+}
+
+// getSubscriptionType gets the subscription type
+func (iss introspectionSchema) getSubscriptionType() *gqlType {
+	if iss.Subscription == nil {
+		return nil
+	}
+	r := introspectionObject{iss.Subscription, iss}.getType()
+	return &r
+}
+
+// getType gets the type info for a named GraphQL type
+func (iso introspectionObject) getType() gqlType {
+	return gqlType{
+		Kind:          getTypeKind(iso.Kind),
+		Name:          iso.Name,
+		Description:   iso.Description,
+		Fields:        iso.getFields, // TODO check this does not have input fields
+		Interfaces:    iso.getInterfaces,
+		PossibleTypes: nil, // TODO?
+		EnumValues:    iso.getEnumValues,
+		InputFields:   nil, // TODO
 	}
 }
 
-func getTypes(schemaTypes map[string]*ast.Definition) (r []gqlType) {
-	for name, defn := range schemaTypes {
-		r = append(r, gqlType{
-			Kind:        getTypeKind(defn.Kind),
-			Name:        name,
-			Description: defn.Description,
-			Fields:      getFields(defn.Fields),
-			Interfaces:  getInterfaces(defn.Interfaces),
-			EnumValues:  getEnumValues(defn.EnumValues),
+func (iso introspectionObject) getFields(bool) []gqlField {
+	if iso.Fields == nil {
+		return nil
+	}
+	r := make([]gqlField, 0, len(iso.Fields))
+	for _, field := range iso.Fields {
+		isf := introspectionField{field, iso}
+		r = append(r, gqlField{
+			Name:        field.Name,
+			Description: field.Description,
+			Args:        isf.getArgs,
+			Type:        isf.getType,
 		})
 	}
-	return
+	return r
 }
 
-func getInterfaces(interfaces []string) (r []gqlType) {
-	for _, name := range interfaces {
-		r = append(r, gqlType{Name: name})
-	}
-	return
-}
-
-func getEnumValues(values ast.EnumValueList) (r []gqlEnumValue) {
-	for _, v := range values {
+func (iso introspectionObject) getEnumValues(bool) []gqlEnumValue {
+	r := make([]gqlEnumValue, 0, len(iso.EnumValues))
+	for _, v := range iso.EnumValues {
 		r = append(r, gqlEnumValue{
 			Name:        v.Name,
 			Description: v.Description,
 		})
 	}
-	return
+	return r
 }
 
-func getTypeKind(kind ast.DefinitionKind) int {
-	//for i, k := range IntroEnums["__TypeKind"] {
-	//	if k == string(kind) {
-	//		return i
-	//	}
-	//}
-	//panic("type kind not found" + string(kind))
-	return IntroEnumsInt["__TypeKind"][string(kind)]
+// getType gets the type associated with a GraphQL field
+func (isf introspectionField) getType() gqlType {
+	return *introspectionType{isf.Type, isf.parent.parent}.getType()
 }
 
-func getKindFromValueKind(valueKind ast.ValueKind) int {
-	if valueKind > ast.Variable && valueKind < ast.EnumValue {
-		return 0 // scalar
-	}
-	if valueKind == ast.EnumValue {
-		return 4
-	}
-	if valueKind == ast.ListValue {
-		return 6
-	}
-	if valueKind == ast.ObjectValue {
-		return 1
-	}
-	return 1
-}
-
-func getType(dv *ast.Value, t *ast.Type) gqlType {
-	var kind = 1
-	var desc string
-	var fields []gqlField
-	if dv != nil {
-		kind = getKindFromValueKind(dv.Kind)
-		if dv.Definition != nil {
-			desc = dv.Definition.Description
-			fields = getFields(dv.Definition.Fields)
-		}
-	}
-	return gqlType{
-		Kind:        kind,
-		Name:        t.Name(),
-		Description: desc,
-		Fields:      fields,
-	}
-}
-
-func getArgs(arguments ast.ArgumentDefinitionList) (r []gqlInputValue) {
-	for _, arg := range arguments {
+// getArgs gets a list of arguments for a field
+//func (isf introspectionField) getArgs(includeDeprecated bool) []gqlInputValue {
+func (isf introspectionField) getArgs() []gqlInputValue {
+	r := make([]gqlInputValue, 0, len(isf.Arguments))
+	for _, arg := range isf.Arguments {
+		isa := introspectionArgument{arg, isf}
 		raw := ""
 		if arg.DefaultValue != nil {
 			raw = arg.DefaultValue.Raw
@@ -255,21 +291,48 @@ func getArgs(arguments ast.ArgumentDefinitionList) (r []gqlInputValue) {
 		r = append(r, gqlInputValue{
 			Name:         arg.Name,
 			Description:  arg.Description,
-			Type:         getType(arg.DefaultValue, arg.Type),
+			Type:         isa.getType,
 			DefaultValue: raw,
 		})
 	}
-	return
+	return r
 }
 
-func getFields(fields ast.FieldList) (r []gqlField) {
-	for _, f := range fields {
-		r = append(r, gqlField{
-			Name:        f.Name,
-			Description: f.Description,
-			Args:        getArgs(f.Arguments),
-			Type:        getType(f.DefaultValue, f.Type),
-		})
+// getType gets the type associated with a GraphQL field's argument
+func (isa introspectionArgument) getType() gqlType {
+	return *introspectionType{isa.Type, isa.parent.parent.parent}.getType()
+}
+
+func (iso introspectionObject) getInterfaces() []gqlType {
+	r := make([]gqlType, 0, len(iso.Interfaces))
+	for _, name := range iso.Interfaces {
+		r = append(r, *iso.parent.getType(name))
 	}
-	return
+	return r
+}
+
+// getType returns type info for any type including lists/non_null types (whence OfType contains the underlying type)
+func (ist introspectionType) getType() *gqlType {
+	if ist.NamedType != "" {
+		return ist.parent.getType(ist.NamedType)
+	}
+	if ist.NonNull {
+		return &gqlType{
+			Kind:   7, // TODO lookup "NON_NULL"
+			OfType: introspectionType{ist.Elem, ist.parent}.getType(),
+		}
+	}
+	if ist.Elem != nil { // LIST
+		// recurse into recursive data structure
+		return &gqlType{
+			Kind:   6, // TODO lookup "LIST"
+			OfType: introspectionType{ist.Elem, ist.parent}.getType(),
+		}
+	}
+	panic("Unhandled type in introspectionType.getType()")
+}
+
+// getTypeKind returns the enum __TypeKind value (int) corresp. to a string
+func getTypeKind(kind ast.DefinitionKind) int {
+	return IntroEnumsInt["__TypeKind"][string(kind)]
 }

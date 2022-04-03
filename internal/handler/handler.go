@@ -7,8 +7,8 @@ package handler
 
 import (
 	"encoding/json"
-	"github.com/vektah/gqlparser"
-	"github.com/vektah/gqlparser/ast"
+	"github.com/vektah/gqlparser/v2"
+	"github.com/vektah/gqlparser/v2/ast"
 	"net/http"
 	"strings"
 )
