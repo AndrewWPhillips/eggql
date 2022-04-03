@@ -54,10 +54,10 @@ type (
 	gqlType struct {
 		Kind              int `graphql:"kind:__TypeKind"`
 		Name, Description string
-		Fields            func() []gqlField
+		Fields            func(bool) []gqlField `graphql:",args(includeDeprecated=false)"`
 		Interfaces        func() []gqlType
 		PossibleTypes     func() []gqlType
-		EnumValues        func() []gqlEnumValue
+		EnumValues        func(bool) []gqlEnumValue `graphql:",args(includeDeprecated=false)"`
 		InputFields       func() []gqlInputValue
 		OfType            *gqlType // nil unless kind is "LIST" or "NON_NULL"
 		SpecifiedByUrl    string
@@ -66,6 +66,8 @@ type (
 	// gqlField represents the GraphQL "__Field" type
 	gqlField struct {
 		Name, Description string
+		// Remove deprecation from arguments - not (yet?) supported by vektah/gqlparser
+		//Args              func(bool) []gqlInputValue `graphql:",args(includeDeprecated=false)"`
 		Args              func() []gqlInputValue
 		Type              func() gqlType
 		IsDeprecated      bool
@@ -77,6 +79,9 @@ type (
 		Name, Description string
 		Type              func() gqlType
 		DefaultValue      string
+		// Remove deprecation - not (yet?) supported by vektah/gqlparser
+		//IsDeprecated      bool
+		//DeprecationReason string
 	}
 
 	// gqlEnumValue represents the GraphQL "__EnumValue" type
@@ -115,8 +120,8 @@ func (iss introspectionSchema) getSchema() gqlSchema {
 		Description:      iss.Description,
 		Types:            iss.getTypes,
 		QueryType:        iss.getQueryType,
-		MutationType:     nil, // TODO
-		SubscriptionType: nil, // TODO
+		MutationType:     iss.getMutationType,
+		SubscriptionType: iss.getSubscriptionType,
 		Directives:       nil, // TODO
 	}
 }
@@ -154,6 +159,24 @@ func (iss introspectionSchema) getQueryType() *gqlType {
 	return &r
 }
 
+// getMutationType gets the mutation object's type
+func (iss introspectionSchema) getMutationType() *gqlType {
+	if iss.Mutation == nil {
+		return nil
+	}
+	r := introspectionObject{iss.Mutation, iss}.getType()
+	return &r
+}
+
+// getSubscriptionType gets the subscription type
+func (iss introspectionSchema) getSubscriptionType() *gqlType {
+	if iss.Subscription == nil {
+		return nil
+	}
+	r := introspectionObject{iss.Subscription, iss}.getType()
+	return &r
+}
+
 // getType gets the type info for a named GraphQL type
 func (iso introspectionObject) getType() gqlType {
 	return gqlType{
@@ -168,7 +191,10 @@ func (iso introspectionObject) getType() gqlType {
 	}
 }
 
-func (iso introspectionObject) getFields() []gqlField {
+func (iso introspectionObject) getFields(bool) []gqlField {
+	if iso.Fields == nil {
+		return nil
+	}
 	r := make([]gqlField, 0, len(iso.Fields))
 	for _, field := range iso.Fields {
 		isf := introspectionField{field, iso}
@@ -182,7 +208,7 @@ func (iso introspectionObject) getFields() []gqlField {
 	return r
 }
 
-func (iso introspectionObject) getEnumValues() []gqlEnumValue {
+func (iso introspectionObject) getEnumValues(bool) []gqlEnumValue {
 	r := make([]gqlEnumValue, 0, len(iso.EnumValues))
 	for _, v := range iso.EnumValues {
 		r = append(r, gqlEnumValue{
@@ -199,6 +225,7 @@ func (isf introspectionField) getType() gqlType {
 }
 
 // getArgs gets a list of arguments for a field
+//func (isf introspectionField) getArgs(includeDeprecated bool) []gqlInputValue {
 func (isf introspectionField) getArgs() []gqlInputValue {
 	r := make([]gqlInputValue, 0, len(isf.Arguments))
 	for _, arg := range isf.Arguments {

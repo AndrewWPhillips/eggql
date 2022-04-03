@@ -16,13 +16,16 @@ type (
 		V    int
 		List []bool
 	}
-	Mutation struct{ F func() int }
+	Mutation struct {
+		F func(int) int `graphql:":E,args(e:E)"`
+	}
 )
 
 const (
 	schema = `"Descr. Q" type Query { a:Nested! } ` +
 		`"Description N" type Nested { v:Int! list:[Boolean!] } ` +
-		`"Description M" type Mutation { f: Int! }`
+		`"Description M" type Mutation { f(e:E!): E! }` +
+		`"Description E" enum E{E0 E1 E2}`
 )
 
 var introspectionData = map[string]struct {
@@ -45,19 +48,33 @@ var introspectionData = map[string]struct {
 			"name": "Query", "kind": "OBJECT", "description": "Descr. Q",
 		}}},
 	},
-	"TypeQuery": {
+	"MutationType": {
+		query: "{ __schema { mutationType { name kind description } } }",
+		expected: JsonObject{"__schema": JsonObject{"mutationType": JsonObject{
+			"name": "Mutation", "kind": "OBJECT", "description": "Description M",
+		}}},
+	},
+	"Type Query": {
 		query:    `{ __type(name:\"Query\") { name } }`,
 		expected: JsonObject{"__type": JsonObject{"name": "Query"}},
 	},
-	"TypeInt": {
+	"Type Int": {
 		query:    `{ __type(name:\"Int\") { name kind } }`,
 		expected: JsonObject{"__type": JsonObject{"name": "Int", "kind": "SCALAR"}},
 	},
-	"TypeNested": {
+	"Type Nested": {
 		query:    `{ __type(name:\"Nested\") { name kind description } }`,
 		expected: JsonObject{"__type": JsonObject{"name": "Nested", "kind": "OBJECT", "description": "Description N"}},
 	},
-	"TypeList": {
+	"Type Enum": {
+		query:    `{ __type(name:\"E\") { name description } }`,
+		expected: JsonObject{"__type": JsonObject{"name": "E", "description": "Description E"}},
+	},
+	"Args": {
+		query:    `{ __type(name:\"Mutation\") { fields { name args { name }}} }`,
+		expected: JsonObject{"__type": JsonObject{"fields": []interface{}{JsonObject{"name": "f", "args": []interface{}{JsonObject{"name": "e"}}}}}},
+	},
+	"Type List": {
 		query: `{ __type(name:\"Nested\") { fields { name type { name kind ofType { name kind } } } } }`,
 		expected: JsonObject{
 			"__type": JsonObject{
@@ -96,7 +113,7 @@ var introspectionData = map[string]struct {
 func TestIntrospection(t *testing.T) {
 	for name, testData := range introspectionData {
 		//log.Println(name) // we only need this if a test panics - to see which one it was
-		h := handler.New(schema, Query{A: Nested{V: 1}}, Mutation{})
+		h := handler.New(schema, map[string][]string{"E": {"E0", "E1", "E2"}}, Query{A: Nested{V: 1}}, Mutation{})
 
 		// Make the request body and the HTTP request that uses it
 		body := strings.Builder{}
