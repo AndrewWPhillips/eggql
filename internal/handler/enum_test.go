@@ -26,7 +26,7 @@ var enumData = map[string]struct {
 	query  string      // GraphQL query to send to the handler (query syntax)
 	enums  map[string][]string
 
-	expected interface{} // expected result after decoding the returned JSON
+	expected string // expected result (JSON)
 }{
 	"Value": {
 		schema: "type Query { v: Int! } enum E { E0 E1 E2 }",
@@ -35,7 +35,7 @@ var enumData = map[string]struct {
 		}{2},
 		query:    "{ v }",
 		enums:    map[string][]string{"E": {"E0", "E1", "E2"}},
-		expected: JsonObject{"v": "E2"},
+		expected: `{"v": "E2"}`,
 	},
 	"Value0": {
 		schema: "type Query { v: Int! } enum E { E0 E1 E2 }",
@@ -44,7 +44,7 @@ var enumData = map[string]struct {
 		}{V: 0},
 		query:    "{ v }",
 		enums:    map[string][]string{"E": {"E0", "E1", "E2"}},
-		expected: JsonObject{"v": "E0"},
+		expected: `{"v": "E0"}`,
 	},
 	"Param": {
 		schema: "type Query { f(p:E!): Int! } enum E { E0 E1 E2 }",
@@ -55,7 +55,7 @@ var enumData = map[string]struct {
 		},
 		query:    "{ f(p:E2) }",
 		enums:    map[string][]string{"E#desc": {"E0", "E1", "E2"}},
-		expected: JsonObject{"f": 2.0},
+		expected: `{"f": 2.0}`,
 	},
 	"DefaultParam": {
 		schema: "type Query { f(p:E=E1): Int! } enum E { E0 E1 E2 }",
@@ -66,7 +66,7 @@ var enumData = map[string]struct {
 		},
 		query:    "{ f }",
 		enums:    map[string][]string{"E#desc": {"E0", "E1#desc", "E2"}},
-		expected: JsonObject{"f": 1.0},
+		expected: `{"f": 1.0}`,
 	},
 	"InputParam": { // input type (arg to f) has an enum field (v)
 		schema: "type Query { f(p:In!): Int! } input In { v: E! } enum E { E0 E1 E2 }",
@@ -77,7 +77,7 @@ var enumData = map[string]struct {
 		},
 		query:    `{ f(p: { v: E2 }) }`,
 		enums:    map[string][]string{"E": {"E0", "E1", "E2"}},
-		expected: JsonObject{"f": 2.0},
+		expected: `{"f": 2.0}`,
 	},
 	"InputParam2": { // input type (arg to f) has two enum fields (v1 and v2)
 		schema: "type Query { f(p:In!): Int! } input In { v1: E! v2: E! } enum E { E0 E1 E2 }",
@@ -88,7 +88,7 @@ var enumData = map[string]struct {
 		},
 		query:    `{ f(p: { v1: E2 v2: E1 }) }`,
 		enums:    map[string][]string{"E": {"E0", "E1", "E2"}},
-		expected: JsonObject{"f": 21.0},
+		expected: `{"f": 21.0}`,
 	},
 	"EnumDescription": {
 		schema: "type Query { v: Int! } enum E { E0 E1 E2 }",
@@ -97,7 +97,7 @@ var enumData = map[string]struct {
 		}{2},
 		query:    "{ v }",
 		enums:    map[string][]string{"E# desc": {"E0", "E1", "E2"}},
-		expected: JsonObject{"v": "E2"},
+		expected: `{"v": "E2"}`,
 	},
 	"EnumValueDescription": {
 		schema: "type Query { v: Int! } enum E { E0 E1 E2 }",
@@ -106,7 +106,7 @@ var enumData = map[string]struct {
 		}{2},
 		query:    "{ v }",
 		enums:    map[string][]string{"E": {"E0", "E1", "E2#desc"}},
-		expected: JsonObject{"v": "E2"},
+		expected: `{"v": "E2"}`,
 	},
 	"DescriptionBoth": {
 		schema: "type Query { v: Int! } enum E { E0 E1 E2 }",
@@ -115,7 +115,7 @@ var enumData = map[string]struct {
 		}{0},
 		query:    "{ v }",
 		enums:    map[string][]string{"E# enum description": {"E0#desc 0", "E1#desc 1", "E2#desc 2"}},
-		expected: JsonObject{"v": "E0"},
+		expected: `{"v": "E0"}`,
 	},
 }
 
@@ -143,6 +143,7 @@ func TestEnumQuery(t *testing.T) {
 			t.Fail()
 			continue
 		}
+		got := writer.Body.String()
 
 		// Decode the JSON response
 		var result struct {
@@ -156,9 +157,16 @@ func TestEnumQuery(t *testing.T) {
 			t.Fail()
 			continue
 		}
+		var expected interface{}
+		decoder = json.NewDecoder(strings.NewReader(testData.expected))
+		if err := decoder.Decode(&expected); err != nil {
+			t.Logf("%12s: Error decoding expected JSON: %v", name, err)
+			t.Fail()
+			continue
+		}
 
 		// Check that the resulting GraphQL result (error and data)
 		Assertf(t, result.Errors == nil, "%12s: Expected no error and got %v", name, result.Errors)
-		Assertf(t, reflect.DeepEqual(result.Data, testData.expected), "%12s: Expected %v, got %v", name, testData.expected, result.Data)
+		Assertf(t, reflect.DeepEqual(result.Data, expected), "%12s: Expected %q, got %q", name, testData.expected, got)
 	}
 }

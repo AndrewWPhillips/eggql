@@ -27,10 +27,12 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 	}
 	args := make([]reflect.Value, v.Type().NumIn()) // list of arguments for the function call
 	baseArg := 0                                    // index of 1st query resolver argument (== 1 if function call needs ctx, else == 0)
+	foundArgs := 0                                  // to ensure the
 
 	if fieldInfo.HasContext {
 		args[baseArg] = reflect.ValueOf(ctx)
 		baseArg++ // we're now expecting one less value in params/defaults lists
+		foundArgs++
 	}
 
 	// A subscript function can't use args option (though HasContext and HasError can be set)
@@ -66,34 +68,42 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 			if args[baseArg+n], err = op.getValue(v.Type().In(baseArg+n), argument.Name, fieldInfo.Enums[n], rawValue); err != nil {
 				return
 			}
+			foundArgs++
 		}
 
 		// For any arguments not supplied use the default
-		for n, arg := range args {
+		for argNum, arg := range args {
 			// if the argument has not yet been set
 			if !arg.IsValid() {
 				// Find the arg in the field definition and get the default value
-				// (which should come from the text of fieldInfo.Defaults[n-baseArg])
+				// (which should come from the text of fieldInfo.Defaults[argNum-baseArg])
 				ok := false
 				for _, defArg := range astField.Definition.Arguments {
-					if defArg.Name == fieldInfo.Params[n-baseArg] {
+					if defArg.Name == fieldInfo.Params[argNum-baseArg] {
 						tmp, err := defArg.DefaultValue.Value(op.variables)
 						if err != nil {
 							panic(err)
 						}
-						args[n], err = op.getValue(v.Type().In(n), defArg.Name, fieldInfo.Enums[n-baseArg], tmp)
+						args[argNum], err = op.getValue(v.Type().In(argNum), defArg.Name, fieldInfo.Enums[argNum-baseArg], tmp)
 						if err != nil {
 							panic(err)
 						}
+						foundArgs++
 						ok = true
 						break
 					}
 				}
 				if !ok {
-					panic("default not found for " + fieldInfo.Params[n-baseArg])
+					panic("default not found for " + fieldInfo.Params[argNum-baseArg])
 				}
 			}
 		}
+	}
+	// Check that we got the correct numbers of parameters
+	if foundArgs != len(args) {
+		// This should only be possible if there is a bug in schema generation
+		err = fmt.Errorf("found %d args but expecting %d for resolver %q", foundArgs, len(args), astField.Name)
+		return
 	}
 
 	out := v.Call(args) // === the actual function call (using reflection) ===
@@ -208,7 +218,7 @@ func (op *gqlOperation) getStruct(t reflect.Type, name string, m map[string]inte
 		if err2 != nil {
 			return reflect.Value{}, fmt.Errorf("%w getting field %q", err2, f.Name)
 		}
-		if fieldInfo == nil {
+		if f.Name == "_" || fieldInfo == nil {
 			continue // ignore unexported field
 		}
 		// TODO check if we need to handle fieldInfo.Embedded - I don't think INPUT types can implement interfaces

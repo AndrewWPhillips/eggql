@@ -4,7 +4,6 @@ package handler
 
 import (
 	"github.com/vektah/gqlparser/v2/ast"
-	"log"
 )
 
 type (
@@ -54,20 +53,21 @@ type (
 	gqlType struct {
 		Kind              int `graphql:"kind:__TypeKind"`
 		Name, Description string
-		Fields            func(bool) []gqlField `graphql:",args(includeDeprecated=false)"`
+		Fields            func() []gqlField
 		Interfaces        func() []gqlType
 		PossibleTypes     func() []gqlType
-		EnumValues        func(bool) []gqlEnumValue `graphql:",args(includeDeprecated=false)"`
-		InputFields       func() []gqlInputValue
-		OfType            *gqlType // nil unless kind is "LIST" or "NON_NULL"
-		SpecifiedByUrl    string
+		//EnumValues        func(bool) []gqlEnumValue `graphql:",args(includeDeprecated=false)"`
+		EnumValues     func() []gqlEnumValue
+		InputFields    func() []gqlInputValue
+		OfType         *gqlType // nil unless kind is "LIST" or "NON_NULL"
+		SpecifiedByUrl string
 	}
 
 	// gqlField represents the GraphQL "__Field" type
 	gqlField struct {
 		Name, Description string
 		// Remove deprecation from arguments - not (yet?) supported by vektah/gqlparser
-		//Args              func(bool) []gqlInputValue `graphql:",args(includeDeprecated=false)"`
+		//Args func(bool) []gqlInputValue `graphql:",args(includeDeprecated=false)"`
 		Args              func() []gqlInputValue
 		Type              func() gqlType
 		IsDeprecated      bool
@@ -187,9 +187,6 @@ func (iss introspectionSchema) getType(name string) *gqlType {
 	if definition == nil {
 		return nil
 	}
-	if name == "Nested" {
-		log.Println("qqq remove this", definition.Kind) // TODO
-	}
 
 	r := introspectionObject{definition, iss}.getType()
 	return &r
@@ -245,7 +242,7 @@ func (iso introspectionObject) getType() gqlType {
 	}
 }
 
-func (iso introspectionObject) getFields(bool) []gqlField {
+func (iso introspectionObject) getFields() []gqlField {
 	if iso.Fields == nil {
 		return nil
 	}
@@ -262,7 +259,7 @@ func (iso introspectionObject) getFields(bool) []gqlField {
 	return r
 }
 
-func (iso introspectionObject) getEnumValues(bool) []gqlEnumValue {
+func (iso introspectionObject) getEnumValues() []gqlEnumValue {
 	r := make([]gqlEnumValue, 0, len(iso.EnumValues))
 	for _, v := range iso.EnumValues {
 		r = append(r, gqlEnumValue{
@@ -317,15 +314,23 @@ func (ist introspectionType) getType() *gqlType {
 		return ist.parent.getType(ist.NamedType)
 	}
 	if ist.NonNull {
+		kind, ok := IntroEnumsInt["__TypeKind"]["NON_NULL"]
+		if !ok {
+			panic("Enum 7 lookup failed")
+		}
 		return &gqlType{
-			Kind:   7, // TODO lookup "NON_NULL"
+			Kind:   kind,
 			OfType: introspectionType{ist.Elem, ist.parent}.getType(),
 		}
 	}
 	if ist.Elem != nil { // LIST
+		kind, ok := IntroEnumsInt["__TypeKind"]["LIST"]
+		if !ok {
+			panic("Enum 6 lookup failed")
+		}
 		// recurse into recursive data structure
 		return &gqlType{
-			Kind:   6, // TODO lookup "LIST"
+			Kind:   kind,
 			OfType: introspectionType{ist.Elem, ist.parent}.getType(),
 		}
 	}

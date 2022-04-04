@@ -182,7 +182,11 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 		if f.Name == "_" {
 			if f.Type.Name() == "TagField" { // name must match the type declared in run.go
 				// this field (zero size) is just included to allow us to get the description from the field tag
-				fieldInfo, _ := field.Get(&f) // TODO handle error
+				fieldInfo, err2 := field.Get(&f)
+				if err2 != nil {
+					err = fmt.Errorf("%w getting decription from TagField", err2)
+					return
+				}
 				desc = fieldInfo.Description
 			} else {
 				// This field is just included for its type so that eggql know about it (currently just used for implementing GraphQL interfaces)
@@ -220,8 +224,8 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			// Check for any "description" tag field in the union
 			for j := 0; j < f.Type.NumField(); j++ {
 				f2 := f.Type.Field(j)
-				fieldInfo2, err2 := field.Get(&f2) // just call this to get description
-				if u.desc != "" && u.desc != fieldInfo2.Description || err2 != nil {
+				fieldInfo2, err2 := field.Get(&f2) // just call this to get description for union
+				if (u.desc != "" && u.desc != fieldInfo2.Description) || err2 != nil {
 					return nil, nil, "", errors.New("Error in union description for " + f2.Name)
 				}
 				u.desc = fieldInfo2.Description

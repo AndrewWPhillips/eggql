@@ -95,7 +95,7 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 					break inner
 				}
 				if v.err != nil {
-					return r, v.err
+					return jsonmap.Ordered{}, v.err
 				}
 				r.Data[v.name] = v.value
 				r.Order = append(r.Order, v.name)
@@ -103,7 +103,7 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 					panic("map and slice in the jsonmap.Ordered should be the same size (map element replaced?)")
 				}
 			case <-ctx.Done():
-				return r, ctx.Err()
+				return jsonmap.Ordered{}, ctx.Err()
 			}
 		}
 	}
@@ -138,8 +138,11 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 		if err != nil {
 			panic(err) // TODO: return an error (no panics)
 		}
-		if fieldInfo == nil { // TODO: if embedded and empty then continue
+		if tField.Name == "_" || fieldInfo == nil {
 			continue // unexported field
+		}
+		if fieldInfo.Embedded && fieldInfo.Empty {
+			continue // union (no point scanning unexported fields)
 		}
 		// Recursively check fields of embedded struct
 		if fieldInfo.Embedded {
@@ -295,6 +298,9 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 			results = make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
 			for i := 0; i < v.Len(); i++ {
 				if value := op.resolve(ctx, astField, v.Index(i), fieldInfo); value != nil {
+					if value.err != nil {
+						return value
+					}
 					results = append(results, value.value)
 				}
 			}
