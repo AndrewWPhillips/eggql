@@ -141,7 +141,7 @@ func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, v
 		if !ok {
 			return reflect.Value{}, fmt.Errorf("getting enum (%s) for %q expected string", enumName, name)
 		}
-		value, ok = op.enumsInt[enumName][toFind]
+		value, ok = op.enumsReverse[enumName][toFind]
 		if !ok {
 			return reflect.Value{}, fmt.Errorf("could not find enum value %q in enum %q for %q", toFind, enumName, name)
 		}

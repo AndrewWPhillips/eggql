@@ -108,9 +108,9 @@ var IntroEnums = map[string][]string{
 		"SCALAR", "OBJECT", "FIELD_DEFINITION", "ARGUMENT_DEFINITION", "INTERFACE", "UNION", "ENUM", "ENUM_VALUE", "INPUT_OBJECT", "INPUT_FIELD_DEFINITION"},
 }
 
-// IntroEnumsInt stores the same enums as IntroEnum, as maps to facilitate fast lookup of int values
+// IntroEnumsReverse stores the same enums as IntroEnum, as maps for reverse lookup of int values
 // Each enum is a map keyed by the enum value (string) giving the underlying (int) value
-var IntroEnumsInt = map[string]map[string]int{
+var IntroEnumsReverse = map[string]map[string]int{
 	"__TypeKind": {
 		"SCALAR":       0,
 		"OBJECT":       1,
@@ -144,12 +144,12 @@ var IntroEnumsInt = map[string]map[string]int{
 }
 
 func init() {
-	// validate that IntroEnums and IntroEnumsInt are consistent
-	if len(IntroEnums) != len(IntroEnumsInt) {
+	// validate that IntroEnums and IntroEnumsReverse are consistent
+	if len(IntroEnums) != len(IntroEnumsReverse) {
 		panic("different number of enums")
 	}
 	for name, list := range IntroEnums {
-		m, ok := IntroEnumsInt[name]
+		m, ok := IntroEnumsReverse[name]
 		if !ok || len(list) != len(m) {
 			panic("IntroEnums inconsistency detected with " + name)
 		}
@@ -314,7 +314,7 @@ func (ist introspectionType) getType() *gqlType {
 		return ist.parent.getType(ist.NamedType)
 	}
 	if ist.NonNull {
-		kind, ok := IntroEnumsInt["__TypeKind"]["NON_NULL"]
+		kind, ok := IntroEnumsReverse["__TypeKind"]["NON_NULL"]
 		if !ok {
 			panic("Enum 7 lookup failed")
 		}
@@ -324,7 +324,7 @@ func (ist introspectionType) getType() *gqlType {
 		}
 	}
 	if ist.Elem != nil { // LIST
-		kind, ok := IntroEnumsInt["__TypeKind"]["LIST"]
+		kind, ok := IntroEnumsReverse["__TypeKind"]["LIST"]
 		if !ok {
 			panic("Enum 6 lookup failed")
 		}
@@ -339,5 +339,5 @@ func (ist introspectionType) getType() *gqlType {
 
 // getTypeKind returns the enum __TypeKind value (int) corresp. to a string
 func getTypeKind(kind ast.DefinitionKind) int {
-	return IntroEnumsInt["__TypeKind"][string(kind)]
+	return IntroEnumsReverse["__TypeKind"][string(kind)]
 }

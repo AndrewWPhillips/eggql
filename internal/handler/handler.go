@@ -16,11 +16,11 @@ import (
 type (
 	// Handler stores the invariants (schema and structs) used in the GraphQL requests
 	Handler struct {
-		schema *ast.Schema
-		enums    map[string][]string       // each enum is a slice of strings
-		enumsInt map[string]map[string]int // each enum is a map keyed by the enum value (string)
-		qData  interface{}
-		mData  interface{}
+		schema       *ast.Schema
+		enums        map[string][]string       // each enum is a slice of strings
+		enumsReverse map[string]map[string]int // allows reverse lookup - int value given enum value (string)
+		qData        interface{}
+		mData        interface{}
 		//subscriptionData interface{}
 	}
 )
@@ -41,7 +41,7 @@ func New(schemaString string, qms ...interface{}) http.Handler {
 	}
 	if rawEnums, ok := qms[0].(map[string][]string); ok {
 		r.enums = make(map[string][]string, len(rawEnums))
-		r.enumsInt = make(map[string]map[string]int, len(rawEnums))
+		r.enumsReverse = make(map[string]map[string]int, len(rawEnums))
 		for enumName, list := range rawEnums {
 			enum := make([]string, 0, len(list))
 			enumInt := make(map[string]int, len(list))
@@ -52,7 +52,7 @@ func New(schemaString string, qms ...interface{}) http.Handler {
 			}
 			parts := strings.SplitN(enumName, "#", 2)
 			r.enums[parts[0]] = enum
-			r.enumsInt[parts[0]] = enumInt
+			r.enumsReverse[parts[0]] = enumInt
 		}
 
 		// Skip the enums, to get the query, mutation, subscription
