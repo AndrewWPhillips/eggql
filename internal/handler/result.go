@@ -272,6 +272,35 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 		}
 	}
 
+	// It's a custom scalar if there exists a method on ptr to type: func (*T) UnmarshalEGGQL(string) error
+	// Note: we check for ptr receiver not value receiver as the receiver is modified
+	t := v.Type()
+	pt := reflect.TypeOf(reflect.New(t).Interface())
+	if pt.Implements(reflect.TypeOf((*field.Unmarshaller)(nil)).Elem()) {
+		var valueString string
+		var err error
+
+		if t.Implements(reflect.TypeOf((*field.Marshaller)(nil)).Elem()) {
+			// func (T) MarshallEGGQL() (string, error) - method is present
+			valueString, err = v.Interface().(field.Marshaller).MarshalEGGQL()
+			if err != nil {
+				return &gqlValue{err: fmt.Errorf("%w marshalling custom scalar %q", err, v.Type().Name())}
+			}
+			//} else if pt.Implements(reflect.TypeOf((*field.Marshaller)(nil)).Elem()) {
+			//	// func (*T) MarshallEGGQL() (string, error) - method is present
+			//	valueString, err = v.Addr().Interface().(field.Marshaller).MarshalEGGQL()
+			//	if err != nil {
+			//		return &gqlValue{err: fmt.Errorf("%w marshalling pointer to custom scalar %q", err, v.Type().Name())}
+			//	}
+		} else if pt.Implements(reflect.TypeOf((*fmt.Stringer)(nil)).Elem()) {
+			// func (T) String() string - method is present
+			valueString = v.Interface().(fmt.Stringer).String()
+		} else {
+			valueString = fmt.Sprintf("%v", v.Interface())
+		}
+		return &gqlValue{name: astField.Alias, value: valueString}
+	}
+
 	switch v.Type().Kind() {
 	case reflect.Struct:
 		// Look up all sub-queries in this object
@@ -340,35 +369,6 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 			return &gqlValue{err: fmt.Errorf("invalid return type %d for enum (should be an integer type)", v.Kind())}
 		}
 		return &gqlValue{name: astField.Alias, value: op.enums[enumName][idx]}
-	}
-	// It's a custom scalar if there exists a method on ptr to type: func (*T) UnmarshalEGGQL(string) error
-	// Note: it can't be method on the type (func (T) UnmarshalEGGQL(string) error) as the receiver would not be modified
-	t := v.Type()
-	pt := reflect.TypeOf(reflect.New(t).Interface())
-	if pt.Implements(reflect.TypeOf((*field.Unmarshaller)(nil)).Elem()) {
-		var valueString string
-		var err error
-
-		if t.Implements(reflect.TypeOf((*field.Marshaller)(nil)).Elem()) {
-			// func (T) MarshallEGGQL() (string, error) - method is present
-			valueString, err = v.Interface().(field.Marshaller).MarshalEGGQL()
-			if err != nil {
-				return &gqlValue{err: fmt.Errorf("%w marshalling custom scalar %q", err, v.Type().Name())}
-			}
-		} else if pt.Implements(reflect.TypeOf((*field.Marshaller)(nil)).Elem()) {
-			// func (*T) MarshallEGGQL() (string, error) - method is present
-			//valueString, err = v.Addr().Interface().(field.Marshaller).MarshalEGGQL()
-			//if err != nil {
-			//	return &gqlValue{err: fmt.Errorf("%w marshalling pointer to custom scalar %q", err, v.Type().Name())}
-			//}
-			return &gqlValue{err: fmt.Errorf("custom scalar %q MarshallEGGQL method should not have ptr receiver", t.Name())}
-		} else if t.Implements(reflect.TypeOf((*fmt.Stringer)(nil)).Elem()) {
-			// func (T) String() string - method is present
-			valueString = v.Interface().(fmt.Stringer).String()
-		} else {
-			valueString = fmt.Sprintf("%v", v.Interface())
-		}
-		v = reflect.ValueOf(valueString)
 	}
 	return &gqlValue{name: astField.Alias, value: v.Interface()}
 }

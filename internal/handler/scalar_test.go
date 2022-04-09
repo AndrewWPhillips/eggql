@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Simple is a very simple custom scalar - just implements UnmarshalEGGQL
@@ -24,6 +25,20 @@ func (pi *SimpleScalar) UnmarshalEGGQL(s string) error {
 		return fmt.Errorf("UnmarshalEGGQL: error %w decoding Cust with Atoi", err)
 	}
 	*pi = SimpleScalar(tmp)
+	return nil
+}
+
+// TimeScalar uses Go time type to implement a custom scalar - using time.Time.String() for marshalling
+type TimeScalar struct {
+	time.Time // by embedding we automatically get time.Time.String() method
+}
+
+func (pt *TimeScalar) UnmarshalEGGQL(in string) error {
+	tmp, err := time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", in)
+	if err != nil {
+		return fmt.Errorf("%w error in UnmarshalEGGQL for custom scalar Time", err)
+	}
+	pt.Time = tmp
 	return nil
 }
 
@@ -48,18 +63,18 @@ func (pi *BothScalar) UnmarshalEGGQL(in string) error {
 }
 
 // PtrUnmarshall implements UnmarshalEGGQL with pointer receiver
-type PtrUnmarshal string
+type ScalarString string
 
-func (p *PtrUnmarshal) MarshalEGGQL() (string, error) {
-	return "PU:" + string(*p), nil
+func (p ScalarString) MarshalEGGQL() (string, error) {
+	return "PU:" + string(p), nil
 }
 
-func (p *PtrUnmarshal) UnmarshalEGGQL(in string) error {
+func (p *ScalarString) UnmarshalEGGQL(in string) error {
 	s := strings.TrimPrefix(in, "PU:")
 	if s == in {
-		return errors.New(`UnmarshalEGGQL: can't decode PtrUnmarshal value - should begin with "CUST:"`)
+		return errors.New(`UnmarshalEGGQL: can't decode ScalarString value - should begin with "CUST:"`)
 	}
-	*p = PtrUnmarshal(s)
+	*p = ScalarString(s)
 	return nil
 }
 
@@ -70,16 +85,6 @@ var scalarData = map[string]struct {
 
 	expected string // expected result (JSON)
 }{
-	"Unmarshal": {
-		schema: "type Query { f(a:PtrUnmarshal!): PtrUnmarshal! } scalar PtrUnmarshal",
-		data: struct {
-			F func(scalar PtrUnmarshal) PtrUnmarshal `graphql:",args(a)"`
-		}{
-			F: func(a PtrUnmarshal) PtrUnmarshal { return PtrUnmarshal(strings.ToUpper(string(a))) },
-		},
-		query:    `{ f(a:\"PU:test\") }`,
-		expected: `{"f": "PU:TEST"}`,
-	},
 	"Simple": {
 		schema: "type Query { f(a:Simple!): Simple! } scalar Simple",
 		data: struct {
@@ -121,6 +126,26 @@ var scalarData = map[string]struct {
 		},
 		query:    `{ f(v:test_3) }`,
 		expected: `{"f": 3}`,
+	},
+	"String": {
+		schema: "type Query { f(a:ScalarString!): ScalarString! } scalar ScalarString",
+		data: struct {
+			F func(scalar ScalarString) ScalarString `graphql:",args(a)"`
+		}{
+			F: func(a ScalarString) ScalarString { return ScalarString(strings.ToUpper(string(a))) },
+		},
+		query:    `{ f(a:\"PU:test\") }`,
+		expected: `{"f": "PU:TEST"}`,
+	},
+	"Time": {
+		schema: "type Query { f(t:TimeScalar!): TimeScalar! } scalar TimeScalar",
+		data: struct {
+			F func(scalar TimeScalar) TimeScalar `graphql:",args(t)"`
+		}{
+			F: func(t TimeScalar) (r TimeScalar) { r.Time = t.Time.Add(time.Hour); return },
+		},
+		query:    `{ f(t:\"2006-01-02 15:04:05.99 -0700 MST\") }`,
+		expected: `{"f": "2006-01-02 16:04:05.99 -0700 MST"}`,
 	},
 }
 
