@@ -13,15 +13,25 @@ import (
 	"unicode/utf8"
 )
 
+type (
+	// Marshaller is implemented by custom scalar types
+	Marshaller interface {
+		MarshalEGGQL() (string, error)
+	}
+	// Unmarshaller is implemented by custom scalar types
+	Unmarshaller interface {
+		UnmarshalEGGQL(string) error
+	}
+)
+
 // Info is returned Get() with info extracted from a struct field to be used as a GraphQL query resolver.
 // The info is obtained from the field's name, type and "graphql" (metadata) tag.
 // Note that since Go has no native enums the GraphQL enum names are handled in metadata for
 // both resolver return value and arguments (see metadata examples).
 type Info struct {
-	Name        string // field name for use in GraphQL queries - based on metadata (tag) or Go struct field name
-	GQLTypeName string // GraphQL type name (may be empty but is required for GraphQL enums)
-	//Kind        reflect.Kind
-	ResultType reflect.Type // Type (Go) used to generate the resolver (GraphQL) type = field type, func return type, or element type for array/slice
+	Name        string       // field name for use in GraphQL queries - based on metadata (tag) or Go struct field name
+	GQLTypeName string       // GraphQL type name (may be empty but is required for GraphQL enums)
+	ResultType  reflect.Type // Type (Go) used to generate the resolver (GraphQL) type = field type, func return type, or element type for array/slice
 
 	// The following are for function resolvers only
 	Params     []string // name(s) of args to resolver function obtained from metadata
@@ -39,7 +49,7 @@ type Info struct {
 	Subscript     string       // name resolver arg (default is "id")
 	SubscriptType reflect.Type // arg type - int for slice/array, type of the key for maps
 	// Description is text used as a GraphQL description for the field - taken from the tag string after any # character (outside brackets)
-	Description string
+	Description string // All text in the tag after the first hash (#) [unless the # is in brackets or in a string]
 }
 
 // contextType is used to check if a resolver function takes a context.Context (1st) parameter
@@ -53,7 +63,8 @@ var errorType = reflect.TypeOf((*error)(nil)).Elem()
 // It also returns other stuff like whether the result is nullable and GraphQL parameters (and default
 // parameter values) if the resolver is a function.
 // An error may be returned e.g. for malformed metadata, or a resolver function returning multiple values.
-// If the field is not exported or the field name (1st tag value) is a dash (-) then nil is returned, but no error.
+// If the field is not exported or the tag is a dash (-) then nil is returned (no error), unless the field
+// *name* is an underscore (_) which returns an Info with the Description field filled in.
 func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 	if f.Name != "_" && f.PkgPath != "" {
 		return // unexported field

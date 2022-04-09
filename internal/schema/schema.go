@@ -31,6 +31,7 @@ const (
 	gqlObjectTypeKeyword = "type"
 	gqlInputKeyword      = "input"
 	gqlEnumKeyword       = "enum"
+	gqlScalarKeyword     = "scalar"
 	gqlInterfaceKeyword  = "interface"
 	gqlUnionKeyword      = "union"
 )
@@ -228,6 +229,20 @@ func (s schema) build(rawEnums map[string][]string, entry [3]string) (string, er
 			builder.WriteRune('\n')
 		}
 		builder.WriteString(closeString)
+	}
+
+	// Custom scalars
+	objectsLength = 0
+	for _, name := range *s.scalars {
+		objectsLength += 8 + len(name)
+	}
+	builder.Grow(objectsLength)
+
+	for _, name := range *s.scalars {
+		builder.WriteString(gqlScalarKeyword)
+		builder.WriteRune(' ')
+		builder.WriteString(name)
+		builder.WriteRune('\n')
 	}
 
 	return builder.String(), nil

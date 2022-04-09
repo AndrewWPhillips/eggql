@@ -2,8 +2,19 @@ package schema
 
 import (
 	"errors"
+	"github.com/andrewwphillips/eggql/internal/field"
 	"reflect"
 )
+
+// getParams creates the list of GraphQL arguments for a resolver function
+// If any arg uses a Go struct then it also adds the corresponding GraphQL "input" type to the schemaTypes collection
+func (s schema) getCustomScalar(t reflect.Type) string {
+	if !t.Implements(reflect.TypeOf((*field.Unmarshaller)(nil)).Elem()) {
+		return "" // custom scalars must implement the UnmarshalEGGQL method
+	}
+	*s.scalars = append(*s.scalars, t.Name())
+	return t.Name()
+}
 
 // getTypeName returns the GraphQL type name corresponding to a Go type.
 // The return value is just the type name for scalars and structs, but for slices/arrays
