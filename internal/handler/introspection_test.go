@@ -1,5 +1,7 @@
 package handler_test
 
+// introspection_test.go tests that introspection queries produce the correct result
+
 import (
 	"encoding/json"
 	"github.com/andrewwphillips/eggql/internal/handler"
@@ -11,11 +13,20 @@ import (
 )
 
 type (
-	Query  struct{ A Nested }
+	Query struct {
+		A Nested
+		_ ObjectList
+	}
 	Nested struct {
 		V    int
 		List []bool
 	}
+
+	Simple     struct{ I int }
+	ObjectList struct {
+		List []Simple
+	}
+
 	Mutation struct {
 		F func(int) int `graphql:":E,args(e:E)"`
 	}
@@ -25,6 +36,8 @@ const (
 	schema = `"Descr. Q" type Query { a:Nested! } ` +
 		`"Description N" type Nested { v:Int! list:[Boolean!] } ` +
 		`"Description M" type Mutation { f(e:E!): E! }` +
+		`"Description S" type Simple { i: Int! }` +
+		`"Description L" type ObjectList { list: [Simple!] }` +
 		`"Description E" enum E{E0 E1 E2}`
 )
 
@@ -80,6 +93,12 @@ var introspectionData = map[string]struct {
 		expected: `{"__type": { "fields": [` +
 			`  {"name": "v",   "type": {"name":"Int", "kind": "SCALAR", "ofType": null} }, ` +
 			`  {"name": "list", "type": {"name":"", "kind": "LIST", "ofType": {"name":"Boolean", "kind": "SCALAR"}}}` +
+			`]}}`,
+	},
+	"Type ObjLst": {
+		query: `{ __type(name:\"ObjectList\") { fields { name type { name kind ofType { name kind } } } } }`,
+		expected: `{"__type": {"fields":[` +
+			`  {"name":"list", "type": {"name":"", "kind":"LIST", "ofType": {"name": "Simple", "kind": "OBJECT"}}}` +
 			`]}}`,
 	},
 }

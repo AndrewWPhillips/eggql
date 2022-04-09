@@ -1,5 +1,7 @@
 package handler_test
 
+// enum_test.go has tests of enum processing
+
 import (
 	"encoding/json"
 	"github.com/andrewwphillips/eggql/internal/handler"
@@ -143,7 +145,6 @@ func TestEnumQuery(t *testing.T) {
 			t.Fail()
 			continue
 		}
-		got := writer.Body.String()
 
 		// Decode the JSON response
 		var result struct {
@@ -166,7 +167,9 @@ func TestEnumQuery(t *testing.T) {
 		}
 
 		// Check that the resulting GraphQL result (error and data)
-		Assertf(t, result.Errors == nil, "%12s: Expected no error and got %v", name, result.Errors)
-		Assertf(t, reflect.DeepEqual(result.Data, expected), "%12s: Expected %q, got %q", name, testData.expected, got)
+		if result.Errors != nil {
+			Assertf(t, result.Errors == nil, "%12s: Expected no error and got %v", name, result.Errors)
+		}
+		Assertf(t, reflect.DeepEqual(result.Data, expected), "%12s: Expected %v, got %v", name, expected, result.Data)
 	}
 }
