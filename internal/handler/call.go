@@ -146,10 +146,26 @@ func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, v
 			return reflect.Value{}, fmt.Errorf("could not find enum value %q in enum %q for %q", toFind, enumName, name)
 		}
 	}
-	kind := reflect.TypeOf(value).Kind() // expected type of value to return
-	if kind == t.Kind() && kind != reflect.Map && kind != reflect.Slice {
+
+	kind := reflect.TypeOf(value).Kind()
+	if t.Name() == reflect.TypeOf(value).Name() && kind != reflect.Map && kind != reflect.Slice {
 		return reflect.ValueOf(value), nil // no conversion necessary
 	}
+
+	// If the value is a custom scalar unmarshal it
+	// TODO find better way to get type of ptr to t than reflect.TypeOf(reflect.New(t).Interface())
+	if reflect.TypeOf(reflect.New(t).Interface()).Implements(reflect.TypeOf((*field.Unmarshaller)(nil)).Elem()) {
+		in, ok := value.(string)
+		if !ok {
+			in = fmt.Sprintf("%v", value)
+		}
+		out := reflect.New(t).Interface().(field.Unmarshaller) // where to decode into (ptr)
+		if err := out.UnmarshalEGGQL(in); err != nil {
+			return reflect.Value{}, fmt.Errorf("%w unmarshalling custom scalar %q", err, value.(string))
+		}
+		return reflect.ValueOf(out).Elem(), nil // return the actual value pointed to
+	}
+
 	// Try to convert the type of the variable to the expected type
 	switch kind {
 	case reflect.Map:

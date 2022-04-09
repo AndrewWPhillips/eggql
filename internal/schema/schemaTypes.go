@@ -21,6 +21,7 @@ type (
 		description map[string]string       // corresponding description of the types
 		usedAs      map[reflect.Type]string // tracks which types (structs) we have seen (mainly to handle recursive data structures)
 		unions      map[string]union        // key is union name
+		scalars     *[]string               // names of custom scalar types (implement MarshalEGGQL/UnmarshalEGGQL)
 	}
 
 	// union contains details used to generate one GraphQL union
@@ -37,6 +38,7 @@ func newSchemaTypes() schema {
 		description: make(map[string]string),
 		usedAs:      make(map[reflect.Type]string),
 		unions:      make(map[string]union),
+		scalars:     &[]string{},
 	}
 }
 
@@ -298,6 +300,9 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			effectiveType = f.Type
 		}
 		if typeName == "" {
+			typeName = s.getCustomScalar(effectiveType)
+		}
+		if typeName == "" {
 			// Get resolver return type
 			typeName, err2 = getTypeName(effectiveType)
 			if err2 != nil {
@@ -361,6 +366,7 @@ const paramStart, paramSep, paramEnd = "(", ", ", ")"
 
 // getSubscript creates the arg list (just one arg) for "subscript" option on a slice/array/map
 func (s schema) getSubscript(fieldInfo *field.Info) (string, error) {
+	// TODO allow custom scalar as subscript?
 	typeName, err := getTypeName(fieldInfo.SubscriptType)
 	if err != nil {
 		return "", fmt.Errorf("%w getting subscript type for %q", err, fieldInfo.Name)
@@ -472,7 +478,13 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 				}
 			}
 		}
+		// Get type name supplied in the tag (used for enums etc)
 		typeName := fieldInfo.Enums[paramNum]
+		// If not found check if it's a custom scalar
+		if typeName == "" {
+			typeName = s.getCustomScalar(param)
+		}
+		// If still not found use the Go type (eg Go int => Int! etc)
 		if typeName == "" {
 			var err error
 			typeName, err = getTypeName(param)
@@ -480,6 +492,7 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 				return "", fmt.Errorf("parameter %d (%s) error: %w", i, param.Name(), err)
 			}
 		}
+		// If still not found (eg inline struct literal) use the field name to generate a type name
 		if typeName == "" {
 			// Work out default type name for anon struct by upper-casing the 1st letter of the parameter name
 			first, n := utf8.DecodeRuneInString(fieldInfo.Params[paramNum])
