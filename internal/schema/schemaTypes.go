@@ -195,6 +195,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 				if err = s.add("", f.Type, enums, gqlObjectTypeKeyword); err != nil {
 					return
 				}
+				// if proposal to allow scalars to implement interfaces goes ahead we may need to call s.getTypeName(f.Type) here
 			}
 		}
 	}
@@ -299,12 +300,10 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			}
 			effectiveType = f.Type
 		}
-		if typeName == "" {
-			typeName = s.getCustomScalar(effectiveType)
-		}
+		// Get type name derived from Go type
 		if typeName == "" {
 			// Get resolver return type
-			typeName, err2 = getTypeName(effectiveType)
+			typeName, err2 = s.getTypeName(effectiveType)
 			if err2 != nil {
 				err = fmt.Errorf("%w getting name for %q", err2, fieldInfo.Name)
 				return
@@ -367,7 +366,7 @@ const paramStart, paramSep, paramEnd = "(", ", ", ")"
 // getSubscript creates the arg list (just one arg) for "subscript" option on a slice/array/map
 func (s schema) getSubscript(fieldInfo *field.Info) (string, error) {
 	// TODO allow custom scalar as subscript?
-	typeName, err := getTypeName(fieldInfo.SubscriptType)
+	typeName, err := s.getTypeName(fieldInfo.SubscriptType)
 	if err != nil {
 		return "", fmt.Errorf("%w getting subscript type for %q", err, fieldInfo.Name)
 	}
@@ -480,14 +479,11 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 		}
 		// Get type name supplied in the tag (used for enums etc)
 		typeName := fieldInfo.Enums[paramNum]
-		// If not found check if it's a custom scalar
-		if typeName == "" {
-			typeName = s.getCustomScalar(param)
-		}
-		// If still not found use the Go type (eg Go int => Int! etc)
+
+		// If not found use the Go type (eg Go int => Int! etc) of custom scalar type
 		if typeName == "" {
 			var err error
-			typeName, err = getTypeName(param)
+			typeName, err = s.getTypeName(param)
 			if err != nil {
 				return "", fmt.Errorf("parameter %d (%s) error: %w", i, param.Name(), err)
 			}
