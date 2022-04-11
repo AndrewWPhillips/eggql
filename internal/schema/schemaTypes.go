@@ -262,8 +262,8 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			continue // all resolvers for the "interface" have been added
 		}
 
-		// Use the specified resolver return type
-		typeName := fieldInfo.GQLTypeName
+		// Use resolver return type from the tag (if any) and assume it's not a scalar
+		typeName, isScalar := fieldInfo.GQLTypeName, false
 		if typeName != "" {
 			// Ensure the name given is valid
 			if err2 = s.validateTypeName(fieldInfo.GQLTypeName, enums); err2 != nil {
@@ -303,7 +303,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 		// Get type name derived from Go type
 		if typeName == "" {
 			// Get resolver return type
-			typeName, err2 = s.getTypeName(effectiveType)
+			typeName, isScalar, err2 = s.getTypeName(effectiveType)
 			if err2 != nil {
 				err = fmt.Errorf("%w getting name for %q", err2, fieldInfo.Name)
 				return
@@ -326,13 +326,16 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 		}
 		r[fieldInfo.Name] = resolverDesc + "  " + fieldInfo.Name + " " + params + ":" + typeName + endStr
 
-		// Also add nested struct types (if any) to our collection
-		nestedType := gqlType
-		if nestedType == gqlInterfaceKeyword {
-			nestedType = gqlObjectTypeKeyword // a field inside an embedded struct is not itself treated as an interface
-		}
-		if err = s.add(typeName, effectiveType, enums, nestedType); err != nil {
-			return
+		if !isScalar {
+			// We need to determine the type of the nested object (type/input/interface), normally it's the same as the
+			// parent (eg nested types in "input" are also "input") but a type inside an "interface" is an object ("type")
+			nestedType := gqlType
+			if nestedType == gqlInterfaceKeyword {
+				nestedType = gqlObjectTypeKeyword // a field inside an embedded struct is not itself treated as an interface
+			}
+			if err = s.add(typeName, effectiveType, enums, nestedType); err != nil {
+				return
+			}
 		}
 	}
 	return
@@ -365,10 +368,13 @@ const paramStart, paramSep, paramEnd = "(", ", ", ")"
 
 // getSubscript creates the arg list (just one arg) for "subscript" option on a slice/array/map
 func (s schema) getSubscript(fieldInfo *field.Info) (string, error) {
-	// TODO allow custom scalar as subscript?
-	typeName, err := s.getTypeName(fieldInfo.SubscriptType)
+	typeName, isScalar, err := s.getTypeName(fieldInfo.SubscriptType)
 	if err != nil {
 		return "", fmt.Errorf("%w getting subscript type for %q", err, fieldInfo.Name)
+	}
+	if !isScalar {
+		// TODO check if this restriction is necessary
+		return "", fmt.Errorf("you can't use an object type (%s) as a subscript", fieldInfo.Name)
 	}
 	return fmt.Sprintf("(%s: %s!)", fieldInfo.Subscript, typeName), nil
 }
@@ -478,12 +484,12 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 			}
 		}
 		// Get type name supplied in the tag (used for enums etc)
-		typeName := fieldInfo.Enums[paramNum]
+		typeName, isScalar := fieldInfo.Enums[paramNum], false
 
 		// If not found use the Go type (eg Go int => Int! etc) of custom scalar type
 		if typeName == "" {
 			var err error
-			typeName, err = s.getTypeName(param)
+			typeName, isScalar, err = s.getTypeName(param)
 			if err != nil {
 				return "", fmt.Errorf("parameter %d (%s) error: %w", i, param.Name(), err)
 			}
@@ -505,9 +511,11 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 			value := fieldInfo.Defaults[paramNum]
 			builder.WriteString(value)
 		}
-		// If it's a struct we also need to add the "input" type to our collection
-		if err := s.add(typeName, param, enums, gqlInputKeyword); err != nil {
-			return "", fmt.Errorf("%w adding INPUT type %q", err, typeName)
+		if !isScalar {
+			// If it's a struct we also need to add the "input" type to our collection
+			if err := s.add(typeName, param, enums, gqlInputKeyword); err != nil {
+				return "", fmt.Errorf("%w adding INPUT type %q", err, typeName)
+			}
 		}
 
 		sep = paramSep
