@@ -73,7 +73,7 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 		if t.Kind() != reflect.Struct {
 			return "", errors.New("parameters to schema.Build must be structs")
 		}
-		entry[i], _ = schemaTypes.getTypeName(t) // no need to check the error as we know it's a struct
+		entry[i], _, _ = schemaTypes.getTypeName(t) // it's a struct (see above) so we know it's not a scalar & there's no error
 
 		if entry[i] == "" { // if given an unnamed struct we use the default name
 			switch EntryPoint(i) {

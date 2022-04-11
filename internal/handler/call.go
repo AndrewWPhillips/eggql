@@ -135,7 +135,18 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 //   enumName allows lookup of an enum value if t is an integer and value is a string
 //   value = what needs to be returned converted to a value of type t
 func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, value interface{}) (reflect.Value, error) {
-	// If it's an enum we need to convert the enum name (string) to int
+	if value == nil {
+		// Return a value of the default type
+		return reflect.ValueOf(reflect.New(t).Elem().Interface()), nil
+	}
+
+	deref := false // keeps tracks of whether we're returning the value or a reference (ptr) to it
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+		deref = true
+	}
+
+	// If it's an enum we need to convert the enum name (string) to corresp. int
 	if enumName != "" && t.Kind() >= reflect.Int && t.Kind() <= reflect.Uint64 {
 		toFind, ok := value.(string)
 		if !ok {
@@ -154,14 +165,17 @@ func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, v
 
 	// If the value is a custom scalar unmarshal it
 	// TODO find better way to get type of ptr to t than reflect.TypeOf(reflect.New(t).Interface())
-	if reflect.TypeOf(reflect.New(t).Interface()).Implements(reflect.TypeOf((*field.Unmarshaller)(nil)).Elem()) {
+	if reflect.TypeOf(reflect.New(t).Interface()).Implements(reflect.TypeOf((*field.Unmarshaler)(nil)).Elem()) {
 		in, ok := value.(string)
 		if !ok {
 			in = fmt.Sprintf("%v", value)
 		}
-		out := reflect.New(t).Interface().(field.Unmarshaller) // where to decode into (ptr)
+		out := reflect.New(t).Interface().(field.Unmarshaler) // where to decode into (ptr)
 		if err := out.UnmarshalEGGQL(in); err != nil {
-			return reflect.Value{}, fmt.Errorf("%w unmarshalling custom scalar %q", err, value.(string))
+			return reflect.Value{}, fmt.Errorf("%w unmarshaling custom scalar %q", err, value.(string))
+		}
+		if deref {
+			return reflect.ValueOf(out), nil // return pointer to the new value
 		}
 		return reflect.ValueOf(out).Elem(), nil // return the actual value pointed to
 	}

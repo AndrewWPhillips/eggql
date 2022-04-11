@@ -149,7 +149,7 @@ func (p *ParentRef) valueFunc() int {
 	return p.private
 }
 
-// JsonObject is what json.Unmarshaller produces when it decodes a JSON object.  Not that we use a type alias here,
+// JsonObject is what json.Unmarshaler produces when it decodes a JSON object.  Not that we use a type alias here,
 //   hence the equals sing (=) rather than a type definition otherwise reflect.DeepEqual does not work.
 type JsonObject = map[string]interface{}
 
