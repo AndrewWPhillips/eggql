@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// Simple is a very simple custom scalar - just implements UnmarshalEGGQL
+// SimpleScalar - implements UnmarshalEGGQL (relies on %v printf format for marshaling)
 type SimpleScalar int8
 
 func (pi *SimpleScalar) UnmarshalEGGQL(s string) error {
@@ -62,19 +62,19 @@ func (pi *BothScalar) UnmarshalEGGQL(in string) error {
 	return nil
 }
 
-// PtrUnmarshall implements UnmarshalEGGQL with pointer receiver
-type ScalarString string
+// StringScalar implements MarshalEGGQL with pointer receiver
+type StringScalar string
 
-func (p ScalarString) MarshalEGGQL() (string, error) {
-	return "PU:" + string(p), nil
+func (p *StringScalar) MarshalEGGQL() (string, error) {
+	return "PU:" + string(*p), nil
 }
 
-func (p *ScalarString) UnmarshalEGGQL(in string) error {
+func (p *StringScalar) UnmarshalEGGQL(in string) error {
 	s := strings.TrimPrefix(in, "PU:")
 	if s == in {
-		return errors.New(`UnmarshalEGGQL: can't decode ScalarString value - should begin with "CUST:"`)
+		return errors.New(`UnmarshalEGGQL: can't decode StringScalar value - should begin with "CUST:"`)
 	}
-	*p = ScalarString(s)
+	*p = StringScalar(s)
 	return nil
 }
 
@@ -127,16 +127,6 @@ var scalarData = map[string]struct {
 		query:    `{ f(v:test_3) }`,
 		expected: `{"f": 3}`,
 	},
-	"String": {
-		schema: "type Query { f(a:ScalarString!): ScalarString! } scalar ScalarString",
-		data: struct {
-			F func(scalar ScalarString) ScalarString `graphql:",args(a)"`
-		}{
-			F: func(a ScalarString) ScalarString { return ScalarString(strings.ToUpper(string(a))) },
-		},
-		query:    `{ f(a:\"PU:test\") }`,
-		expected: `{"f": "PU:TEST"}`,
-	},
 	"Time": {
 		schema: "type Query { f(t:TimeScalar!): TimeScalar! } scalar TimeScalar",
 		data: struct {
@@ -146,6 +136,16 @@ var scalarData = map[string]struct {
 		},
 		query:    `{ f(t:\"2006-01-02 15:04:05.99 -0700 MST\") }`,
 		expected: `{"f": "2006-01-02 16:04:05.99 -0700 MST"}`,
+	},
+	"String": {
+		schema: "type Query { f(a:StringScalar!): StringScalar! } scalar StringScalar",
+		data: struct {
+			F func(scalar StringScalar) StringScalar `graphql:",args(a)"`
+		}{
+			F: func(a StringScalar) StringScalar { return StringScalar(strings.ToUpper(string(a))) },
+		},
+		query:    `{ f(a:\"PU:test\") }`,
+		expected: `{"f": "PU:TEST"}`,
 	},
 }
 
