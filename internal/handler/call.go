@@ -154,7 +154,7 @@ func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, v
 
 	// If the value is a custom scalar unmarshal it
 	// TODO find better way to get type of ptr to t than reflect.TypeOf(reflect.New(t).Interface())
-	if reflect.TypeOf(reflect.New(t).Interface()).Implements(reflect.TypeOf((*field.Unmarshaller)(nil)).Elem()) {
+	if reflect.TypeOf(reflect.New(t).Interface()).Implements(reflect.TypeOf((*field.Unmarshaler)(nil)).Elem()) {
 		in, ok := value.(string)
 		if !ok {
 			in = fmt.Sprintf("%v", value)

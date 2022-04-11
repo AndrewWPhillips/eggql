@@ -28,7 +28,7 @@ func (pi *SimpleScalar) UnmarshalEGGQL(s string) error {
 	return nil
 }
 
-// TimeScalar uses Go time type to implement a custom scalar - using time.Time.String() for marshalling
+// TimeScalar uses Go time type to implement a custom scalar - using time.Time.String() for marshaling
 type TimeScalar struct {
 	time.Time // by embedding we automatically get time.Time.String() method
 }

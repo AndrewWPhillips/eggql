@@ -276,7 +276,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 	// Note: we check for ptr receiver not value receiver as the receiver is modified
 	t := v.Type()
 	pt := reflect.TypeOf(reflect.New(t).Interface())
-	if pt.Implements(reflect.TypeOf((*field.Unmarshaller)(nil)).Elem()) {
+	if pt.Implements(reflect.TypeOf((*field.Unmarshaler)(nil)).Elem()) {
 		var valueString string
 		var err error
 

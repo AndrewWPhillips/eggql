@@ -14,12 +14,12 @@ import (
 )
 
 type (
-	// Marshaller is implemented by custom scalar types
-	Marshaller interface {
+	// Marshaler is implemented by custom scalar types
+	Marshaler interface {
 		MarshalEGGQL() (string, error)
 	}
-	// Unmarshaller is implemented by custom scalar types
-	Unmarshaller interface {
+	// Unmarshaler is implemented by custom scalar types
+	Unmarshaler interface {
 		UnmarshalEGGQL(string) error
 	}
 )
