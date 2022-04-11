@@ -12,6 +12,34 @@ import (
 	"time"
 )
 
+type ReviewTime struct{ time.Time } // embed Time so we get String() method (for marshaling)
+
+// UnmarshalEGGQL is called when eggql needs to decode a string to a Time
+func (rt *ReviewTime) UnmarshalEGGQL(in string) error {
+	tmp, err := time.Parse(time.RFC3339, in)
+	if err != nil {
+		return fmt.Errorf("%w error in UnmarshalEGGQL for custom scalar Time", err)
+	}
+	rt.Time = tmp
+	return nil
+}
+
+//type ReviewTime time.Time
+//
+//// UnmarshalEGGQL is called when eggql needs to decode a string to a Time
+//func (rt *ReviewTime) UnmarshalEGGQL(in string) error {
+//	tmp, err := time.Parse(time.RFC3339, in)
+//	if err != nil {
+//		return fmt.Errorf("%w error in UnmarshalEGGQL for custom scalar Time", err)
+//	}
+//	*rt = ReviewTime(tmp)
+//	return nil
+//}
+//
+//func (rt *ReviewTime) MarshalEGGQL() (string, error) {
+//	return time.Time(*rt).Format(time.RFC3339), nil
+//}
+
 const (
 	FirstHumanID    = 1000
 	FirstDroidID    = 2000
@@ -94,16 +122,19 @@ type (
 		PrimaryFunction string
 	}
 	EpisodeDetails struct {
-		_          eggql.TagField `graphql:"# Stores info and reviews of each of the movies"`
-		Name       string
-		HeroId     int
+		_      eggql.TagField `graphql:"# Stores info and reviews of each of the movies"`
+		Name   string
+		HeroId int
+		// The following are submitted reviews (with stars and time)
 		Stars      []int
 		Commentary []string
+		Time       []ReviewTime
 	}
 	Review struct {
 		_          eggql.TagField `graphql:"# One person's rating and review for a movie"`
 		Stars      int
 		Commentary string
+		Time       ReviewTime
 	}
 	Starship struct {
 		_            eggql.TagField `graphql:"# Machines for inter-planetary and inter-stellar travel"`
@@ -122,14 +153,14 @@ type (
 		_          eggql.TagField `graphql:"# The input object sent when someone is creating a new review"`
 		Stars      int
 		Commentary string
-		//Time TODO
+		Time       *ReviewTime `graphql:"# time the review was written - current time is used if NULL"`
 	}
 
 	// The following are for pagination of a list of friends
 	FriendsConnection struct {
 		_          eggql.TagField `graphql:"# A connection object for a character's friends"`
 		TotalCount int            `graphql:"# The total number of friends"`
-		Edges      []FriendsEdge  `graphql:"# Edges for eahc of the character's friends"`
+		Edges      []FriendsEdge  `graphql:"# Edges for each of the character's friends"`
 		Friends    []*Character   `graphql:"# A list of the friends, as a convenience when edges are not needed"`
 		PageInfo   PageInfo       `graphql:"# Information for paginating this connection"`
 	}
@@ -148,12 +179,15 @@ type (
 
 var (
 	gqlEnums = map[string][]string{
-		"Episode# Movies of the Star Wars trilogy": {
+		"Episode# Movies of the Star Wars trilogy": { // order should match the episodes slice below
 			"NEWHOPE# A New Hope (1977)",
 			"EMPIRE# The Empire Strikes Back (1980)",
 			"JEDI# Return of the Jedi (1983)",
-		}, // order should match order EpisodeDetails in the episodes slice below
-		"LengthUnit# Units for spatial measurements": {"METER# Standard metric spatial unit", "FOOT# Imperial spatial unit used mainly in the US"}, // order of strings in the slice should match METER, etc consts below
+		},
+		"LengthUnit# Units for spatial measurements": { // order of strings in the slice should match METER, etc consts below
+			"METER# Standard metric spatial unit",
+			"FOOT# Imperial spatial unit used mainly in the US",
+		},
 	}
 )
 
@@ -297,7 +331,11 @@ func main() {
 				}
 				var r []Review
 				for i := range episodes[episode].Stars {
-					r = append(r, Review{Stars: episodes[episode].Stars[i], Commentary: episodes[episode].Commentary[i]})
+					r = append(r, Review{
+						Stars:      episodes[episode].Stars[i],
+						Commentary: episodes[episode].Commentary[i],
+						Time:       episodes[episode].Time[i],
+					})
 				}
 				return r, nil
 			},
@@ -340,11 +378,17 @@ func main() {
 				}
 				episodes[episode].Stars = append(episodes[episode].Stars, review.Stars)
 				episodes[episode].Commentary = append(episodes[episode].Commentary, review.Commentary)
+				if review.Time == nil {
+					episodes[episode].Time = append(episodes[episode].Time, ReviewTime{time.Now()})
+					//episodes[episode].Time = append(episodes[episode].Time, ReviewTime(time.Now()))
+				} else {
+					episodes[episode].Time = append(episodes[episode].Time, *review.Time)
+				}
 				return &episodes[episode], nil
 			},
 		},
 	)
-	handler = http.TimeoutHandler(handler, 15*time.Second, `{"errors":[{"message":"timeout"}]}`)
+	handler = http.TimeoutHandler(handler, 15*time.Hour, `{"errors":[{"message":"timeout"}]}`)
 	http.Handle("/graphql", handler)
 
 	log.Println("starting server")
