@@ -286,13 +286,15 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 			if err != nil {
 				return &gqlValue{err: fmt.Errorf("%w marshaling custom scalar %q", err, v.Type().Name())}
 			}
-			//} else if pt.Implements(reflect.TypeOf((*field.Marshaler)(nil)).Elem()) {
-			//	// This is here just in case the Marshal method has a pointer receiver (only needs value receiver) ie:
-			//	//  func (*T) MarshalEGGQL() (string, error)
-			//	valueString, err = v.Addr().Interface().(field.Marshaler).MarshalEGGQL() // fails if v is not addressable
-			//	if err != nil {
-			//		return &gqlValue{err: fmt.Errorf("%w marshalling pointer to custom scalar %q", err, v.Type().Name())}
-			//	}
+		} else if pt.Implements(reflect.TypeOf((*field.Marshaler)(nil)).Elem()) {
+			// This is here just in case the Marshal method has a pointer receiver (only needs value receiver) ie:
+			//  func (*T) MarshalEGGQL() (string, error)
+			tmp := reflect.New(v.Type())
+			tmp.Elem().Set(v)
+			valueString, err = tmp.Interface().(field.Marshaler).MarshalEGGQL() // fails if v is not addressable
+			if err != nil {
+				return &gqlValue{err: fmt.Errorf("%w marshalling pointer to custom scalar %q", err, v.Type().Name())}
+			}
 		} else if t.Implements(reflect.TypeOf((*fmt.Stringer)(nil)).Elem()) {
 			// func (T) String() string - method is present
 			valueString = v.Interface().(fmt.Stringer).String()
