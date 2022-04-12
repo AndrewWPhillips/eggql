@@ -108,3 +108,40 @@ func TestTimeout(t *testing.T) {
 		t.Fatalf("Expected returned JSON to contain an error about canceled context but got %q", writer.Body.String())
 	}
 }
+
+func TestMutationTimeout(t *testing.T) {
+	h := handler.New("type Mutation{m:Int!}", nil, struct {
+		M func(context.Context) (int, error)
+	}{
+		func(ctx context.Context) (int, error) {
+			for i := 0; i < 100; i++ {
+				if ctx.Err() != nil {
+					return -1, ctx.Err()
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+			return 0, nil
+		},
+	})
+
+	request := httptest.NewRequest("POST", "/", strings.NewReader(`{"query":"mutation{m}"}`))
+	request.Header.Add("Content-Type", "application/json")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	request = request.WithContext(ctx)
+
+	writer := httptest.NewRecorder()
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		h.ServeHTTP(writer, request) /****/
+		wg.Done()
+	}()
+
+	// Cancel the context and wait for the request to finish
+	cancel()
+	wg.Wait()
+	if !strings.Contains(writer.Body.String(), `"context canceled"`) {
+		t.Fatalf("Expected returned JSON to contain an error about canceled context but got %q", writer.Body.String())
+	}
+}

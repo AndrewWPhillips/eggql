@@ -17,32 +17,53 @@ import (
 // used with the stringSchema, has a "Message" field, but in this case it is a func() returning string.
 
 const (
-	setSchema = "schema {mutation: Mutation} type Mutation { set(p: Int!): Int! }"
+	storeSchema = "type Mutation { store(p: Int!): Int! }"
+	threeSchema = "type Mutation { three(a:Int!, b:Int!, c:Int!): Int! }"
 )
 
 var (
-	toBeSet = 1
-	setData = struct {
+	toBeSet int
+
+	storeData = struct {
 		Store func(int) int `graphql:",args(p)"`
-	}{func(p int) int { toBeSet = p; return p }}
+	}{
+		func(p int) int { toBeSet = p; return p },
+	}
+
+	threeData = struct {
+		Three func(int, int, int) int `graphql:",args(a,b,c)"`
+	}{
+		func(a, b, c int) int {
+			toBeSet = a + b + c
+			return a*100 + b*10 + c
+		},
+	}
 )
 
 var mutationData = map[string]struct {
 	schema    string      // GraphQL schema
-	data      interface{} // corresponding matching struct
+	data      interface{} // corresponding matching mutation
 	query     string      // GraphQL query to send to the handler (query syntax)
 	variables string      // GraphQL variables to use with the query (JSON)
 
-	expected interface{} // expected result after decoding the returned JSON
-	expSet   int
+	expected string // expected returned JSON
+	expSet   int    // expected value of global
 }{
-	"Set": {setSchema, setData, `{ store(p: 3) }`, "",
-		JsonObject{"store": 3.0}, 3},
+	"Store": {storeSchema, storeData, `mutation { store(p: 42) }`, "",
+		`{"store": 42}`, 42},
+	"Three": {threeSchema, threeData, `mutation { three(a:1 b:2 c:3) }`, "",
+		`{"three": 123}`, 6},
+	"Reverse": {threeSchema, threeData, `mutation { three(c:1 b:2 a:3) }`, "",
+		`{"three": 321}`, 6},
+	"Variables": {threeSchema, threeData, `mutation Vars($i: Int! $j: Int!) { three(b:5 a:$i, c:$j) }`,
+		`{"i": 3, "j": 7 }`,
+		`{"three": 357}`, 15},
 }
 
 func TestMutation(t *testing.T) {
 	for name, testData := range mutationData {
-		h := handler.New(testData.schema, testData.data)
+		toBeSet = -1
+		h := handler.New(testData.schema, nil, testData.data)
 
 		// Make the request body and the HTTP request that uses it
 		body := strings.Builder{}
@@ -76,13 +97,21 @@ func TestMutation(t *testing.T) {
 		//json.Unmarshal(writer.Body.Bytes(), &result)
 		decoder := json.NewDecoder(writer.Body)
 		if err := decoder.Decode(&result); err != nil {
-			t.Logf("%12s: Error decoding JSON: %v", name, err)
+			t.Errorf("%12s: Error decoding JSON: %v", name, err)
+			continue
+		}
+		var expected interface{}
+		decoder = json.NewDecoder(strings.NewReader(testData.expected))
+		if err := decoder.Decode(&expected); err != nil {
+			t.Errorf("%12s: Error decoding expected JSON: %v", name, err)
 			continue
 		}
 
 		// Check that the resulting GraphQL result (error and data)
-		Assertf(t, result.Errors == nil, "%12s: Expected no error and got %v", name, result.Errors)
-		Assertf(t, reflect.DeepEqual(result.Data, testData.expected), "%12s: Expected %v, got %v", name, testData.expected, result.Data)
+		if result.Errors != nil {
+			Assertf(t, result.Errors == nil, "%12s: Expected no error and got %v", name, result.Errors)
+		}
+		Assertf(t, reflect.DeepEqual(result.Data, expected), "%12s: Expected %v, got %v", name, expected, result.Data)
 		Assertf(t, toBeSet == testData.expSet, "%12s: Expected stored value %d, got %d", name, testData.expSet, toBeSet)
 	}
 }
