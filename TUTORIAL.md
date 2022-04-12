@@ -1,18 +1,33 @@
 ## Tutorial
 
-This tutorial will show you how to implement a GraphQL service using Go and **eggql**.  It goes hand-in-hand with the official **Star Wars** GraphQL tutorial at https://graphql.org/learn/ which shows how a client might query this service.  It shows how to implement every feature of GraphQL except for subscriptions.  (Subscriptions are also not covered in the official **Star Wars** tutorial.)
+This tutorial will show you how to implement a GraphQL service using Go and **eggql**.  (See the GraphQL [Star Wars Tutorial](https://graphql.org/learn/) for how you can query the service.)  It shows how to implement every feature of a GraphQL service except for subscriptions.  (Subscriptions are also not covered in the **Star Wars** tutorial.)
 
-Since we're implementing the backend (GraphQL service) I'll focus on that, not on using it.  So it's just Go code with a few test queries.  We **won't** look at aliases, fragments, inline fragments, variables, directives, schemas and introspection, but rest assured that these all are all handled for you by **eggql**.  You can try any of the queries of the official **Star Wars** tutorial.
+Remember, this tutorial is about implementing the backend (a GraphQL service), so I'll focus on creating the service, not on using it.  It's mainly Go code with a few test queries.  We **won't** look at aliases, fragments, inline fragments, variables, directives, schemas and introspection, but rest assured they work.  These things are all covered in the GraphQL **Star Wars** tutorial if you want to try the queries from that.
 
-Note: the final code for this tutorial is in the git repo (https://github.com/AndrewWPhillips/eggql/tree/main/example/starwars).  It's less than 250 lines of code (and most of that is just data field initialization since all the data is stored in memory).  This is much smaller (and I think much simpler) than the same Star Wars example written for other Go packages and even in other languages (though most of these have a database and other complications).  It's also running *right now* in GCP (Google Cloud Platform), so you can try any Star Wars queries in Postman (or Curl etc) using the address https://aphillips801-eggql-sw.uc.r.appspot.com/graphql.
+You should probably follow this tutorial sequentially as each section builds on the previous, but here are some links if you need to quickly find specific information:
+
+1. [Basic Types](#basic-types) - objects (including nested objects), lists and scalars (String, etc)
+2. [Resolver Arguments](#arguments) - every query field can have argument(s) to refine the data returned
+3. [Enums](#enums) - GraphQL has enum types but Go doesn't, so they need to be handled specially
+4. [Mutations](#mutations-and-input-types) - Queries retrieve data, Mutations modify the data
+5. [Input Types](input-types) - mutations (and queries) sometimes need complex arguments
+6. [Interfaces](#interfaces) - similar objects can implement an interface to indicate a common behaviour (polymorphism)
+7. [Unions](#unions) - like interfaces except the types in the union have no fields in common
+8. [Descriptions](#descriptions) - fields, arguments, etc can have a description to be used by query designers
+9. [Errors](#resolver-errors) - what to do if you have an error in your resolver
+10. [Contexts](#contexts) - contexts are used to cancel GraphQL queries - eg for a timeout if they take too long to run
+11. [Methods as Resolvers](#using-go-methods-as-resolvers) - how a resolver function can easily access data of its parent object
+12. [Adding a Custom Scalar](#custom-scalars) - you can add new types to be used in your queries called custom scalars
+
+Note: the final code for this tutorial is in the git repo (https://github.com/AndrewWPhillips/eggql/tree/main/example/starwars).  It's less than 250 lines of code (and most of that is just data field initialization since all the data is stored in memory).  This is much smaller (and I think much simpler) than the equivalent Star Wars example using other GraphQL packages (for Go and even other languages).  It's also running *right now* in GCP (Google Cloud Platform), so you can try any Star Wars queries in Postman (or Curl etc) using the address https://aphillips801-eggql-sw.uc.r.appspot.com/graphql.
 
 ### Basic Types
 
-GraphQL is all about types - scalar types (int, string, etc), object types which are composed of fields of other types (a bit like Go structs), lists (a bit like a Go slices) and more specialized types like interfaces and input types (which we will get to later).
+GraphQL is all about types - scalar types (int, string, etc), object types which are composed of fields of other types (a bit like Go structs), lists (a bit like a Go slices) and more specialized types like interfaces, unions and input types (which we will get to later).
 
-Traditionally when building a GraphQL service, you first create a schema which defines your types, but with **eggql** you just use Go structs; *the schema is created for you*.  (To view the you schema see [Viewing the Schema](https://github.com/AndrewWPhillips/eggql#viewing-errors-and-the-schema) in the README.)  The first thing you need is a root query which is just a GraphQL object type, but in this case its fields define the queries that can be submitted to the GraphQL server.
+Traditionally when building a GraphQL service, you first create a schema which defines your types, but with **eggql** you just use Go structs; *the schema is created for you*.  (To see the generated schema refer to [Viewing the Schema](https://github.com/AndrewWPhillips/eggql#viewing-errors-and-the-schema) in the README.)  The first thing you need is a root query which is just a GraphQL object type.  The root query fields define the queries that can be submitted to the GraphQL server.
 
-First we'll add queries returning basic types (scalars, lists and nested objects).  Then we'll look at how to implement query arguments (including defaults and input types), enums, interfaces, mutations, etc.  We'll also look at the sorts of errors you can get and how to handle them.
+First we'll add queries returning basic types (scalars, lists and nested objects).  Then we'll look at how to implement query arguments, mutations, and more advanced types.  We'll also look at the sorts of errors you can get and how to handle them.
 
 Here's a Go program that will handle the first (`hero`) query of the GraphQL Star Wars tutorial (see https://graphql.org/learn/queries/).
 
@@ -49,7 +64,7 @@ func main() {
 }
 ```
 
-Here the type `Query` is the root query as it's the first (only) parameter passed to `MustRun()`.  Now you can send a `hero` query to the server which returns a `Character`.  The `Character` object can be queried for its name and for a list of friends.  Try this query:
+Here the type `Query` is the root query as it's the first (only) parameter passed to `MustRun()`.  With this service running you can post a `hero` query to the server which returns a `Character`.  The `Character` object can be queried for its name and for a list of friends.  Try this query:
 
 ```graphql
 {
@@ -88,13 +103,16 @@ The `Character` type is an object since it has fields (sub-queries) within it. `
 
 The `Friends` field of `Character` defines a list, in this case implemented using a slice of pointers.
 
-The `Name` field has the GraphQL scalar type of `String!` because it uses the Go `string` type.  Similarly, any Go integer types create the GraphQL `Int!` type, Go bool => `Boolean!` and float32/float64 => `Float!`.  Note that none of these types are *nullable* by default, which is indicated by the GraphQL `!` suffix but can be made so by using pointers or the `nullable` tag.
+The `Name` field has the GraphQL scalar type of `String!` because it uses the Go `string` type.  Similarly, any Go integer types create the GraphQL `Int!` type, Go bool => `Boolean!` and float32/float64 => `Float!`.  Note that these types are followed by an exclamation mark (!) which indicates they are not nullable.  You can get the nullable version by using pointers or the `nullable` tag.
 
 Now we'll look at some more advanced types....
 
 ### Arguments
 
-In GraphQL parlance the server code that "resolves" a query is called a resolver.  In the above example the "resolver" for the `hero` query was just a `Character` struct.  A more useful and more common thing is for a resolver to be a function.  For one, this allows resolvers to take arguments that permits much greater flexibility.
+In GraphQL parlance the server code that processes a query is called a **resolver**.  In the above example the "resolver" for the `hero` query was just a `Character` struct.  A more useful and more common thing is for a resolver to be a function (in Go parlance a **closure**).  Using functions for resolvers is useful because it allows:
+
+* JIT (just-in-time) execution - the function is not executed unless or until it's specific data is required 
+* resolvers can take arguments that can modify or refine the results returned
 
 As an example we will change the `hero` resolver to be a function that takes a parameter specifying which episode we want the hero for.  So now instead of the `Hero` field simply being a `Character` object it is now a function that _returns_ a `Character`.
 
@@ -1152,6 +1170,64 @@ func (h *Human) getHeight(unit int) float64 {
 	}
 	return h.height
 }
+```
+
+### Custom Scalars
+
+GraphQL supports the creation of custom scalar types.  You can easily add custom scalars in **eggql** which we'll demonstrate using a `Time` type by adding a field to the `Review` input type to record when a movie review was written.  Note that we could use the similar `Time` custom scalar provided by the Go type `eggql.Time`, but we'll create our own custom scalar type to demonstrate how it's done.
+
+All that is required to create a custom scalar is to define a Go type that implements the `UnmarshalEGGQL` method.  This method is used to convert a specially formatted string into a value of your type.  You may also want to implement a `MarshalEGGQL` method that performs the reverse operation, but some types can get by without this (eg if they implement a `String` method).
+
+In our case we will create a new struct type called `ReviewType` that uses `time.Time` to actually store a date/time value.  Here is the complete code for the new type:
+
+```Go
+type ReviewTime struct{ time.Time }
+
+// UnmarshalEGGQL is called when eggql needs to decode a string to a Time
+func (rt *ReviewTime) UnmarshalEGGQL(in string) error {
+	tmp, err := time.Parse(time.RFC3339, in)
+	if err != nil {
+		return fmt.Errorf("%w error in UnmarshalEGGQL for custom scalar Time decoding %q", err, in)
+	}
+	rt.Time = tmp
+	return nil
+}
+```
+
+Note that for your type to be used as a custom scalar **you must provide a method with this exact signature**: `UnmarshalEGGQL(in string) error`.
+
+For the above type we don't need to provide the inverse `MarshallEGGQL` method.  Because `time.Time` is an unnamed field it is *embedded* in `ReviewTime` which means it "inherits" all the methods of time.Time including the `String() string` method which is used for "marshalling".  But if we did provide a method it **must have this signature**: `MarshalEGGQL() (string, error)`.
+
+To use the new type we just add a new `Time` field to `ReviewInput` and `EpisodeDetails`.
+
+```Go
+	EpisodeDetails struct {
+		Name       string
+		HeroId     int
+		Stars      int
+		Commentary string
+		Time       ReviewTime
+	}
+	// ...
+	ReviewInput struct {
+		Stars      int
+		Commentary string
+		Time       *ReviewTime
+	}
+```
+
+Since `Time` is a pointer in `ReviewInput` it is nullable which means that it does not need to be provided.  In the `CreateReview` mutation we check if it is nil and use the current time.
+
+```Go
+			CreateReview: func(episode int, review ReviewInput) *EpisodeDetails {
+			    // ...
+				if review.Time == nil {
+					episodes[episode].Time = append(episodes[episode].Time, ReviewTime{time.Now()})
+				} else {
+					episodes[episode].Time = append(episodes[episode].Time, *review.Time)
+				}
+				return &episodes[episode]
+			},
 ```
 
 ### Conclusion
