@@ -19,23 +19,28 @@ import (
 const (
 	storeSchema = "type Mutation { store(p: Int!): Int! }"
 	threeSchema = "type Mutation { three(a:Int!, b:Int!, c:Int!): Int! }"
+	inputSchema = "type Mutation { f(p:MutationInput!):Int! } input MutationInput {i:Int! j:Int! }"
 )
 
 var (
-	toBeSet int
-
 	storeData = struct {
 		Store func(int) int `graphql:",args(p)"`
 	}{
-		func(p int) int { toBeSet = p; return p },
+		func(p int) int { return p * 2 },
 	}
 
 	threeData = struct {
 		Three func(int, int, int) int `graphql:",args(a,b,c)"`
 	}{
 		func(a, b, c int) int {
-			toBeSet = a + b + c
 			return a*100 + b*10 + c
+		},
+	}
+	inputData = struct {
+		F func(struct{ I, J int }) int `graphql:",args(p)"`
+	}{
+		func(p struct{ I, J int }) int {
+			return p.I * p.J
 		},
 	}
 )
@@ -47,22 +52,22 @@ var mutationData = map[string]struct {
 	variables string      // GraphQL variables to use with the query (JSON)
 
 	expected string // expected returned JSON
-	expSet   int    // expected value of global
 }{
 	"Store": {storeSchema, storeData, `mutation { store(p: 42) }`, "",
-		`{"store": 42}`, 42},
+		`{"store": 84}`},
 	"Three": {threeSchema, threeData, `mutation { three(a:1 b:2 c:3) }`, "",
-		`{"three": 123}`, 6},
+		`{"three": 123}`},
 	"Reverse": {threeSchema, threeData, `mutation { three(c:1 b:2 a:3) }`, "",
-		`{"three": 321}`, 6},
+		`{"three": 321}`},
 	"Variables": {threeSchema, threeData, `mutation Vars($i: Int! $j: Int!) { three(b:5 a:$i, c:$j) }`,
 		`{"i": 3, "j": 7 }`,
-		`{"three": 357}`, 15},
+		`{"three": 357}`},
+	"Input": {inputSchema, inputData, `mutation { f(p: {i:3, j:5}) }`, "",
+		`{"f": 15}`},
 }
 
 func TestMutation(t *testing.T) {
 	for name, testData := range mutationData {
-		toBeSet = -1
 		h := handler.New(testData.schema, nil, testData.data)
 
 		// Make the request body and the HTTP request that uses it
@@ -112,6 +117,5 @@ func TestMutation(t *testing.T) {
 			Assertf(t, result.Errors == nil, "%12s: Expected no error and got %v", name, result.Errors)
 		}
 		Assertf(t, reflect.DeepEqual(result.Data, expected), "%12s: Expected %v, got %v", name, expected, result.Data)
-		Assertf(t, toBeSet == testData.expSet, "%12s: Expected stored value %d, got %d", name, testData.expSet, toBeSet)
 	}
 }

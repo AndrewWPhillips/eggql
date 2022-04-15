@@ -85,6 +85,15 @@ type (
 		A M1
 		B M2
 	}
+	I2Int struct{ IInt } // for interface implements interface
+	M3    struct {
+		I2Int
+		X, Y float64
+	}
+	QueryIfaceOfIface struct {
+		Xy M3
+	}
+
 	IRecurse struct {
 		B *QueryIfaceRecurse
 	}
@@ -226,7 +235,12 @@ var testData = map[string]struct {
 		"input Anon{ j:Int! } type QueryInputAnon{ f(anon: Anon!): Boolean! }"},
 	"Recurse": {QueryRecurse{}, "schema{ query:QueryRecurse } type QueryRecurse{ p:QueryRecurse }"},
 	"Interface": {QueryInterface{},
-		"schema{query:QueryInterface} interface IInt{i:Int!} type M1 implements IInt{i:Int! s:String!} type M2 implements IInt{b:Boolean! i:Int!} type QueryInterface{a:M1! b:M2!}"},
+		"schema{query:QueryInterface} interface IInt{i:Int!}" +
+			"type M1 implements IInt{i:Int! s:String!} type M2 implements IInt{b:Boolean! i:Int!} type QueryInterface{a:M1! b:M2!}"},
+	// Note allowing an interface to implement a (different) interface is a new feature of GraphQL (2020) but seems to work with eggql as is
+	"IfaceOfIface": {QueryIfaceOfIface{},
+		"schema{query:QueryIfaceOfIface} interface I2Int implements IInt {i:Int!} interface IInt {i:Int!}" +
+			"type M3 implements IInt & I2Int {i:Int! x:Float! y:Float!} type QueryIfaceOfIface{xy:M3!}"},
 	"IfaceRecurse": {QueryIfaceRecurse{},
 		"schema{query:QueryIfaceRecurse} interface IRecurse{b:QueryIfaceRecurse} type QueryIfaceRecurse implements IRecurse{b:QueryIfaceRecurse}"},
 	"IRecurseList": {QueryIRecurseList{},
