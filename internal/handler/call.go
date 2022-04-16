@@ -41,7 +41,7 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 		for _, argument := range astField.Arguments {
 			// Which parameter # is it (GraphQL args are supplied by name not position)
 			n := -1
-			for paramNum, paramName := range fieldInfo.Params {
+			for paramNum, paramName := range fieldInfo.Args {
 				if paramName == argument.Name {
 					if n != -1 {
 						// Note this is a BUG not an "error" as it should have been caught by validator
@@ -79,7 +79,7 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 				// (which should come from the text of fieldInfo.Defaults[argNum-baseArg])
 				ok := false
 				for _, defArg := range astField.Definition.Arguments {
-					if defArg.Name == fieldInfo.Params[argNum-baseArg] {
+					if defArg.Name == fieldInfo.Args[argNum-baseArg] {
 						tmp, err := defArg.DefaultValue.Value(op.variables)
 						if err != nil {
 							panic(err)
@@ -94,7 +94,7 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 					}
 				}
 				if !ok {
-					panic("default not found for " + fieldInfo.Params[argNum-baseArg])
+					panic("default not found for " + fieldInfo.Args[argNum-baseArg])
 				}
 			}
 		}

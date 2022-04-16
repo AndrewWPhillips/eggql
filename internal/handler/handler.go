@@ -1,6 +1,7 @@
 // Package handler implements an HTTP handler to process GraphQL queries (and
 // mutations/subscriptions) given an instance of a query struct (and optionally
 // mutation and subscription structs) and a corresponding GraphQL schema.
+// The schema is typically generated (by the schema package) from the same struct(s).
 package handler
 
 // handler.go implements the handler and it's ServeHTTP method

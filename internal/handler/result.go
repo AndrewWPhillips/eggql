@@ -14,7 +14,7 @@ import (
 
 const (
 	AllowIntrospection     = true
-	AllowConcurrentQueries = false
+	AllowConcurrentQueries = true
 
 	TypeNameQuery = "__typename" // Name of "introspection" query that can be performed at any level
 )

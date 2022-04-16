@@ -30,12 +30,12 @@ type (
 // both resolver return value and arguments (see metadata examples).
 type Info struct {
 	Name        string       // field name for use in GraphQL queries - based on metadata (tag) or Go struct field name
-	GQLTypeName string       // GraphQL type name (may be empty but is required for GraphQL enums)
+	GQLTypeName string       // GraphQL type name - usually empty but required if can't be deduced (eg enums)
 	ResultType  reflect.Type // Type (Go) used to generate the resolver (GraphQL) type = field type, func return type, or element type for array/slice
 
 	// The following are for function resolvers only
-	Params     []string // name(s) of args to resolver function obtained from metadata
-	Enums      []string // corresp. enum name if the parameter is of an enum type
+	Args       []string // name(s) of args to resolver function obtained from metadata
+	Enums      []string // corresp. type name - only used for enums (else can be deduced from the function parameter type)
 	Defaults   []string // corresp. default value(s) (as strings) where an empty string means there is no default
 	DescArgs   []string // corresp. description of the argument
 	HasContext bool     // 1st function parameter is a context.Context (not a query argument)
@@ -115,12 +115,12 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 			fieldInfo.HasContext = true
 			firstIndex++
 		}
-		if t.NumIn()-firstIndex != len(fieldInfo.Params) {
-			if len(fieldInfo.Params) == 0 {
+		if t.NumIn()-firstIndex != len(fieldInfo.Args) {
+			if len(fieldInfo.Args) == 0 {
 				return nil, fmt.Errorf("no args found in graphql tag for %q but %d required", f.Name, t.NumIn()-firstIndex)
 			}
 			return nil, fmt.Errorf("function %q argument count should be %d but is %d",
-				f.Name, len(fieldInfo.Params), t.NumIn()-firstIndex)
+				f.Name, len(fieldInfo.Args), t.NumIn()-firstIndex)
 		}
 
 		// Validate the resolver function return type(s)
@@ -140,7 +140,7 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 		}
 		t = t.Out(0) // now use return type of func as resolver type
 	} else {
-		if fieldInfo.Params != nil {
+		if fieldInfo.Args != nil {
 			return nil, errors.New("arguments cannot be supplied for non-function resolver " + f.Name)
 		}
 	}
@@ -153,7 +153,7 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 		// Note that "subscript" option can be used with a function but the function should have no parameters (except for
 		// and optional context) since the GraphQL "arguments" are used to provide the subscripting value.
 		// A subscript function can have a context (HasContext) and error return (HasError) but must return a slice/array/map.
-		if len(fieldInfo.Params) > 0 {
+		if len(fieldInfo.Args) > 0 {
 			return nil, errors.New(`cannot use "args" option with "subscript" option with field ` + f.Name)
 		}
 
@@ -218,7 +218,7 @@ func GetTagInfo(tag string) (*Info, error) {
 		if list, err := getBracketedList(part, "args"); err != nil {
 			return nil, fmt.Errorf("%w getting args in %q", err, tag)
 		} else if list != nil {
-			fieldInfo.Params = make([]string, len(list))
+			fieldInfo.Args = make([]string, len(list))
 			fieldInfo.Enums = make([]string, len(list))
 			fieldInfo.Defaults = make([]string, len(list))
 			fieldInfo.DescArgs = make([]string, len(list))
@@ -242,7 +242,7 @@ func GetTagInfo(tag string) (*Info, error) {
 					fieldInfo.Enums[paramIndex] = strings.Trim(subParts[1], " ")
 				}
 
-				fieldInfo.Params[paramIndex] = strings.Trim(s, " ")
+				fieldInfo.Args[paramIndex] = strings.Trim(s, " ")
 			}
 			continue
 		}

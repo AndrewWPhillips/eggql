@@ -400,8 +400,8 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 			contextSeen = true
 			continue
 		}
-		if !validGraphQLName(fieldInfo.Params[paramNum]) {
-			return "", fmt.Errorf("parameter %d argument %q is not a valid name", i, fieldInfo.Params[paramNum])
+		if !validGraphQLName(fieldInfo.Args[paramNum]) {
+			return "", fmt.Errorf("parameter %d argument %q is not a valid name", i, fieldInfo.Args[paramNum])
 		}
 		builder.WriteString(sep)
 		if fieldInfo.DescArgs[paramNum] != "" {
@@ -409,7 +409,7 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 			builder.WriteString(fieldInfo.DescArgs[paramNum])
 			builder.WriteString(`"""`)
 		}
-		builder.WriteString(fieldInfo.Params[paramNum])
+		builder.WriteString(fieldInfo.Args[paramNum])
 		builder.WriteString(": ")
 
 		param := t.In(i)
@@ -497,8 +497,8 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 		// If still not found (eg inline struct literal) use the field name to generate a type name
 		if typeName == "" {
 			// Work out default type name for anon struct by upper-casing the 1st letter of the parameter name
-			first, n := utf8.DecodeRuneInString(fieldInfo.Params[paramNum])
-			typeName = string(unicode.ToUpper(first)) + fieldInfo.Params[paramNum][n:]
+			first, n := utf8.DecodeRuneInString(fieldInfo.Args[paramNum])
+			typeName = string(unicode.ToUpper(first)) + fieldInfo.Args[paramNum][n:]
 		}
 		builder.WriteString(typeName)
 		if param.Kind() != reflect.Ptr {
