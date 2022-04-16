@@ -89,16 +89,16 @@ var introspectionData = map[string]struct {
 		expected: `{"__type": {"description":"Description E", "enumValues": [{"name":"E0"}, {"name":"E1"}, {"name":"E2"}]}}`,
 	},
 	"Type List": {
-		query: `{ __type(name:\"Nested\") { fields { name type { name kind ofType { name kind } } } } }`,
+		query: `{ __type(name:\"Nested\") { fields { name type { name kind ofType { name kind ofType { name kind }} } } } }`,
 		expected: `{"__type": { "fields": [` +
-			`  {"name": "v",   "type": {"name":"Int", "kind": "SCALAR", "ofType": null} }, ` +
-			`  {"name": "list", "type": {"name":"", "kind": "LIST", "ofType": {"name":"Boolean", "kind": "SCALAR"}}}` +
+			`  {"name": "v",   "type": {"name":"", "kind": "NON_NULL", "ofType": {"name":"Int", "kind": "SCALAR", "ofType": null}}}, ` +
+			`  {"name": "list", "type": {"name":"", "kind": "LIST", "ofType": {"name":"", "kind": "NON_NULL", "ofType": {"name":"Boolean", "kind": "SCALAR"}}}}` +
 			`]}}`,
 	},
 	"Type ObjLst": {
-		query: `{ __type(name:\"ObjectList\") { fields { name type { name kind ofType { name kind } } } } }`,
+		query: `{ __type(name:\"ObjectList\") { fields { name type { name kind ofType { name kind ofType { name kind }} } } } }`,
 		expected: `{"__type": {"fields":[` +
-			`  {"name":"list", "type": {"name":"", "kind":"LIST", "ofType": {"name": "Simple", "kind": "OBJECT"}}}` +
+			`  {"name":"list", "type": {"name":"", "kind":"LIST", "ofType": {"name":"", "kind":"NON_NULL", "ofType": {"name": "Simple", "kind": "OBJECT"}}}}` +
 			`]}}`,
 	},
 }

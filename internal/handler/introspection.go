@@ -309,32 +309,23 @@ func (iso introspectionObject) getInterfaces() []gqlType {
 }
 
 // getType returns type info for any type including lists/non_null types (whence OfType contains the underlying type)
-func (ist introspectionType) getType() *gqlType {
-	if ist.NamedType != "" {
-		return ist.parent.getType(ist.NamedType)
+func (ist introspectionType) getType() (r *gqlType) {
+	if ist.Elem != nil {
+		r = &gqlType{
+			Kind:   IntroEnumsReverse["__TypeKind"]["LIST"],
+			OfType: introspectionType{ist.Elem, ist.parent}.getType(),
+		}
+	} else {
+		r = ist.parent.getType(ist.NamedType)
 	}
+
 	if ist.NonNull {
-		kind, ok := IntroEnumsReverse["__TypeKind"]["NON_NULL"]
-		if !ok {
-			panic("Enum 7 lookup failed")
-		}
-		return &gqlType{
-			Kind:   kind,
-			OfType: introspectionType{ist.Elem, ist.parent}.getType(),
+		r = &gqlType{
+			Kind:   IntroEnumsReverse["__TypeKind"]["NON_NULL"],
+			OfType: r,
 		}
 	}
-	if ist.Elem != nil { // LIST
-		kind, ok := IntroEnumsReverse["__TypeKind"]["LIST"]
-		if !ok {
-			panic("Enum 6 lookup failed")
-		}
-		// recurse into recursive data structure
-		return &gqlType{
-			Kind:   kind,
-			OfType: introspectionType{ist.Elem, ist.parent}.getType(),
-		}
-	}
-	panic("Unhandled type in introspectionType.getType()")
+	return
 }
 
 // getTypeKind returns the enum __TypeKind value (int) corresp. to a string
