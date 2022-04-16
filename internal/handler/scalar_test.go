@@ -88,7 +88,7 @@ var scalarData = map[string]struct {
 	"Simple": {
 		schema: "type Query { f(a:Simple!): Simple! } scalar Simple",
 		data: struct {
-			F func(scalar SimpleScalar) SimpleScalar `graphql:",args(a)"`
+			F func(scalar SimpleScalar) SimpleScalar `egg:",args(a)"`
 		}{
 			F: func(a SimpleScalar) SimpleScalar { return a * a },
 		},
@@ -110,7 +110,7 @@ var scalarData = map[string]struct {
 	"Input Field": {
 		schema: "type Query { f(a:A):Int! } input A{ v:BothScalar! } scalar BothScalar",
 		data: struct {
-			F func(struct{ V BothScalar }) int `graphql:",args(a)"`
+			F func(struct{ V BothScalar }) int `egg:",args(a)"`
 		}{
 			F: func(a struct{ V BothScalar }) int { return int(a.V) },
 		},
@@ -120,7 +120,7 @@ var scalarData = map[string]struct {
 	"Arg Value": {
 		schema: "type Query { f(v:BothScalar!): Int! } scalar BothScalar",
 		data: struct {
-			F func(BothScalar) int `graphql:",args(v)"`
+			F func(BothScalar) int `egg:",args(v)"`
 		}{
 			F: func(v BothScalar) int { return int(v) },
 		},
@@ -130,7 +130,7 @@ var scalarData = map[string]struct {
 	"Time": {
 		schema: "type Query { f(t:TimeScalar!): TimeScalar! } scalar TimeScalar",
 		data: struct {
-			F func(scalar TimeScalar) TimeScalar `graphql:",args(t)"`
+			F func(scalar TimeScalar) TimeScalar `egg:",args(t)"`
 		}{
 			F: func(t TimeScalar) (r TimeScalar) { r.Time = t.Time.Add(time.Hour); return },
 		},
@@ -140,7 +140,7 @@ var scalarData = map[string]struct {
 	"String": {
 		schema: "type Query { f(a:StringScalar!): StringScalar! } scalar StringScalar",
 		data: struct {
-			F func(scalar StringScalar) StringScalar `graphql:",args(a)"`
+			F func(scalar StringScalar) StringScalar `egg:",args(a)"`
 		}{
 			F: func(a StringScalar) StringScalar { return StringScalar(strings.ToUpper(string(a))) },
 		},

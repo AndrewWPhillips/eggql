@@ -24,20 +24,20 @@ const (
 
 var (
 	storeData = struct {
-		Store func(int) int `graphql:",args(p)"`
+		Store func(int) int `egg:",args(p)"`
 	}{
 		func(p int) int { return p * 2 },
 	}
 
 	threeData = struct {
-		Three func(int, int, int) int `graphql:",args(a,b,c)"`
+		Three func(int, int, int) int `egg:",args(a,b,c)"`
 	}{
 		func(a, b, c int) int {
 			return a*100 + b*10 + c
 		},
 	}
 	inputData = struct {
-		F func(struct{ I, J int }) int `graphql:",args(p)"`
+		F func(struct{ I, J int }) int `egg:",args(p)"`
 	}{
 		func(p struct{ I, J int }) int {
 			return p.I * p.J
@@ -86,7 +86,7 @@ func TestMutation(t *testing.T) {
 
 		// Invoke the handler, recording the response
 		writer := httptest.NewRecorder()
-		h.ServeHTTP(writer, request)
+		h.ServeHTTP(writer, request) /*****************/
 
 		// All of these tests should give status OK
 		if writer.Result().StatusCode != http.StatusOK {

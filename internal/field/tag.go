@@ -1,6 +1,6 @@
 package field
 
-// tag.go handles extracting info from the "GraphQL" tag of s Go struct field
+// tag.go handles extracting info from the tag string (from struct field metadata)
 
 import (
 	"errors"

@@ -182,11 +182,11 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		if f.Name == "_" {
-			if f.Type.Name() == "TagField" { // name must match the type declared in run.go
+			if f.Type.Name() == "TagHolder" { // name must match the type declared in run.go
 				// this field (zero size) is just included to allow us to get the description from the field tag
 				fieldInfo, err2 := field.Get(&f)
 				if err2 != nil {
-					err = fmt.Errorf("%w getting decription from TagField", err2)
+					err = fmt.Errorf("%w getting decription from TagHolder", err2)
 					return
 				}
 				desc = fieldInfo.Description
@@ -521,8 +521,8 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 		sep = paramSep
 		paramNum++
 	}
-	if paramNum < len(fieldInfo.Params) {
-		return "", fmt.Errorf("not enough args (%d) expected %d", paramNum, len(fieldInfo.Params))
+	if paramNum < len(fieldInfo.Args) {
+		return "", fmt.Errorf("not enough args (%d) expected %d", paramNum, len(fieldInfo.Args))
 	}
 	if sep != paramStart { // if we got any args
 		builder.WriteString(paramEnd)

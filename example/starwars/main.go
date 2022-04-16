@@ -12,9 +12,11 @@ import (
 	"time"
 )
 
+// ReviewTime implements a GraphQL custom scalar used to keep track of when a movie review was posted
 type ReviewTime struct{ time.Time } // embed Time so we get String() method (for marshaling)
 
 // UnmarshalEGGQL is called when eggql needs to decode a string to a Time
+// The existence of this method signals that this type is a custom scalar/
 func (rt *ReviewTime) UnmarshalEGGQL(in string) error {
 	tmp, err := time.Parse(time.RFC3339, in)
 	if err != nil {
@@ -24,22 +26,6 @@ func (rt *ReviewTime) UnmarshalEGGQL(in string) error {
 	return nil
 }
 
-//type ReviewTime time.Time
-//
-//// UnmarshalEGGQL is called when eggql needs to decode a string to a Time
-//func (rt *ReviewTime) UnmarshalEGGQL(in string) error {
-//	tmp, err := time.Parse(time.RFC3339, in)
-//	if err != nil {
-//		return fmt.Errorf("%w error in UnmarshalEGGQL for custom scalar Time", err)
-//	}
-//	*rt = ReviewTime(tmp)
-//	return nil
-//}
-//
-//func (rt *ReviewTime) MarshalEGGQL() (string, error) {
-//	return time.Time(*rt).Format(time.RFC3339), nil
-//}
-
 const (
 	FirstHumanID    = 1000
 	FirstDroidID    = 2000
@@ -48,8 +34,8 @@ const (
 
 type (
 	Query struct {
-		// Attaching a "graphql" tag to a field named "_" in the "Query" struct allows adding a description to the GraphQL type
-		_ eggql.TagField `graphql:"# The root query object stores all the queries that can be made"`
+		// Attaching an "egg:" key to the tag of a field named "_" here adds a description to the GraphQL "Query" type
+		_ eggql.TagHolder `egg:"# The root query object stores all the queries that can be made"`
 
 		// We need to reference the `Character` struct so that eggql can find it (using reflection) and can generate
 		// the GraphQL Character "interface" for the schema.  This is necessary as Hero() has to return a Go interface
@@ -65,64 +51,64 @@ type (
 		//   JEDI = default value of the argument - must be one of the strings in gqlEnums["Episode"] below
 		//   Character = the resolver return type (taken from the 1st tag option after the colon)
 		//    - this can't be deduced from the func return type which must be an interface{} when implementing a GraphQL interface
-		Hero func(episode int) (interface{}, error) `graphql:"hero:Character,args(episode:Episode=JEDI)"`
+		Hero func(episode int) (interface{}, error) `egg:"hero:Character,args(episode:Episode=JEDI)"`
 
 		// Human is a function used to implement the GraphQl resolver: "human(id: Int! = 1000): Human"
 		//   human = the resolver name, derived from the field name "Human", with the 1st letter lower-cased
-		//   id = the first (and only) argument name obtained from the "args" option of the "graphql" tag
+		//   id = the first (and only) argument name obtained from the "args" option
 		//   Int! = the type of the argument, deduced from the func's parameter is an integer type (int, int8, uint, ect)
 		//   1000 = default value for id, which means that Luke is returned is the argument is not given in a query
 		//   Human = return type, deduced from the 1st return value of the func (nullable because a pointer is returned)
-		Human func(int) (*Human, error) `graphql:",args(id = 1000)"`
+		Human func(int) (*Human, error) `egg:",args(id = 1000)"`
 
 		// Droid is a function used to implement the GraphQl resolver: "droid(id: Int!): Droid"
 		//   droid = the resolver name, derived from the field name "Droid"
 		//   id = the argument name which must be supplied in a GraphQL query as there is no default value
 		//   Int! = the type of the argument, the exclamation mark (!) means it is required (NULL can't be used)
 		//   Droid = return type, deduced from the 1st return value of the func (nullable because a pointer is returned)
-		Droid func(int) (*Droid, error) `graphql:",args(id)"` // id is required
+		Droid func(int) (*Droid, error) `egg:",args(id)"` // id is required
 
 		// Starship is a function used to implement the GraphQl resolver: "starship(id: Int! = 3000): Starship"
-		Starship func(int) (*Starship, error) `graphql:",args(id = 3000)"`
+		Starship func(int) (*Starship, error) `egg:",args(id = 3000)"`
 
 		// Reviews is a function used to implement the GraphQl resolver: "reviews(episode: Episode): [Review]"
 		//  reviews = resolver name, deduced from the field name "Reviews"
 		//  episode = argument name (from 1st value of "args" option before the colon)
 		//  Episode = argument type (from 1st value of "args" option after the colon)
 		//  [Review] = return type is a list of Review, deduced from the fact that the func returns a slice ([]Review)
-		Reviews func(int) ([]Review, error) `graphql:",args(episode:Episode)"`
+		Reviews func(int) ([]Review, error) `egg:",args(episode:Episode)"`
 
 		// Search implements the resolver: "search(text: String!): [SearchResult]"
-		Search func(context.Context, string) ([]interface{}, error) `graphql:":[SearchResult],args(text)"`
+		Search func(context.Context, string) ([]interface{}, error) `egg:":[SearchResult],args(text)"`
 	}
 	SearchResult struct { // SearchResult has no exported fields so represents a Union of all types in which it is embedded
-		_ eggql.TagField `graphql:"# Union that defines which object types are searchable"`
+		_ eggql.TagHolder `egg:"# Union that defines which object types are searchable"`
 	}
 	Character struct {
-		_                 eggql.TagField `graphql:"# Represents a character (human or droid) in the Star Wars trilogy"`
-		Name              string         `graphql:"# Name of the character"`
+		_                 eggql.TagHolder `egg:"# Represents a character (human or droid) in the Star Wars trilogy"`
+		Name              string          `egg:"# Name of the character"`
 		Friends           []*Character
-		FriendsConnection func(first int, after string) FriendsConnection `graphql:",args(first=-1, after=\"\")"`
-		Appears           []int                                           `graphql:"appearsIn:[Episode]"`
+		FriendsConnection func(first int, after string) FriendsConnection `egg:",args(first=-1, after=\"\")"`
+		Appears           []int                                           `egg:"appearsIn:[Episode]"`
 		SecretBackstory   func() (string, error)
 	}
 	Human struct {
-		_            eggql.TagField             `graphql:"# A humanoid creature from Star Wars"`
+		_            eggql.TagHolder            `egg:"# A humanoid creature from Star Wars"`
 		SearchResult                            // Human is part of the SearchResult union so can be returned from a search query
 		Character                               // Human implements the Character interface
-		Height       func(int) (float64, error) `graphql:",args(unit:LengthUnit=METER)"`
+		Height       func(int) (float64, error) `egg:",args(unit:LengthUnit=METER)"`
 		height       float64                    // meters
 		HomePlanet   string
 		Starships    []*Starship
 	}
 	Droid struct {
-		_               eggql.TagField `graphql:"# An autonomous device from Star Wars"`
-		SearchResult                   // Droid is part of the SearchResult union so can be returned from a search query
-		Character                      // Droid implements the Character interface
+		_               eggql.TagHolder `egg:"# An autonomous device from Star Wars"`
+		SearchResult                    // Droid is part of the SearchResult union so can be returned from a search query
+		Character                       // Droid implements the Character interface
 		PrimaryFunction string
 	}
 	EpisodeDetails struct {
-		_      eggql.TagField `graphql:"# Stores info and reviews of each of the movies"`
+		_      eggql.TagHolder `egg:"# Stores info and reviews of each of the movies"`
 		Name   string
 		HeroId int
 		// The following are submitted reviews (with stars and time)
@@ -131,46 +117,46 @@ type (
 		Time       []ReviewTime
 	}
 	Review struct {
-		_          eggql.TagField `graphql:"# One person's rating and review for a movie"`
+		_          eggql.TagHolder `egg:"# One person's rating and review for a movie"`
 		Stars      int
 		Commentary string
 		Time       ReviewTime
 	}
 	Starship struct {
-		_            eggql.TagField `graphql:"# Machines for inter-planetary and inter-stellar travel"`
-		SearchResult                // Starship is part of the SearchResult union so can be returned from a search query
+		_            eggql.TagHolder `egg:"# Machines for inter-planetary and inter-stellar travel"`
+		SearchResult                 // Starship is part of the SearchResult union so can be returned from a search query
 		Name         string
-		Length       func(int) (float64, error) `graphql:",args(unit:LengthUnit=METER)"`
+		Length       func(int) (float64, error) `egg:",args(unit:LengthUnit=METER)"`
 		length       float64                    // meters
 	}
 
 	// Movie reviews
 	Mutation struct {
-		_            eggql.TagField                                  `graphql:"# Represents all the updates that can be made to the data"`
-		CreateReview func(int, ReviewInput) (*EpisodeDetails, error) `graphql:",args(episode:Episode,review)"`
+		_            eggql.TagHolder                                 `egg:"# Represents all the updates that can be made to the data"`
+		CreateReview func(int, ReviewInput) (*EpisodeDetails, error) `egg:",args(episode:Episode,review)"`
 	}
 	ReviewInput struct {
-		_          eggql.TagField `graphql:"# The input object sent when someone is creating a new review"`
+		_          eggql.TagHolder `egg:"# The input object sent when someone is creating a new review"`
 		Stars      int
 		Commentary string
-		Time       *ReviewTime `graphql:"# time the review was written - current time is used if NULL"`
+		Time       *ReviewTime `egg:"# time the review was written - current time is used if NULL"`
 	}
 
 	// The following are for pagination of a list of friends
 	FriendsConnection struct {
-		_          eggql.TagField `graphql:"# A connection object for a character's friends"`
-		TotalCount int            `graphql:"# The total number of friends"`
-		Edges      []FriendsEdge  `graphql:"# Edges for each of the character's friends"`
-		Friends    []*Character   `graphql:"# A list of the friends, as a convenience when edges are not needed"`
-		PageInfo   PageInfo       `graphql:"# Information for paginating this connection"`
+		_          eggql.TagHolder `egg:"# A connection object for a character's friends"`
+		TotalCount int             `egg:"# The total number of friends"`
+		Edges      []FriendsEdge   `egg:"# Edges for each of the character's friends"`
+		Friends    []*Character    `egg:"# A list of the friends, as a convenience when edges are not needed"`
+		PageInfo   PageInfo        `egg:"# Information for paginating this connection"`
 	}
 	FriendsEdge struct {
-		_      eggql.TagField `graphql:"# An edge object for a character's friends"`
+		_      eggql.TagHolder `egg:"# An edge object for a character's friends"`
 		Cursor string
 		Node   *Character
 	}
 	PageInfo struct {
-		_           eggql.TagField `graphql:"# Information for paginating this connection"`
+		_           eggql.TagHolder `egg:"# Information for paginating this connection"`
 		StartCursor *string
 		EndCursor   *string
 		HasNextPage bool

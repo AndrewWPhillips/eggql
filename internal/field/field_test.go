@@ -51,8 +51,8 @@ func TestGetTagInfo(t *testing.T) {
 		if got.GQLTypeName != "" || data.exp.GQLTypeName != "" {
 			Assertf(t, got.GQLTypeName == data.exp.GQLTypeName, "TypeName : %12s: expected %q got %q", name, data.exp.GQLTypeName, got.GQLTypeName)
 		}
-		if got.Params != nil || data.exp.Params != nil {
-			Assertf(t, reflect.DeepEqual(got.Params, data.exp.Params), "Params   : %12s: expected %q got %q", name, data.exp.Params, got.Params)
+		if got.Args != nil || data.exp.Args != nil {
+			Assertf(t, reflect.DeepEqual(got.Args, data.exp.Args), "Args   : %12s: expected %q got %q", name, data.exp.Args, got.Args)
 		}
 		if got.Enums != nil || data.exp.Enums != nil {
 			Assertf(t, reflect.DeepEqual(got.Enums, data.exp.Enums), "Enums    : %12s: expected %q got %q", name, data.exp.Enums, got.Enums)

@@ -67,8 +67,8 @@ type (
 	}
 
 	QuerySubscript struct {
-		Slice []string           `graphql:",subscript"`
-		Map   map[string]float64 `graphql:",subscript=number"`
+		Slice []string           `egg:",subscript"`
+		Map   map[string]float64 `egg:",subscript=number"`
 	}
 
 	U  struct{} // U is embedded in other structs to implement a union
@@ -101,28 +101,28 @@ var (
 		V int
 	}{"mmm", 43}
 	paramData = struct {
-		Dbl func(int) int `graphql:",args(v)"`
+		Dbl func(int) int `egg:",args(v)"`
 	}{func(value int) int { return 2 * value }}
 	param2ArgData = struct {
-		F func(int, string) string `graphql:",args(i,s)"`
+		F func(int, string) string `egg:",args(i,s)"`
 	}{func(i int, s string) string { return s + strconv.Itoa(i) }}
 	default1Data = struct {
-		F func(int, string) string `graphql:",args(i,s=xyz)"`
+		F func(int, string) string `egg:",args(i,s=xyz)"`
 	}{func(i int, s string) string { return s + strconv.Itoa(i*2) }}
 	default2Data = struct {
-		F func(int, string) string `graphql:",args(i=87,s=ijk)"`
+		F func(int, string) string `egg:",args(i=87,s=ijk)"`
 	}{func(i int, s string) string { return strconv.Itoa(i) + s }}
 	inputParamData = struct {
-		InputQuery func(struct{ Field string }) int `graphql:",args(param)"`
+		InputQuery func(struct{ Field string }) int `egg:",args(param)"`
 	}{func(p struct{ Field string }) int { r, _ := strconv.Atoi(p.Field); return r }}
 	inputParam2FieldData = struct {
-		Q func(inputParam2FieldType) string `graphql:",args(p)"`
+		Q func(inputParam2FieldType) string `egg:",args(p)"`
 	}{func(parm inputParam2FieldType) string { return parm.S + strconv.FormatFloat(parm.F, 'g', 10, 64) }}
 	sliceParamData = struct {
-		ListQuery func([]int) int `graphql:",args(list)"`
+		ListQuery func([]int) int `egg:",args(list)"`
 	}{func(list []int) int { return len(list) }}
 	arrayParamData = struct {
-		ListQuery func([3]int) int `graphql:",args(list)"`
+		ListQuery func([3]int) int `egg:",args(list)"`
 	}{func(list [3]int) int { return len(list) }}
 
 	interfaceData  = struct{ A D }{D{X{4}, "fff"}}
@@ -131,10 +131,10 @@ var (
 
 	contextFunc  = struct{ Value func(context.Context) int }{func(ctx context.Context) int { return 100 }}
 	contextFunc1 = struct {
-		Dbl func(context.Context, int) int `graphql:",args(v)"`
+		Dbl func(context.Context, int) int `egg:",args(v)"`
 	}{func(ctx context.Context, i int) int { return 100 + 2*i }}
 	contextFunc2 = struct {
-		F func(context.Context, int, string) string `graphql:",args(i,s)"`
+		F func(context.Context, int, string) string `egg:",args(i,s)"`
 	}{func(ctx context.Context, i int, s string) string { return strconv.Itoa(i) + s }}
 
 	parRef = ParentRef{private: 42}

@@ -13,13 +13,13 @@ type (
 	SingleInt       struct{ I int }
 	QueryNoArgs     struct{ F func(int) bool } // missing metadata "args"
 	QueryTooFewArgs struct {
-		F func(int, int) bool `graphql:",args(a)"`
+		F func(int, int) bool `egg:",args(a)"`
 	}
 	QueryTooManyArgs struct {
-		F func(int, int) bool `graphql:"f,args(a,b,c)"`
+		F func(int, int) bool `egg:"f,args(a,b,c)"`
 	}
 	QueryArgsNonFunc struct {
-		B bool `graphql:"bbb, args( arg0, arg1 ) "` // only func resolver needs args
+		B bool `egg:"bbb, args( arg0, arg1 ) "` // only func resolver needs args
 	}
 	QueryReturn0 struct {
 		F0 func()
@@ -33,77 +33,77 @@ type (
 
 	QueryObjectAndInput struct { // the same struct can't be used as Object type and Input
 		A SingleInt              // SingleInt is used as a (nested) object type
-		B func(SingleInt) string `graphql:",args(i)"`
+		B func(SingleInt) string `egg:",args(i)"`
 	}
 	QueryInterfaceAndInput struct {
 		SingleInt                        // SingleInt is embedded to be used as an interface type
-		B         func(SingleInt) string `graphql:",args(i)"`
+		B         func(SingleInt) string `egg:",args(i)"`
 	}
 	QueryDupeInterface struct {
 		SingleInt
-		Query `graphql:":SingleInt"`
+		Query `egg:":SingleInt"`
 	}
 	QueryBadInterface struct {
 		QueryBadName
 	}
 	QueryBadOption struct {
-		Fa func(int8) string `graphql:",params(i)"` // params should be args
+		Fa func(int8) string `egg:",params(i)"` // params should be args
 	}
 	QueryReservedName struct {
-		Message string `graphql:"__message"`
+		Message string `egg:"__message"`
 	}
 	QueryNoReturn struct {
 		Fa func()
 	}
 	QueryBadParam1 struct {
-		Fb func(int8) string `graphql:",args(a b)"` // no comma
+		Fb func(int8) string `egg:",args(a b)"` // no comma
 	}
 	QueryBadParam2 struct {
-		Fc func(int8) string `graphql:",args(a"` // no closing bracket
+		Fc func(int8) string `egg:",args(a"` // no closing bracket
 	}
 	QueryBadParam3 struct {
-		Fd func(int8) string `graphql:",args(a)b"`
+		Fd func(int8) string `egg:",args(a)b"`
 	}
 	QueryBadParam4 struct {
-		Fe func(int8) string `graphql:",args((a)"`
+		Fe func(int8) string `egg:",args((a)"`
 	}
 	QueryBadParam5 struct {
-		Ff func(int8) string `graphql:",args(a))"`
+		Ff func(int8) string `egg:",args(a))"`
 	}
 	QueryUnknownEnum struct {
-		Fg func() int8 `graphql:":EnumUnknown"`
+		Fg func() int8 `egg:":EnumUnknown"`
 	}
 	QueryEnumNotInt struct {
-		Length float64 `graphql:"len:Unit"` // "Unit" is a known enum but can't be a float
+		Length float64 `egg:"len:Unit"` // "Unit" is a known enum but can't be a float
 	}
 	QueryUnknownParam struct {
-		F func(int) string `graphql:",args(i:Unknown)"`
+		F func(int) string `egg:",args(i:Unknown)"`
 	}
 	QueryEnumParamNotInt struct {
-		G func(bool) string `graphql:",args(i:Unit)"`
+		G func(bool) string `egg:",args(i:Unit)"`
 	}
 	QueryBadName struct {
-		S string `graphql:"@9"`
+		S string `egg:"@9"`
 	}
 	QueryBadDefaultEnum struct {
-		E0 func(int) int `graphql:",args(unit:Unit=Inch)"` // Inch is not a valid enum value
+		E0 func(int) int `egg:",args(unit:Unit=Inch)"` // Inch is not a valid enum value
 	}
 	QueryBadDefaultInt struct {
-		E1 func(int) int `graphql:"e1,args(len=ten)"` // ten is not a valid Int
+		E1 func(int) int `egg:"e1,args(len=ten)"` // ten is not a valid Int
 	}
 	QueryBadDefaultFloat struct {
-		E2 func(float64) int `graphql:"e2,args(f=x)"` // x is not a valid Float
+		E2 func(float64) int `egg:"e2,args(f=x)"` // x is not a valid Float
 	}
 	QueryBadDefaultBoolean struct {
-		E3 func(bool) int `graphql:"e3,args(b=1)"` // 1 is not a valid Boolean
+		E3 func(bool) int `egg:"e3,args(b=1)"` // 1 is not a valid Boolean
 	}
 	QueryDupeField1 struct {
-		M1 string `graphql:"m"`
-		M2 string `graphql:"m"`
+		M1 string `egg:"m"`
+		M2 string `egg:"m"`
 	}
 	QueryDupeField2 struct {
 		Dupe   func() int // generated name is "dupe"
-		Field2 bool       `graphql:"dupe"`
+		Field2 bool       `egg:"dupe"`
 	}
 	Embedded   struct{ M string }
 	QueryDupe1 struct {
@@ -115,10 +115,10 @@ type (
 		Embedded
 	}
 	QueryBadTypeName struct {
-		V int `graphql:":UnknownType"`
+		V int `egg:":UnknownType"`
 	}
 	QueryBadSquareBrackets struct {
-		V []int `graphql:":[]Int"`
+		V []int `egg:":[]Int"`
 	}
 )
 

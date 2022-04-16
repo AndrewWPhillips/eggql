@@ -28,7 +28,7 @@ type (
 	}
 
 	Mutation struct {
-		F func(int) int `graphql:":E,args(e:E)"`
+		F func(int) int `egg:":E,args(e:E)"`
 	}
 )
 

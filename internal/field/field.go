@@ -13,6 +13,8 @@ import (
 	"unicode/utf8"
 )
 
+const TagKey = "egg" // the "key" for our app used to find our metadata in the field tag string
+
 type (
 	// Marshaler is implemented by custom scalar types
 	Marshaler interface {
@@ -25,7 +27,7 @@ type (
 )
 
 // Info is returned Get() with info extracted from a struct field to be used as a GraphQL query resolver.
-// The info is obtained from the field's name, type and "graphql" (metadata) tag.
+// The info is obtained from the field's name, type and field's tag string (using eggqlTagKey).
 // Note that since Go has no native enums the GraphQL enum names are handled in metadata for
 // both resolver return value and arguments (see metadata examples).
 type Info struct {
@@ -67,10 +69,19 @@ var errorType = reflect.TypeOf((*error)(nil)).Elem()
 // *name* is an underscore (_) which returns an Info with the Description field filled in.
 func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 	if f.Name != "_" && f.PkgPath != "" {
-		return // unexported field
+		return // ignore unexported field unless it's underscore (_)
 	}
 
-	if fieldInfo, err = GetTagInfo(f.Tag.Get("graphql")); err != nil {
+	tag := f.Tag.Get(TagKey)
+	if tag == "" {
+		// Note the tag key was changed from "graphql" to "egg" to avoid any possibility of conflict with thunder package
+		tag = f.Tag.Get("graphql") // TODO: remove later, leave in for backward compatibility for now
+	}
+
+	// Note that an empty/non-existent tag string does not mean the field is ignored by GetTagInfo() - field info is
+	// still generated (using reflection) eg: from the field name and type.
+	// However, a tag string with a single dash (-) means the field *is* ignored and GetTagInfo returns nil, nil.
+	if fieldInfo, err = GetTagInfo(tag); err != nil {
 		return nil, fmt.Errorf("%w getting tag info from field %q", err, f.Name)
 	}
 	if fieldInfo == nil {
@@ -117,7 +128,7 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 		}
 		if t.NumIn()-firstIndex != len(fieldInfo.Args) {
 			if len(fieldInfo.Args) == 0 {
-				return nil, fmt.Errorf("no args found in graphql tag for %q but %d required", f.Name, t.NumIn()-firstIndex)
+				return nil, fmt.Errorf("no args found in %q metadata key for %q but %d required", TagKey, f.Name, t.NumIn()-firstIndex)
 			}
 			return nil, fmt.Errorf("function %q argument count should be %d but is %d",
 				f.Name, len(fieldInfo.Args), t.NumIn()-firstIndex)
@@ -159,14 +170,14 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 
 		fieldInfo.ResultType = t.Elem()
 
-		// Get the "subscript" type - int (slice/array) or scalar type for map key
-		fieldInfo.SubscriptType = reflect.TypeOf(1)
+		// Get the "subscript" type - int for slice/array or map key
+		fieldInfo.SubscriptType = reflect.TypeOf(1) // default to int (for slice/array)
 		if t.Kind() == reflect.Map {
 			fieldInfo.SubscriptType = t.Key()
-			if (fieldInfo.SubscriptType.Kind() < reflect.Int || fieldInfo.SubscriptType.Kind() > reflect.Float64) &&
+			if (fieldInfo.SubscriptType.Kind() < reflect.Int || fieldInfo.SubscriptType.Kind() > reflect.Uint64) &&
 				fieldInfo.SubscriptType.Kind() != reflect.String {
-				// TODO allow any comparable type for map subscripts?
-				return nil, errors.New("map key for subscript option " + f.Name + " must be a scalar")
+				// TODO allow other comparable types for map subscripts?
+				return nil, errors.New("map key for subscript option " + f.Name + " must be a int or string")
 			}
 		}
 	} else if t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
@@ -246,7 +257,7 @@ func GetTagInfo(tag string) (*Info, error) {
 			}
 			continue
 		}
-		return nil, fmt.Errorf("unknown option %q in GraphQL tag %q", part, tag)
+		return nil, fmt.Errorf("unknown option %q in %q key (%s)", part, TagKey, tag)
 	}
 	return fieldInfo, nil
 }

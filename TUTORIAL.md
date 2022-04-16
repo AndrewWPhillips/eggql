@@ -7,19 +7,19 @@ Remember, this tutorial is about implementing the backend (a GraphQL service), s
 You should probably follow this tutorial sequentially as each section builds on the previous, but here are some links if you need to quickly find specific information:
 
 1. [Basic Types](#basic-types) - objects (including nested objects), lists and scalars (String, etc)
-2. [Resolver Arguments](#arguments) - every query field can have argument(s) to refine the data returned
+2. [Resolvers and Arguments](#resolver-functions-and-arguments) - every query field can have argument(s) to refine the data returned
 3. [Enums](#enums) - GraphQL has enum types but Go doesn't, so they need to be handled specially
 4. [Mutations](#mutations-and-input-types) - Queries retrieve data, Mutations modify the data
 5. [Input Types](input-types) - mutations (and queries) sometimes need complex arguments
 6. [Interfaces](#interfaces) - similar objects can implement an interface to indicate a common behaviour (polymorphism)
 7. [Unions](#unions) - like interfaces except the types in the union have no fields in common
 8. [Descriptions](#descriptions) - fields, arguments, etc can have a description to be used by query designers
-9. [Errors](#resolver-errors) - what to do if you have an error in your resolver
+9. [Errors](#resolver-errors) - how to handle errors
 10. [Contexts](#contexts) - contexts are used to cancel GraphQL queries - eg for a timeout if they take too long to run
 11. [Methods as Resolvers](#using-go-methods-as-resolvers) - how a resolver function can easily access data of its parent object
-12. [Adding a Custom Scalar](#custom-scalars) - you can add new types to be used in your queries called custom scalars
+12. [Custom Scalars](#custom-scalars) - you can add new types to be used in your queries called custom scalars
 
-Note: the final code for this tutorial is in the git repo (https://github.com/AndrewWPhillips/eggql/tree/main/example/starwars).  It's less than 250 lines of code (and most of that is just data field initialization since all the data is stored in memory).  This is much smaller (and I think much simpler) than the equivalent Star Wars example using other GraphQL packages (for Go and even other languages).  It's also running *right now* in GCP (Google Cloud Platform), so you can try any Star Wars queries in Postman (or Curl etc) using the address https://aphillips801-eggql-sw.uc.r.appspot.com/graphql.
+Note: the final code for this tutorial is in the git repo (https://github.com/AndrewWPhillips/eggql/tree/main/example/starwars).  It's less than 250 lines of code (and most of that is just data field initialization since all the data is stored in memory).  This is much smaller (and I think much simpler) than the equivalent Star Wars example using other GraphQL packages (for Go and even other languages).  The complete version is also running *right now* in GCP (Google Cloud Platform), so you can try any Star Wars queries in Postman (or Curl etc) using the address https://aphillips801-eggql-sw.uc.r.appspot.com/graphql.
 
 ### Basic Types
 
@@ -107,27 +107,29 @@ The `Name` field has the GraphQL scalar type of `String!` because it uses the Go
 
 Now we'll look at some more advanced types....
 
-### Arguments
+### Resolver Functions and Arguments
 
-In GraphQL parlance the server code that processes a query is called a **resolver**.  In the above example the "resolver" for the `hero` query was just a `Character` struct.  A more useful and more common thing is for a resolver to be a function (in Go parlance a **closure**).  Using functions for resolvers is useful because it allows:
+In GraphQL parlance the server code that processes a query is called a **resolver**.  In the above example the "resolver" for the `hero` query was just a `Character` struct.  A more useful and more common thing is for a resolver to be a function (in Go parlance a **closure**).  Using functions for resolvers has advantages, it allows:
 
-* JIT (just-in-time) execution - the function is not executed unless or until it's specific data is required 
+* efficiency, since the function is not executed unless or until it's specific data is required
+* use of values which are initially unknown or dynamic (eg random numbers as in the README example)
+* recursive queries (eg friends of friends of ...), which can't be pre-computed (without infinite recursion)
 * resolvers can take arguments that can modify or refine the results returned
 
-As an example we will change the `hero` resolver to be a function that takes a parameter specifying which episode we want the hero for.  So now instead of the `Hero` field simply being a `Character` object it is now a function that _returns_ a `Character`.
+It's the last advantage that we look at here - resolver arguments.  As an example we can change the `hero` resolver to be a function that takes a parameter specifying which episode we want the hero for.  So now instead of the `Hero` field simply being a `Character` object it is now a function that _returns_ a `Character`.
 
 ```Go
 type Query struct {
-	Hero func(episode int) Character `graphql:"hero,args(episode=2)"`
+	Hero func(episode int) Character `egg:"hero,args(episode=2)"`
 }
 ```
-This also shows our first use of the **graphql tag** stored in the `Hero` field's *metadata*.  Metadata in Go can be attached to any field of a struct by adding a string after the field declaration.  (Note that these strings usually use back-quotes (`) rather than double-quotes (") so we don't have to _escape_ the double quotes within the string.)  The options in the graphql tag are comma-separated (using a similar format to json, xml, etc tags).
+This also shows our first use of the **egg: key** stored in the `Hero` field's **tag string**.  This sort of metadata in Go can be attached to any field of a struct by adding a string after the field declaration.  (Note that these strings usually use back-quotes (`) rather than double-quotes (") so we don't have to _escape_ the double quotes within the string.)  The options in the egg: key's data are comma-separated (using a similar format to json:, xml:, etc keys).
 
-The first option in the graphql tag is the resolver name - in this case `hero`.  Although we don't really need to supply the name as it defaults to the field name (`Hero`) with the first letter converted to lower-case.
+The first option in the metadata is the resolver name - in this case `hero`.  We don't really need to supply the name, in this case, as it defaults to the field name (`Hero`) with the first letter converted to lower-case.
 
-The 2nd option of the graphql tag (`args(episode=2)`) specifies the resolver arguments. The number of arguments (comma-separated) in the `args` option must match the number of function parameters (except that the function may also include an initial context.Context parameter as discussed below).  The names of the argument(s) must be given in the `args` (in this case there is just one called `episode`) and you can also give an optional default value (in this case `2`). [Technical note: we can't obtain the argument name from the function parameters as Go reflection only stores the types of function parameters not their names.]
+The 2nd option of the egg: key (`args(episode=2)`) specifies the resolver arguments. The number of arguments (comma-separated) in the `args` option must match the number of function parameters (except that the function may also include an initial context.Context parameter as discussed below).  The names of the argument(s) must be given in the `args` (in this case there is just one called `episode`) and you can also give an optional default value (in this case `2`). [Technical note: we can't obtain the argument name from the function parameters as Go reflection only stores the types of function parameters not their names.]
 
-Here is a complete program with the `Hero` resolver.  Note that I changed the `Hero()` function to return a pointer to `Character`; this allows us to return a null value when an invalid episode number has been provided as the argument. (I could have also changed the resolver function to return a 2nd `error` value as we will see later.)
+Here is a complete program with the `Hero` resolver.  Note that I changed the `Hero()` function to return a pointer to `Character`; this allows us to return a null value when an invalid episode number has been provided as the argument. (I could have instead changed the resolver function to return a 2nd `error` value as we will see later.)
 
 ```Go
 package main
@@ -139,7 +141,7 @@ import (
 
 type (
 	Query struct {
-		Hero func(episode int) *Character `graphql:",args(episode=2)"`
+		Hero func(episode int) *Character `egg:",args(episode=2)"`
 	}
 	Character struct {
 		Name    string
@@ -194,7 +196,7 @@ Now try this query:
 
 ### Enums
 
-In the above code we used an integer to identify episodes.  For example, the `Hero` function's parameter is `episode int`.  For this type of data GraphQL provides enums, which are essentially an integer restricted to as set of named values.  If you are familiar with GraphQL schemas we can define a new `Episode` enum type with 3 values type like this:
+In the above code we used an integer to identify episodes.  For example, the `Hero` function's parameter is `episode int`.  For this type of data GraphQL provides enums, which are essentially an integer restricted to a set of named values.  If you are familiar with GraphQL schemas we can define a new `Episode` enum type with 3 values type like this:
 
 ```graphqls
 enum Episode {
@@ -205,7 +207,7 @@ enum Episode {
 ```
 (Don't worry if you are not familiar with schemas as **eggql** will generate the schema automatically.)
 
-The three allowed values for an `Episode` (NEWHOPE, EMPIRE, and JEDI) are internally represented by the integers 0, 1, and 2.  Because Go does not have a native enum type you just use an integer type, but you also need to tell **eggql** about the corresponding names of the enum values using a slice of strings.  To do this you pass a map of string slices as the 1st (optional) parameter to `MustRun()` where the map key is the enum name.  For example, here is the map for two enum types `Episode` and `Unit`.
+The three allowed values for an `Episode` (NEWHOPE, EMPIRE, and JEDI) are internally represented by the integers 0, 1, and 2.  Because Go does not have a native enum type to support GraphQL enums we just use an integer type *and* also tell **eggql** about the corresponding enum name (eg `Episode`) and the names of its values (eg `NEWHOPE`).  To do this you pass a map of string slices as the 1st (optional) parameter to `MustRun()` where the map key is the enum name and the slice has the enum values.  For example, here is the map for two enums: `Episode` and `Unit`.
 
 ```Go
 var gqlEnums = map[string][]string{
@@ -217,7 +219,7 @@ var gqlEnums = map[string][]string{
 It's simple to change the `Hero` resolver to use this `Episode` enum as its argument.
 
 ```Go
-	Hero func(episode int) *Character `graphql:",args(episode:Episode=JEDI)"`
+	Hero func(episode int) *Character `egg:",args(episode:Episode=JEDI)"`
 ```
 
 If you look closely at the above `args` option you can see that the `episode` argument now has a type name after the colon (:) which is the enum name.  The default value is changed from the integer literal `2` to the enum value `JEDI`.
@@ -225,7 +227,7 @@ If you look closely at the above `args` option you can see that the `episode` ar
 Of course, a resolver can also _return_ an enum, or a list of enums as we will show here.  We will add a new `appearsIn` field to the `Character` struct which contains a list of episodes that the character has appeared in.
 
 ```Go
-	Appears []int `graphql:"appearsIn:[Episode]"`
+	Appears []int `egg:"appearsIn:[Episode]"`
 ```
 
 Here the first tag option (`appearsIn:[Episode]`) says that the GraphQL name of the field is `appearsIn` and the type is a list of `Episode`.
@@ -242,12 +244,12 @@ import (
 
 type (
 	Query struct {
-		Hero func(episode int) *Character `graphql:",args(episode:Episode=JEDI)"`
+		Hero func(episode int) *Character `egg:",args(episode:Episode=JEDI)"`
 	}
 	Character struct {
 		Name    string
 		Friends []*Character
-		Appears []int `graphql:"appearsIn:[Episode]"`
+		Appears []int `egg:"appearsIn:[Episode]"`
 	}
 	EpisodeDetails struct {
 		Name   string
@@ -326,14 +328,14 @@ You should see this result:
 
 ### Interfaces
 
-Interfaces (and unions) are an advanced, but sometimes useful, feature of GraphQL.  Interfaces are similar to interfaces in the type system of Go, so you may be surprised that **eggql** does not use Go interfaces to implement GraphQL interfaces.  Instead, it uses struct embedding.
+Interfaces are an advanced, but sometimes useful, feature of GraphQL.  Interfaces are similar to interfaces in the type system of Go, so you may be surprised that **eggql** does not use Go interfaces to implement GraphQL interfaces.  Instead, it uses struct embedding.
 
-To demonstrate interfaces we are going to change the Star Wars example so that the `Character` type is an interface.  But first we introduce two new types `Human` and `Droid` for GraphQL object types that **implement** the `Character` interface.
+To demonstrate interfaces we are going to change the Star Wars example so that the `Character` type is an interface and add two new types `Human` and `Droid` that **implement** the `Character` interface.
 
 ```Go
 type (
 	Human struct {
-		Character
+		Character      // embed Character to use it as a GraphQL "interface"
 		Height float64 // meters
 	}
 	Droid struct {
@@ -345,17 +347,17 @@ type (
 
 The above Go code creates two GraphQL types `Human` and `Droid` which implement the `Character` interface because the Go struct embeds the `Character` struct.  (They also have their own type specific fields.)
 
-No changes are required to the earlier `Character` struct, but it now is used as a GraphQL `interface` due solely to the fact that it has been embedded in another struct (or two in this case).
+No changes are required to the earlier `Character` struct, but now it's used as a GraphQL `interface` due solely to the fact that it has been embedded in another struct (or two in this case).
 
-If you have a Character struct (or pointer to one) there is no way in Go to get the struct that embeds it or to even determine that it is embedded in another struct.  So to return a `Character` (which is either a `Human` or a `Droid` underneath) we return a Human or Droid as a Go `interface{}` and use the graphql tag to indicate that the GraphQl type is a `Character` interface.
+If you have a Character struct (or pointer to one) there is no way in Go to get the struct that embeds it or to even determine that it is embedded in another struct.  So to return a `Character` (which is either a `Human` or a `Droid` underneath) we return a Human or Droid as a *Go* `interface{}` and use metadata to indicate that the GraphQl type is a `Character` interface.
 
 ```Go
-	Hero func(episode int) interface{} `graphql:"hero:Character,args(episode:Episode=JEDI)"`
+	Hero func(episode int) interface{} `egg:"hero:Character,args(episode:Episode=JEDI)"`
 ```
 
-Here the first option in the graphql tag (`hero:Character`) says that the field is called `hero` and its type is `Character`.  Of course. you also need to change the implementation of the Hero() function so that it returns a `Human` or a `Droid` (as an `interface{}`).
+Here the first option in the egg: key's metadata (`hero:Character`) says that the field is called `hero` and its type is `Character`.  Of course. you also need to change the implementation of the Hero() function so that it returns a `Human` or a `Droid` (as an `interface{}`).
 
-This change to the return value causes one further complication that given the `Query` type passed to `MustRun()` there is no way for **eggql** to discover (by reflection) the `Character` type or even the new `Human` and `Droid` types.  The solution is to add a dummy field with a "blank" name of underscore (_).  See below.
+This change to the return value causes one further complication that given the `Query` type passed to `MustRun()` there is no way for **eggql** to discover (by reflection) the `Character` type or even the new `Human` and `Droid` types.  The solution is to add a dummy field with a "blank" name of underscore (_).  [Technical note: if you use a zero length array to declare the type, it will take up no space if declared at the start of the struct - eg `_  [0]Character` instead of `_  Character`.  This is usually not important.]
 
 ```Go
 package main
@@ -367,7 +369,7 @@ import (
 
 type (
 	Query struct {
-		Hero func(episode int) interface{} `graphql:"hero:Character,args(episode:Episode=JEDI)"`
+		Hero func(episode int) interface{} `egg:"hero:Character,args(episode:Episode=JEDI)"`
 		_    Character
 		_    Human
 		_    Droid
@@ -375,7 +377,7 @@ type (
 	Character struct {
 		Name    string
 		Friends []*Character
-		Appears []int `graphql:"appearsIn:[Episode]"`
+		Appears []int `egg:"appearsIn:[Episode]"`
 	}
 	Human struct {
 		Character
@@ -542,7 +544,7 @@ type (
 		Commentary string
 	}
 	Mutation struct {
-		CreateReview func(int, ReviewInput) *EpisodeDetails `graphql:",args(episode:Episode,review)"`
+		CreateReview func(int, ReviewInput) *EpisodeDetails `egg:",args(episode:Episode,review)"`
 	}
 	ReviewInput struct {
 		Stars      int
@@ -568,7 +570,7 @@ import (
 
 type (
 	Query struct {
-		Hero func(episode int) interface{} `graphql:"hero:Character,args(episode:Episode=JEDI)"`
+		Hero func(episode int) interface{} `egg:"hero:Character,args(episode:Episode=JEDI)"`
 		_    Character
 		_    Human
 		_    Droid
@@ -576,7 +578,7 @@ type (
 	Character struct {
 		Name    string
 		Friends []*Character
-		Appears []int `graphql:"appearsIn:[Episode]"`
+		Appears []int `egg:"appearsIn:[Episode]"`
 	}
 	Human struct {
 		Character
@@ -594,7 +596,7 @@ type (
 	}
 
 	Mutation struct {
-		CreateReview func(int, ReviewInput) *EpisodeDetails `graphql:",args(episode:Episode,review)"`
+		CreateReview func(int, ReviewInput) *EpisodeDetails `egg:",args(episode:Episode,review)"`
 	}
 	ReviewInput struct {
 		Stars      int
@@ -726,7 +728,7 @@ Imagine we need to change the `height` resolver so that it takes an argument spe
 ```Go
 	Human struct {
 		Character
-		Height       func(int) float64 `graphql:",args(unit:Unit=METER)"`
+		Height       func(int) float64 `egg:",args(unit:Unit=METER)"`
 		height       float64            // meters
 	}
 ```
@@ -781,13 +783,13 @@ You will get Luke's height in feet instead of meters:
 
 ### Unions
 
-Unions in GraphQL are like **interfaces**, but without any common fields.  In fact you can implement the functionality of a union by using an empty interface, except that GraphQL does not allow empty interfaces.  A common use of unions is a query that returns objects of different types without the requirement (as with interfaces) of a common field.
+Unions in GraphQL are like **interfaces**, but without any common fields.  In fact, you can implement the functionality of a union by using an empty interface, except that GraphQL does not allow empty interfaces.  A common use of unions is a query that returns objects of different types without the requirement (as with interfaces) of a common field.
 
-In **eggql** you signify a union in the same way as an interface - by embedding a struct in another object (struct).  But for a union the embedded `struct` must be empty.
+In **eggql** you signify a union in the same way as an interface - by embedding a struct in another object (struct).  But for a union the embedded `struct` can't have exported fields.
 
-In essence, if you embed a `struct` you get an interface unless it's empty, whence you get a union.
+In essence, if you embed a `struct` your type implements an interface unless the embedded struct is empty, whence your type is added to a union.
 
-Will demonstrate this by adding a `search` query as is seen in the standard **Star Wars** tutorial. This allows you to search all humans, droids and starships.  It returns a list of `SearchResult` which is a union of Human | Droid | Starship.  (Note that we haven't seen starships in this tutorial but the final code in example\StarWars\main.go includes them.)
+We'll demonstrate this by adding a `search` query as is seen in the standard **Star Wars** tutorial. This allows you to search all humans, droids and starships.  It returns a list of `SearchResult` which is a union of Human | Droid | Starship.  (Note that we won't handle starships in this tutorial but the final code in example\StarWars\main.go does.)
 
 Here's the relevant change to the data:
 
@@ -805,17 +807,17 @@ type (
 )
 ```
 
-To enable the `search` query we need to declare a `Search() func` in the Query:
+To add the `search` query we need to declare a `Search() func` in the Query:
 
 ```Go
 	Query struct {
 	    ...
 		// Search implements the resolver: "search(text: String!): [SearchResult]"
-		Search func(string) []interface{} `graphql:":[SearchResult],args(text)"`
+		Search func(string) []interface{} `egg:":[SearchResult],args(text)"`
 	}
 ```
 
-`Search()` returns a slice of interface{}, each of which is either a `Human` or a `Droid`.  The `args` option says that the query takes one argument called "text".  The square brackets in GraphQL query return type (`[SearchResult]`) says that it returns a list.
+`Search()` returns a slice of interface{}, each of which is either a `Human` or a `Droid`.  The `args` option says that the query takes one argument called "text".  The square brackets in the GraphQL return type (`[SearchResult]`) says that it is a list.
 
 The function that implements the `search` query is straightforward:
 
@@ -877,31 +879,31 @@ which will list everyone with "o" in their name:
 
 ### Descriptions
 
-A GraphQL schema can have descriptions for any of it's elements.  This can be used to help clients of the service learn about the types and queries and how to use them.  (In my experience most GraphQL schemas do not contain many, or any, descriptions but adding them can make you service far more useable.)
+A GraphQL schema can have descriptions for many of its elements.  This is for documentation but can be useful used by tools used to build queries - eg **PostMan** uses introspection to get the description and display information on query arguments etc.  (In my experience most GraphQL schemas do not contain many, or any, descriptions but adding them can make you service far more usable.)
 
 With **eggql** you can include descriptions that are added to the generated GraphQL schema. Descriptions can be added to the following GraphQL elements in various ways (as discussed below) but the description text always begins with a hash character (#).
 
 * Types - objects, interfaces and unions
-* Fields (resolvers) and each of their parameters (if any)
+* Fields (resolvers) and their arguments
 * Enum types and each of their values
 
 #### Types
 
-We use metadata (tags) to attach descriptions to types for adding to the schema.  Unfortunately Go only allows attaching metadata to **fields** of a `struct`, so to add a description we add a special field to the `struct`  with a name of "_" (single underscore) and a type of `eggql.TagField`.  (This type will not increase the size of your struct if you add it at the top.)  Here is an example using the `Query` struct:
+We use metadata (tags) to attach descriptions to types for adding to the schema.  Unfortunately Go only allows attaching metadata to **fields** of a `struct`, so to add a description we add a special field to the `struct`  with a name of "_" (single underscore) and a type of `eggql.TagHolder`.  (This type will not increase the size of your struct if you add it at the top.)  Here is an example using the `Query` struct:
 
 ```Go
 type Query struct {
-	_    eggql.TagField `graphql:"# The root query object"`
+	_    eggql.TagHolder `egg:"# The root query object"`
 ```
 
 This adds the description " The root query object" to the `Query` type in the GraphQl schema.  The same method is used in structs for input, interface and union types.
 
 #### Fields
 
-For resolvers you just add the description preceded by a hash character (#) to the end of the graphql: tag.  For example, this adds the description " How tall they are" to the `height` field of the `Human` type.
+For resolvers you just add the description preceded by a hash character (#) to the end of the egg: key's string.  For example, this adds the description " How tall they are" to the `height` field of the `Human` type.
 
 ```Go
-	Height  func(int) float64 `graphql:"height,args(unit:LengthUnit=METER) # How tall they are"`
+	Height  func(int) float64 `egg:"height,args(unit:LengthUnit=METER) # How tall they are"`
 ```
 
 #### Arguments
@@ -909,7 +911,7 @@ For resolvers you just add the description preceded by a hash character (#) to t
 For resolver arguments, just add the description at the end of each argument using the `args` option of the `graphql` tag.  For example, this add "units used for the returned height" to the `unit` argument of the `height` resolver.
 
 ```Go
-	Height  func(int) float64 `graphql:"height,args(unit:LengthUnit=METER# units used for the returned height)"`
+	Height  func(int) float64 `egg:"height,args(unit:LengthUnit=METER# units used for the returned height)"`
 ```
 
 #### Enums
@@ -1012,22 +1014,22 @@ import (
 
 type (
 	Query struct {
-		Hero func(episode int) (interface{}, error) `graphql:"hero:Character,args(episode:Episode=JEDI)"`
+		Hero func(episode int) (interface{}, error) `egg:"hero:Character,args(episode:Episode=JEDI)"`
 		_    Character
 		_    Human
 		_    Droid
-		Search func(string) []interface{} `graphql:":[SearchResult],args(text)"`
+		Search func(string) []interface{} `egg:":[SearchResult],args(text)"`
 	}
 	Character struct {
 		Name    string
 		Friends []*Character
-		Appears []int `graphql:"appearsIn:[Episode]"`
+		Appears []int `egg:"appearsIn:[Episode]"`
 	}
 	SearchResult struct{}
 	Human struct {
 		SearchResult
 		Character
-		Height func(int) float64 `graphql:",args(unit:Unit=METER)"`
+		Height func(int) float64 `egg:",args(unit:Unit=METER)"`
 		height float64           // meters
 	}
 	Droid struct {
@@ -1043,7 +1045,7 @@ type (
 	}
 
 	Mutation struct {
-		CreateReview func(int, ReviewInput) *EpisodeDetails `graphql:",args(episode:Episode,review)"`
+		CreateReview func(int, ReviewInput) *EpisodeDetails `egg:",args(episode:Episode,review)"`
 	}
 	ReviewInput struct {
 		Stars      int

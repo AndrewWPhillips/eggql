@@ -31,7 +31,7 @@ type (
 	QueryAnonNested struct{ Anon struct{ B byte } } // anon type - should use field name as "type" name
 
 	QueryNullable struct {
-		I int `graphql:",nullable"` // specify that field can be null
+		I int `egg:",nullable"` // specify that field can be null
 	}
 	QuerySlice     struct{ Slice []int }
 	QueryMap       struct{ Map map[string]int }
@@ -39,34 +39,34 @@ type (
 	QueryBoolFunc  struct{ F func() bool }
 	QueryErrorFunc struct{ F func() (int, error) }
 	QueryFuncParam struct {
-		F func(float64) int `graphql:",args(q)"`
+		F func(float64) int `egg:",args(q)"`
 	}
 	QueryFuncParam2 struct {
-		F func(string, int) bool `graphql:",args( p1, p2 )"`
+		F func(string, int) bool `egg:",args( p1, p2 )"`
 	}
 	QueryFuncDefault struct {
-		F func(string, int) bool `graphql:",args(p1,p2=42)"`
+		F func(string, int) bool `egg:",args(p1,p2=42)"`
 	}
 	QueryFuncDefault2 struct {
-		F func(string, float64) bool `graphql:",args(p1=\"a b\",p2=3.14)"`
+		F func(string, float64) bool `egg:",args(p1=\"a b\",p2=3.14)"`
 	}
 	QueryContextFunc struct {
 		F func(context.Context) (int, error)
 	}
 	QueryCustomName struct {
-		M string `graphql:"message"` // specify GraphQL query name
+		M string `egg:"message"` // specify GraphQL query name
 	}
 	QueryUnexported struct {
-		m1 string `graphql:"message"` // unexported field - tag should be ignored
-		M2 string `graphql:"message"`
+		m1 string `egg:"message"` // unexported field - tag should be ignored
+		M2 string `egg:"message"`
 	}
 
 	InputInt        struct{ I int }
 	QueryInputParam struct {
-		F func(InputInt) int `graphql:",args(in)"`
+		F func(InputInt) int `egg:",args(in)"`
 	}
 	QueryInputAnon struct {
-		F func(struct{ J int }) bool `graphql:",args(anon)"`
+		F func(struct{ J int }) bool `egg:",args(anon)"`
 	}
 	QueryRecurse struct {
 		P *QueryRecurse // recursive data structure: P is (ptr to) type of enclosed struct
@@ -117,7 +117,7 @@ type (
 		PrimaryFunction string
 	}
 	Character struct {
-		_       eggql.TagField `# star wars character`
+		_       eggql.TagHolder `# star wars character`
 		Name    string
 		Friends []*Character
 	}
@@ -126,13 +126,13 @@ type (
 		Hero Character
 	}
 	QuerySubscriptSlice struct {
-		Slice []string `graphql:",subscript"`
+		Slice []string `egg:",subscript"`
 	}
 	QuerySubscriptArray struct {
-		A [3]bool `graphql:",subscript="`
+		A [3]bool `egg:",subscript="`
 	}
 	QuerySubscriptMap struct {
-		M map[string]float64 `graphql:",subscript=s"`
+		M map[string]float64 `egg:",subscript=s"`
 	}
 
 	U  struct{}
@@ -151,26 +151,26 @@ type (
 	QueryUnion2 struct {
 		_ U1
 		_ U2
-		S []interface{} `graphql:":[U]"`
+		S []interface{} `egg:":[U]"`
 	}
 	QueryDescOnly struct {
-		_ eggql.TagField `graphql:"# no fields"`
+		_ eggql.TagHolder `egg:"# no fields"`
 	}
 	QueryDescObject struct {
 		Nested struct {
-			_ eggql.TagField `graphql:"# nested object"`
+			_ eggql.TagHolder `egg:"# nested object"`
 			I int
 		}
 	}
 	IDesc struct {
-		_ eggql.TagField `graphql:"# interface"` // How we attach a description to an interface type
+		_ eggql.TagHolder `egg:"# interface"` // How we attach a description to an interface type
 		I int
 	}
 	QueryDescInterface struct {
 		IDesc
 	}
 	UDesc struct {
-		_ eggql.TagField `graphql:"# a union"` // How we attach a description to a union
+		_ eggql.TagHolder `egg:"# a union"` // How we attach a description to a union
 	}
 	UDesc1 struct {
 		UDesc
@@ -183,12 +183,12 @@ type (
 		B UDesc2
 	}
 	QueryDescField struct {
-		I int `graphql:"# Test of # for description"`
+		I int `egg:"# Test of # for description"`
 	}
 	QueryDescAll struct {
-		_ eggql.TagField `graphql:"#q (type)"`
-		S func() string  `graphql:"#s (#1)"`
-		T []int          `graphql:"#t (#2) "`
+		_ eggql.TagHolder `egg:"#q (type)"`
+		S func() string   `egg:"#s (#1)"`
+		T []int           `egg:"#t (#2) "`
 	}
 )
 
@@ -244,7 +244,8 @@ var testData = map[string]struct {
 	"IfaceRecurse": {QueryIfaceRecurse{},
 		"schema{query:QueryIfaceRecurse} interface IRecurse{b:QueryIfaceRecurse} type QueryIfaceRecurse implements IRecurse{b:QueryIfaceRecurse}"},
 	"IRecurseList": {QueryIRecurseList{},
-		"schema{query:QueryIRecurseList} interface IRecurseList{list:[QueryIRecurseList]} type QueryIRecurseList implements IRecurseList{list:[QueryIRecurseList]}"},
+		"schema{query:QueryIRecurseList} interface IRecurseList{list:[QueryIRecurseList]} " +
+			"type QueryIRecurseList implements IRecurseList{list:[QueryIRecurseList]}"},
 	"Interface2": {QueryInterface2{},
 		"schema{query:QueryInterface2} interface Character {friends:[Character]! name:String!} type Person " +
 			" implements Character{friends:[Character]! name:String! personality:String!} type QueryInterface2{hero:Character!}"},
@@ -267,11 +268,11 @@ var testData = map[string]struct {
 	"DescOjectAndFields": {QueryDescAll{}, // TODO NULL prob? - last field's Ints should not be nullable t:[Int!] not t:[Int]!
 		`schema{query:QueryDescAll} """q (type)""" type QueryDescAll{"""s (#1)""" s:String! """t (#2)""" t:[Int]!}`},
 	"DescArg": {struct {
-		R1 func(int) string `graphql:",args(p#arg 1)"`
+		R1 func(int) string `egg:",args(p#arg 1)"`
 	}{},
 		`type Query{r1("""arg 1""" p:Int!):String!}`},
 	"DescArg2": {struct {
-		R2 func(int, float64) string `graphql:",args(intArg=1#int, floatArg=3.14#float)"`
+		R2 func(int, float64) string `egg:",args(intArg=1#int, floatArg=3.14#float)"`
 	}{},
 		`type Query{r2("""int""" intArg:Int!=1, """float""" floatArg:Float!=3.14):String!}`},
 }

@@ -35,8 +35,8 @@ type (
 	// query (__typename) can be included at any level of a query and is not handled here.
 	introspection struct {
 		iss       introspectionSchema
-		GetSchema func() gqlSchema      `graphql:"__schema"`
-		GetType   func(string) *gqlType `graphql:"__type,args(name)"`
+		GetSchema func() gqlSchema      `egg:"__schema"`
+		GetType   func(string) *gqlType `egg:"__type,args(name)"`
 	}
 
 	// gqlSchema represents the GraphQL "__schema" type
@@ -51,12 +51,12 @@ type (
 
 	// gqlType represents the GraphQL "__Type" type
 	gqlType struct {
-		Kind              int `graphql:"kind:__TypeKind"`
+		Kind              int `egg:"kind:__TypeKind"`
 		Name, Description string
 		Fields            func() []gqlField
 		Interfaces        func() []gqlType
 		PossibleTypes     func() []gqlType
-		//EnumValues        func(bool) []gqlEnumValue `graphql:",args(includeDeprecated=false)"`
+		//EnumValues        func(bool) []gqlEnumValue `egg:",args(includeDeprecated=false)"`
 		EnumValues     func() []gqlEnumValue
 		InputFields    func() []gqlInputValue
 		OfType         *gqlType // nil unless kind is "LIST" or "NON_NULL"
@@ -67,7 +67,7 @@ type (
 	gqlField struct {
 		Name, Description string
 		// Remove deprecation from arguments - not (yet?) supported by vektah/gqlparser
-		//Args func(bool) []gqlInputValue `graphql:",args(includeDeprecated=false)"`
+		//Args func(bool) []gqlInputValue `egg:",args(includeDeprecated=false)"`
 		Args              func() []gqlInputValue
 		Type              func() gqlType
 		IsDeprecated      bool
@@ -94,8 +94,8 @@ type (
 	// gqlDirective represents the GraphQL "__Directive" type
 	gqlDirective struct {
 		Name, Description string
-		Locations         []int           `graphql:":[__DirectiveLocation!]!"`
-		Args              []gqlInputValue `graphql:":[__InputValue!]!"`
+		Locations         []int           `egg:":[__DirectiveLocation!]!"`
+		Args              []gqlInputValue `egg:":[__InputValue!]!"`
 		IsRepeatable      bool
 	}
 )

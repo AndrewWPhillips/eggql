@@ -28,7 +28,7 @@ var scalarData = map[string]struct {
 	"list":   {data: struct{ E []Cust1 }{}, expected: "type Query{ e: [Cust1]! } scalar Cust1"},
 	"arg": {
 		data: struct {
-			F func(Cust1) string `graphql:",args(i)"`
+			F func(Cust1) string `egg:",args(i)"`
 		}{},
 		expected: "type Query{ f(i:Cust1!): String! } scalar Cust1",
 	},

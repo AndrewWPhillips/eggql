@@ -49,9 +49,13 @@ func MustBuild(qms ...interface{}) string {
 	return s
 }
 
-// Build generates a string containing a GraphQL schema from Go structs.
-// It analyses a Go "query" struct (and optionally mutation and subscription) using
-// any public fields to be used as queries.
+// Build generates a string containing a GraphQL schema.
+// The 1st parameter (rawEnums) is a map of enums where each map entry is a slice of
+//   strings - each string is an enum value opt. followed by hash (#) and a description.
+//   It can be nil if no enums are needed.
+// The 2nd, 3rd and 4th parameters represent the root query, mutation and subscription.
+//   Each struct is scanned for public fields (scalars, nested structs, etc) to be used
+//   as queries.  They can be nil if not implemented.
 func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 	enums, err := validateEnums(rawEnums)
 	if err != nil {

@@ -10,28 +10,28 @@ type (
 	// QueryUnit and the subsequent types here are used for the type of the data field of the
 	// enumData map (below) used for table-driven tests of enums.
 	QueryUnit struct {
-		E int `graphql:":Unit"`
+		E int `egg:":Unit"`
 	}
 	QueryListE struct {
-		E []int `graphql:":[Unit]"`
+		E []int `egg:":[Unit]"`
 	}
 	QueryNamed struct {
-		E int `graphql:"name:Unit"`
+		E int `egg:"name:Unit"`
 	}
 	QueryParam struct {
-		F func(int) string `graphql:",args(u:Unit)"`
+		F func(int) string `egg:",args(u:Unit)"`
 	}
 	QueryListParam struct {
-		F func([]int) string `graphql:",args(u:[Unit])"`
+		F func([]int) string `egg:",args(u:[Unit])"`
 	}
 	QueryDefault struct {
-		Height func(float64, int) string `graphql:",args(h,u:Unit=METER)"`
+		Height func(float64, int) string `egg:",args(h,u:Unit=METER)"`
 	}
 	QueryListDefault struct {
-		F func([]int) string `graphql:",args(u:[Unit]=[METER, FOOT, FOOT])"`
+		F func([]int) string `egg:",args(u:[Unit]=[METER, FOOT, FOOT])"`
 	}
 	QueryDefaultEmpty struct {
-		F func([]int) string `graphql:",args(u:[Unit]=[])"`
+		F func([]int) string `egg:",args(u:[Unit]=[])"`
 	}
 )
 

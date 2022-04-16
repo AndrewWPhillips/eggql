@@ -37,7 +37,7 @@ import (
 )
 
 type Query struct {
-	Random func(int, int) int `graphql:",args(low=1,high=6)"`
+	Random func(int, int) int `egg:",args(low=1,high=6)"`
 }
 
 var q = Query{
@@ -60,11 +60,11 @@ To test it, just send a query like the following to http://localhost:8080/graphq
 }
 ```
 
-Note that the query name `random` is derived from the struct's field name `Random`.  Only exported fields (those with an upper-case first letter) are used and the generated GraphQL name is derived from it using a lower-case first letter.  You can also provide your own name using the graphql tag such as `graphql:"myRand,args(low=1,high=6)"`.
+Note that the query name `random` is derived from the struct's field name `Random`.  Only exported fields (those with an upper-case first letter) are used and the generated GraphQL name is derived from it using a lower-case first letter.  You can also provide your own name using the eggql tag such as `egg:"myRand,args(low=1,high=6)"`.
 
-Also note the two resolver arguments (`low` and `high`) given in the graphql tag.  You must supply the `args` option of the tag if the resolver function takes arguments.  In this case there are two arguments, so you must specify two names in the `args`.  (You can also have an optional `context.Context` parameter that has no corresponding name in `args`.)
+Also note the two resolver arguments (`low` and `high`) given in brackets the `args` option.  You *must* supply the `args` option if the resolver function takes arguments.  In this case there are two arguments, so you must specify two names in the `args`.  (You can also have an optional 1st `Context` parameter that has no corresponding name in `args` - see the tutorial.)
 
-I usually test GraphQL using Postman (see below) but you can just use curl to post a GraphQL query like this:
+I usually test GraphQL using Postman (see below) but you can just use **curl** to post a GraphQL query like this:
 
 ```sh
 $ curl -XPOST -d '{"query": "{ random }"}' localhost:8080/graphql
@@ -147,7 +147,7 @@ The function can handle this better by returning an `error`.  (A resolver functi
 
 ```go
 type Query struct {
-	Random func(int, int) (int, error) `graphql:",args(low=1,high=6)"`
+	Random func(int, int) (int, error) `egg:",args(low=1,high=6)"`
 }
 
 var q = Query{
@@ -183,7 +183,7 @@ For resolvers that may take a long time to run and/or block on I/O you should al
 
 ```go
 type Query struct {
-	Random func(context.Context, int, int) (int, error) `graphql:",args(low=1,high=6)"`
+	Random func(context.Context, int, int) (int, error) `egg:",args(low=1,high=6)"`
 }
 
 var q = Query{
@@ -215,7 +215,7 @@ Note that there are further ways to increase the robustness of your service, suc
 
 ### Alternatives
 
-There are 5 excellent mature GraphQL packages for Go which may suit you better.
+There are 5 excellent existing GraphQL packages for Go which may suit you better.
 
 |                          Project                          | Developer(s)                                                        |
 |:---------------------------------------------------------:|:--------------------------------------------------------------------|
@@ -227,15 +227,15 @@ There are 5 excellent mature GraphQL packages for Go which may suit you better.
 
 I particularly like **gqlgen** of **99 Designs** as it uses "go generate" to avoid the inefficiencies of reflection and the lack of type safety that is inevitable when using `interface{}` for polymorphism.
 
-I recently discovered **thunder** which is based on the same premise **eggql** (using reflection etc, but implementing resolvers using Go interfaces rather than closures).  I wish I had found it earlier as I may have just used/modified it instead of writing my own package.
+I recently discovered **thunder** which is based on the same premise as **eggql** (using reflection etc), but it implements resolvers using Go interfaces rather than closures).  I wish I had found it earlier as I may have just used/modified it instead of writing my own package.
 
-The "pros" for **eggql** are, I believe, that it is simple to use (though I may be biased due to my familiarity with it :) and complete (except for subscriptions), and allows you to write robust GraphQL services due to support for `context.Context` parameters and `error` return values, handling panics, etc.  It also has special capabilities for working with in-memory slices and maps.  It's pretty fast, so may be fast enough for your needs, but there are areas where it can be improved.
+The "pros" for **eggql** are, I believe, that it is simple to use (though I may be biased due to my familiarity with it :) and complete (except for subscriptions), and allows you to write robust GraphQL services due to support for `context.Context` parameters and `error` return values, handling panics, etc.  It also has special capabilities for working with in-memory slices and maps that the others don't.  It's probably fast enough unless you have a high-volume service (but there are areas where it can be improved).
 
-The "cons" for **eggql** are that it *may not* be as performant as other packages such as **gqlgen** as it uses reflection and does not have performance options such as caching and data-loader (database).  Also resolver lookups use slices and linear searches - this could be improved by using a map.  Common extensions like a **Date** type and custom directives are not (yet) supported.
+The "cons" for **eggql** are that it *may not* be as performant as other packages such as **gqlgen** as it uses reflection and does not have performance options such as caching and data-loader (database).  Also, resolver lookups currently use linear searches.  Common extensions like a **Date** type and custom directives are not (yet) supported.
 
 ### Vektah's gqlparser
 
-I should also give a special shout-out to the Go **gqlparser** package upon which *eggql** is built.  This is an excellent library that I use to parse the GraphQL schemas and analyse and validate queries.  This package does all the hard work making implementing **eggql** a breeze.
+I should also give a special shout-out to the Go **gqlparser** package upon which *eggql** is built.  This is an excellent library that I use to parse the GraphQL schemas that **eggql** geerates and analyse and validate queries.  This package does all the hard work making implementing **eggql** a breeze.
 
 * [gqlparser](https://github.com/vektah/gqlparser) by Vektah
 
@@ -245,7 +245,7 @@ Here are some important things not mentioned above.
 
 ### Tutorial
 
-As already mentioned **eggql** is a complete GraphQL implementation, apart from subscriptions (in progress).  To see how easy it is to use see the [Star Wars Tutorial](https://github.com/AndrewWPhillips/eggql/blob/main/TUTORIAL.md).  This explains how to implement a service for the **Star Wars** demo which almost all packages (in Go and other languages) have as an example of.  It nicely shows how to use all features of GraphQL using **eggql** except subscriptions.
+As already mentioned **eggql** is a complete GraphQL implementation, apart from subscriptions (in progress).  To see how easy it is to use there is a [Star Wars Tutorial](https://github.com/AndrewWPhillips/eggql/blob/main/TUTORIAL.md).  This explains how to implement a service for the **Star Wars** demo which almost all packages (in Go and other languages) have as an example of.  It nicely shows how to use all features of GraphQL using **eggql** except subscriptions.
 
 ### Code-first GraphQL
 
@@ -257,19 +257,19 @@ My experience with many GraphQL packages is that they are confusing to set up, a
 
 Admittedly the first two are mainly of concern to clients of a GraphQL service, but you still need to write queries to test your service.  (And to be fair the format of GraphQL queries, though not quite JSON, echoes the format of the results.)
 
-My real issue is with *schemas*; they seemed unnecessary since Go data structures could serve the same purpose.  In other Go GraphQL packages the code will **panic if the schema and the Go structs are inconsistent** (though **gqlgen** avoids this problem unless you manually change the generated code).  The DRY principle says to avoid having the same information in two places to prevent problems with keeping it consistent.
+My real issue is with *schemas*; they seemed unnecessary since Go data structures could serve the same purpose.  In other Go GraphQL packages the code will **panic if the schema and the Go structs are inconsistent**. (**gqlgen** avoids this problem unless you manually change the generated code).  The DRY principle says to avoid having the same information in two places to prevent problems with keeping it consistent.
 
-My prime motivation, in writing **eggql** was to make it simpler to create a GraphQL service by bypassing the need to write a schema.  I have since discovered that others feel the same way leading to the "code-first" (schema-less) movement - for example see this recent post from the excellent LogRocket blog: https://blog.logrocket.com/code-first-vs-schema-first-development-graphql//
+My prime motivation, in creating **eggql** was to make it simpler to create a GraphQL service by bypassing the need to write a schema.  I have since discovered that others feel the same way leading to the "code-first" (schema-less) movement - for example see this recent post from the excellent LogRocket blog: https://blog.logrocket.com/code-first-vs-schema-first-development-graphql//
 
 ### Reflection
 
-To avoid the need for a schema **eggql** makes extensive use of reflection, even though this may make the code a little slower.  [There are *many* things I like about Go but the main one is the emphasis on simplicity, even when it might affect performance a little, which is why Go code is usually 25% slower than equivalent C, Rust or Zig (but not 100-1000% slower like Python is :)].  I believe **eggql** is in the spirit of Go, by keeping things simple at the expense of a little performance.
+Due to the way it works **eggql** makes extensive use of reflection, even though this may make the code a little slower.  [There are *many* things I like about Go but the main one is the emphasis on simplicity, even when it might affect performance a little, which is why Go code is usually 20% slower than equivalent C, Rust or Zig (but not 100-1000% slower like Python is :)].  I believe **eggql** is in the spirit of Go, by keeping things simple at the expense of a little performance.
 
 ### Special Map and Slice Features
 
-To make it even easier to allow your data to be accessed from GraphQL **eggql** adds a "subscript" option (not to be confused with subscriptions).  This automatically generates GraphQL queries to access individual elements of slices, arrays and maps by their index (or key in the case of maps).
+To make it even easier to allow your data to be accessed from GraphQL, **eggql** adds a "subscript" option (not to be confused with subscriptions).  This automatically generates GraphQL queries to access individual elements of slices, and arrays by their index or maps by their key.
 
-This is a unique capability of **eggql** AFAIK.  Other GraphQL packages (at least all the ones I have tried in Go and other lanaguages) allow you to get a list of from an array or slice but have no such facility for maps and do not allow you to "subscript" into a list to retrieve individual elements.
+This is a unique capability of **eggql** AFAIK.  Other GraphQL packages (at least all the ones I have tried in Go and other lanaguages) allow you to get a list from an array or slice but have no such facility for maps and do not allow you to "subscript" into a list to retrieve individual elements.
 
 As an example, say you have a map of information on record albums like this:
 
@@ -290,10 +290,10 @@ var albums = map[string]Album{
 To allow a GraphQL client to query on individual albums it's simply a matter of adding this line to your `Query struct`:
 
 ```Go
-	A map[string]Album `graphql:"album,subscript"`
+	A map[string]Album `egg:"album,subscript"`
 ```
 
-The "subscript" option in the tag says to allow "subscripting" using a query called "album" which has (by default) a name of `id` and a type of `String!` (since the map's key is of type `string`).  The complete code (28 lines) is in the "album" directory under example (see https://github.com/AndrewWPhillips/eggql/tree/main/example/album/main.go).
+The "subscript" option in the tag says to allow "subscripting" using a query called "album".  This query has an argument with a name of `id` and a type of `String!` (since the map's key is of type `string`).  The complete code (28 lines) is in the "album" directory under example (see https://github.com/AndrewWPhillips/eggql/tree/main/example/album/main.go).
 
 If you send this query:
 
@@ -328,11 +328,11 @@ There are two stages of error-handling when creating a GraphQL service:
 1. coding/config errors that cause initial setup to fail, in which case `MustRun()` will panic
 2. errors encountered when a query (or mutation) is running, whence an error message is returned to the client
 
-The 1st case is common when starting out -- you make lots of coding mistakes when creating structs, their fields, their metadata (graphql tag), enums, etc.  As an alternative to using `MustRun()`, just call `eggql.New()`, perhaps add enums etc, then call the `GetHandler()` method which returns an error instead of panicking if there is a problem.  This makes it easier to test and debug the code.
+The 1st case is common when starting out -- you make lots of coding mistakes when creating structs, their fields, field tags (egg: key), enums, etc.  As an alternative to using `MustRun()`, just call `eggql.New()`, then add things like enums etc, and call the `GetHandler()` method which returns an error instead of panicking if there is a problem.  This makes it easier to test and debug the code.
 
 Another advantage is that you can also call `GetSchema()` to view the GraphQL schema that **eggql*** has generated.
 
-Here's an example:
+Here's a complete example:
 
 ```Go
 package main
@@ -348,7 +348,7 @@ const value = 3.14
 func main() {
 	gql := eggql.New()
 	gql.SetQuery(struct {
-		Len func(int) float64 `graphql:",args(unit:Unit=METER)"`
+		Len func(int) float64 `egg:",args(unit:Unit=METER)"`
 	}{
 		Len: func(unit int) float64 {
 		    if unit == 1 {
@@ -372,6 +372,7 @@ func main() {
 	}
 }
 ```
+This provides a `len` query with an optional `unit` argument which can have values `METER` (default) or `FOOT`.
 
 For the 2nd case mentioned above ("run-time" errors), an error message is returned in the response with an HTTP status of **OK** (200).  This includes errors that **eggql** detects while processing and validating the request, such as using an unknown query name.  It also includes errors returned from any resolver function, such as the "episode not found" error returned from the `Hero()` resolver function in the Star Wars Tutorial.  (GraphQL services do not usually generate HTTP status code like **Bad Request** (400), but this does not mean that a client should not be prepared to handle them.)
 
