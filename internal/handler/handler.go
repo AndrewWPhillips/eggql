@@ -4,14 +4,15 @@
 // The schema is typically generated (by the schema package) from the same struct(s).
 package handler
 
-// handler.go implements the handler and it's ServeHTTP method
+// handler.go implements handler.New() to create a new handler, and it's ServeHTTP method
 
 import (
 	"encoding/json"
-	"github.com/vektah/gqlparser/v2"
-	"github.com/vektah/gqlparser/v2/ast"
 	"net/http"
 	"strings"
+
+	"github.com/vektah/gqlparser/v2"
+	"github.com/vektah/gqlparser/v2/ast"
 )
 
 type (
@@ -83,7 +84,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Decode the request (JSON)
 	g := gqlRequest{h: h}
 	decoder := json.NewDecoder(r.Body)
-	decoder.UseNumber() // allows us to distinguish ints from floats (see FixNumberVariables() below)
+	decoder.DisallowUnknownFields() // quickly find if a field name has been misspelt
+	decoder.UseNumber()             // allows us to distinguish ints from floats (see FixNumberVariables() below)
 	if err := decoder.Decode(&g); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"data": null,"errors": [{"message": "Error decoding JSON request:` + err.Error() + `"}]}`))

@@ -5,11 +5,12 @@ package handler
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strings"
+
 	"github.com/andrewwphillips/eggql/internal/field"
 	"github.com/dolmen-go/jsonmap"
 	"github.com/vektah/gqlparser/v2/ast"
-	"reflect"
-	"strings"
 )
 
 const (
@@ -48,7 +49,9 @@ type (
 //   v = value of Go struct whose (exported) fields are the resolvers
 //   vIntro = Go struct with values for introspection (only supplied at root level)
 //   introOp = gqlOperation struct to be used with vIntro (contains some required enums)
-func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, v, vIntro reflect.Value, introOp *gqlOperation) (jsonmap.Ordered, error) {
+func (op *gqlOperation) GetSelections(
+	ctx context.Context, set ast.SelectionSet, v, vIntro reflect.Value, introOp *gqlOperation,
+) (jsonmap.Ordered, error) {
 	// Get the struct that contains the resolvers that we can use
 	for v.Type().Kind() == reflect.Ptr {
 		v = v.Elem() // follow indirection
@@ -115,7 +118,7 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 // If no match is found, or the matched field is excluded (by a directive) the chan is closed without any value sent.
 func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, v reflect.Value) <-chan gqlValue {
 	if v.Type().Kind() != reflect.Struct { // struct = 25
-		// param. 'v' validation - note that this is a bug which is precluded during building of the schema
+		// param. 'v' validation - note that this is a bug that should have been caught during schema building
 		panic("FindSelection: search of query field in non-struct")
 	}
 
@@ -131,6 +134,7 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 
 	var i int
 	// Check all the (exported) fields of the struct for a match to astField.Name
+	// TODO: use map lookup O(1) [instead of O(n) linear search] to help perf. eg. for a large # of root query fields
 	for i = 0; i < v.Type().NumField(); i++ {
 		tField := v.Type().Field(i)
 		vField := v.Field(i)
@@ -182,7 +186,10 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 	return r
 }
 
-func (op *gqlOperation) wrapResolve(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info, ch chan<- gqlValue) {
+// wrapResolve calls resolve putting the return value on a chan and converting any panic to an error
+func (op *gqlOperation) wrapResolve(
+	ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info, ch chan<- gqlValue,
+) {
 	defer func() {
 		// Convert any panics in resolvers into an (internal) error
 		if recoverValue := recover(); recoverValue != nil {
@@ -223,7 +230,8 @@ func (op *gqlOperation) FindFragments(ctx context.Context, set ast.SelectionSet,
 //   astField = a query or sub-query - a field of a GraphQL object
 //   v = value of the resolver (field of Go struct)
 //   fieldInfo = metadata for the resolver (eg parameter name) obtained from the struct field tag
-func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info) *gqlValue {
+func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info,
+) *gqlValue {
 	if op.directiveBypass(astField) {
 		return nil
 	}
@@ -287,11 +295,10 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 				return &gqlValue{err: fmt.Errorf("%w marshaling custom scalar %q", err, v.Type().Name())}
 			}
 		} else if pt.Implements(reflect.TypeOf((*field.Marshaler)(nil)).Elem()) {
-			// This is here just in case the Marshal method has a pointer receiver (only needs value receiver) ie:
-			//  func (*T) MarshalEGGQL() (string, error)
-			tmp := reflect.New(v.Type())
+			// In case Marshal method uses ptr receiver (value receiver preferred) ie: func (*T) MarshalEGGQL() (string, error)
+			tmp := reflect.New(v.Type()) // we have to make an addressable copy of v so we can call with ptr receiver
 			tmp.Elem().Set(v)
-			valueString, err = tmp.Interface().(field.Marshaler).MarshalEGGQL() // fails if v is not addressable
+			valueString, err = tmp.Interface().(field.Marshaler).MarshalEGGQL()
 			if err != nil {
 				return &gqlValue{err: fmt.Errorf("%w marshalling pointer to custom scalar %q", err, v.Type().Name())}
 			}

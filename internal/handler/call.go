@@ -6,12 +6,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/andrewwphillips/eggql/internal/field"
-	"github.com/vektah/gqlparser/v2/ast"
 	"reflect"
 	"strconv"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/andrewwphillips/eggql/internal/field"
+	"github.com/vektah/gqlparser/v2/ast"
 )
 
 // fromFunc converts a Go function into the type/value of what it returns by calling it using reflection
@@ -20,7 +21,8 @@ import (
 //   astField - is the GraphQL query object field
 //   v - the reflection "value" of the Go function's return value
 //   fieldInfo - contains the args, defaults, etc obtained from the Go field metadata
-func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info) (vReturn reflect.Value, err error) {
+func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info,
+) (vReturn reflect.Value, err error) {
 	if v.IsNil() {
 		err = fmt.Errorf("function for %q is not implemented (nil)", astField.Name)
 		return
@@ -134,7 +136,8 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 //   name = corresponding name of the argument
 //   enumName allows lookup of an enum value if t is an integer and value is a string
 //   value = what needs to be returned converted to a value of type t
-func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, value interface{}) (reflect.Value, error) {
+func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, value interface{},
+) (reflect.Value, error) {
 	if value == nil {
 		// Return a value of the default type
 		return reflect.ValueOf(reflect.New(t).Elem().Interface()), nil
@@ -251,7 +254,7 @@ func (op *gqlOperation) getStruct(t reflect.Type, name string, m map[string]inte
 		if f.Name == "_" || fieldInfo == nil {
 			continue // ignore unexported field
 		}
-		// TODO check if we need to handle fieldInfo.Embedded - I don't think INPUT types can implement interfaces
+
 		first, n := utf8.DecodeRuneInString(fieldInfo.Name)
 		if first == utf8.RuneError {
 			return reflect.Value{}, fmt.Errorf("field %q of variable %q is not valid non-empty UTF8 string", fieldInfo.Name, name)
@@ -276,7 +279,8 @@ func (op *gqlOperation) getStruct(t reflect.Type, name string, m map[string]inte
 //  name = name of the argument
 //  enumName = name of enum if list is a list of enums
 //  list = slice of element from the GraphQL list
-func (op *gqlOperation) getList(t reflect.Type, name string, enumName string, list []interface{}) (reflect.Value, error) {
+func (op *gqlOperation) getList(t reflect.Type, name string, enumName string, list []interface{},
+) (reflect.Value, error) {
 	switch t.Kind() {
 	case reflect.Slice:
 		// Create an instance of the slice and fill in the elements from 'list'
