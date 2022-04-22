@@ -45,7 +45,7 @@ type Info struct {
 
 	Embedded bool // embedded struct (which we use as a template for a GraphQL "interface")
 	Empty    bool // embedded struct has no fields (which we use for a GraphQL "union")
-	Nullable bool // pointer fields or those with the "nullable" tag are allowed to be null
+	Nullable bool // only pointer fields can be null
 
 	// Subscript holds the result of the "subscript" option (for a slice/array/map)
 	Subscript     string       // name resolver arg (default is "id")
@@ -177,7 +177,7 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 			if (fieldInfo.SubscriptType.Kind() < reflect.Int || fieldInfo.SubscriptType.Kind() > reflect.Uint64) &&
 				fieldInfo.SubscriptType.Kind() != reflect.String {
 				// TODO allow other comparable types for map subscripts?
-				return nil, errors.New("map key for subscript option " + f.Name + " must be a int or string")
+				return nil, errors.New("map key for subscript option " + f.Name + " must be a string or int")
 			}
 		}
 	} else if t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
@@ -222,10 +222,10 @@ func GetTagInfo(tag string) (*Info, error) {
 			}
 			continue
 		}
-		if part == "nullable" {
-			fieldInfo.Nullable = true
-			continue
-		}
+		//if part == "nullable" {
+		//	fieldInfo.Nullable = true
+		//	continue
+		//}
 		if list, err := getBracketedList(part, "args"); err != nil {
 			return nil, fmt.Errorf("%w getting args in %q", err, tag)
 		} else if list != nil {
