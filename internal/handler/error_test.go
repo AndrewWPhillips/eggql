@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/andrewwphillips/eggql/internal/handler"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/andrewwphillips/eggql/internal/handler"
 )
 
 const (
@@ -29,9 +30,12 @@ var errorData = map[string]struct {
 	variables string      // GraphQL variables to use with the query (JSON)
 	expError  string      // expected error decoded from the returned JSON response
 }{
-	"FuncError":    {"type Query{v:Int!}", errorFuncData, `{v}`, "", errorMessage},
-	"QueryError":   {"type Query{v:Int!}", errorFuncData, `x`, "", `Unexpected Name "x"`},
-	"UnknownQuery": {"type Query{v:Int!}", errorFuncData, `{ unknown }`, "", `Cannot query field "unknown" on type "Query".`},
+	"FuncError":  {"type Query{v:Int!}", errorFuncData, `{v}`, "", errorMessage},
+	"QueryError": {"type Query{v:Int!}", errorFuncData, `x`, "", `Unexpected Name "x"`},
+	"UnknownQuery": {
+		"type Query{v:Int!}", errorFuncData, `{ unknown }`, "",
+		`Cannot query field "unknown" on type "Query".`,
+	},
 	// TODO test all error conditions
 }
 
@@ -84,8 +88,8 @@ func TestErrors(t *testing.T) {
 	}
 }
 
-func TestTimeout(t *testing.T) {
-	h := handler.New("type Query{v:Int!}", struct{ V func() int }{func() int { time.Sleep(time.Second); return 0 }})
+func TestQueryTimeout(t *testing.T) {
+	h := handler.New("type Query{v:Int!}", struct{ V func() int }{func() int { time.Sleep(5 * time.Second); return 0 }})
 
 	request := httptest.NewRequest("POST", "/", strings.NewReader(`{"query":"{v}"}`))
 	request.Header.Add("Content-Type", "application/json")

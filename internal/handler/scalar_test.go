@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/andrewwphillips/eggql/internal/handler"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/andrewwphillips/eggql/internal/handler"
 )
 
 // SimpleScalar - implements UnmarshalEGGQL (relies on %v printf format for marshaling)
@@ -149,6 +150,7 @@ var scalarData = map[string]struct {
 	},
 }
 
+// TestCustomScalar uses the above table (and preceding types+methods) to test all uses of custom scalars
 func TestCustomScalar(t *testing.T) {
 	for name, testData := range scalarData {
 		//log.Println(name) // we only need this if a test panics - to see which one it was
