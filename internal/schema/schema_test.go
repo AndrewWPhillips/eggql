@@ -31,9 +31,6 @@ type (
 	QueryList2      struct{ List []QueryString }
 	QueryAnonNested struct{ Anon struct{ B byte } } // anon type - should use field name as "type" name
 
-	QueryNullable struct {
-		I int `egg:",nullable"` // specify that field can be null
-	}
 	QuerySlice     struct{ Slice []int }
 	QueryMap       struct{ Map map[string]int }
 	QueryIntFunc   struct{ F func() int }
@@ -191,7 +188,13 @@ type (
 		S func() string   `egg:"#s (#1)"`
 		T []int           `egg:"#t (#2) "`
 	}
+	Cust1 int8 // custom scalar type (see UnmarshalEGGQL method below)
 )
+
+// UnmarshalEGGQL is just added as a method on Cust1 to indicate that it is a custom scalar
+func (pi *Cust1) UnmarshalEGGQL(s string) error {
+	return nil // nothing needed here as we are just testing schema generation
+}
 
 var testData = map[string]struct {
 	data     interface{}
@@ -224,7 +227,6 @@ var testData = map[string]struct {
 		QueryAnonNested{}, "schema{ query:QueryAnonNested }" +
 			"type Anon{ b:Int! } type QueryAnonNested{ anon:Anon! }",
 	},
-	"Nullable": {QueryNullable{}, "schema{ query:QueryNullable } type QueryNullable{ i:Int }"},
 	//"Slice":       {QuerySlice{}, "schema{ query:QuerySlice } type QuerySlice{ slice:[Int!]!}"}, // TODO make non-ptr non-nullable!
 	"Slice":     {QuerySlice{}, "schema{ query:QuerySlice } type QuerySlice{ slice:[Int]! }"},
 	"Map":       {QueryMap{}, "schema{ query:QueryMap } type QueryMap{ map:[Int]! }"},
@@ -333,6 +335,15 @@ var testData = map[string]struct {
 			R2 func(int, float64) string `egg:",args(intArg=1#int, floatArg=3.14#float)"`
 		}{},
 		`type Query{r2("""int""" intArg:Int!=1, """float""" floatArg:Float!=3.14):String!}`,
+	},
+	// custom scalar as field, as field list and as arg
+	"CustomScalarReturn": {data: struct{ E Cust1 }{}, expected: "type Query{ e: Cust1! } scalar Cust1"},
+	"CustomScalarList":   {data: struct{ E []Cust1 }{}, expected: "type Query{ e: [Cust1]! } scalar Cust1"},
+	"CustomScalarArg": {
+		data: struct {
+			F func(Cust1) string `egg:",args(i)"`
+		}{},
+		expected: "type Query{ f(i:Cust1!): String! } scalar Cust1",
 	},
 }
 
