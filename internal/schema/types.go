@@ -16,10 +16,6 @@ import (
 //  error = non-nil for type that can't be handled (eg func that returns nothing)
 //     for anonymous structs it does not return an error but the returned name is an empty string
 func (s schema) getTypeName(t reflect.Type) (string, bool, error) {
-	//b1 := t.Implements(reflect.TypeOf((*field.Unmarshaler)(nil)).Elem())
-	//b2 := reflect.TypeOf(reflect.New(t).Interface()).Implements(reflect.TypeOf((*field.Unmarshaler)(nil)).Elem())
-	//fmt.Printf("%s: %v %v %v %v\n", t.Name(), b1, b2)
-
 	// Assume it's a custom scalar if there is a method with signature: func (*T) UnmarshalEGGQL(string) error
 	// Note that reflect.TypeOf(reflect.New(t).Interface()) is used to get the type of ptr to t.
 	// (UnmarshalEGGQL must have a pointer (not value) receiver since the new value is saved.)
@@ -64,12 +60,12 @@ func (s schema) getTypeName(t reflect.Type) (string, bool, error) {
 			return "", false, errors.New("bad element type for slice/array/map " + t.Name())
 		}
 		return "[" + elemType + "]", isScalar, nil
-	case reflect.Func:
-		// For functions the (1st) return type is the type of the resolver
-		if t.NumOut() == 0 { // help caller fix their defect by returning an error instead of panicking
-			return "", false, errors.New("resolver functions must return a value: " + t.Name())
-		}
-		return s.getTypeName(t.Out(0))
+	//case reflect.Func:
+	//	// For functions the (1st) return type is the type of the resolver
+	//	if t.NumOut() == 0 { // help caller fix their defect by returning an error instead of panicking
+	//		return "", false, errors.New("resolver functions must return a value: " + t.Name())
+	//	}
+	//	return s.getTypeName(t.Out(0))
 	case reflect.Interface:
 		// Resolver functions returning a GraphQL "interface" type return a Go interface{} but we
 		// don't know the type name, or whether it is a scalar or not

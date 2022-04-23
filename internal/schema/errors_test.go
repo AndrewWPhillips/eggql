@@ -9,15 +9,8 @@ import (
 )
 
 type (
-	Query           struct{ Message string }
-	SingleInt       struct{ I int }
-	QueryNoArgs     struct{ F func(int) bool } // missing metadata "args"
-	QueryTooFewArgs struct {
-		F func(int, int) bool `egg:",args(a)"`
-	}
-	QueryTooManyArgs struct {
-		F func(int, int) bool `egg:"f,args(a,b,c)"`
-	}
+	Query            struct{ Message string }
+	SingleInt        struct{ I int }
 	QueryArgsNonFunc struct {
 		B bool `egg:"bbb, args( arg0, arg1 ) "` // only func resolver needs args
 	}
@@ -131,19 +124,43 @@ var (
 	emptyEnum   = map[string][]string{"Unit": {"FOOT"}, "Empty": {}}
 )
 
+// CustScalarStruct implements UnmarshalEGGQL to signal it's a scalar type
+type CustScalarStruct struct{}
+
+// UnmarshalEGGQL is just added as a method on Cust1 to indicate that it is a custom scalar
+func (*CustScalarStruct) UnmarshalEGGQL(s string) error {
+	return nil // nothing needed here as we are just testing schema generation
+}
+
+// CustScalarInt os a custom scalar based on an integer type (scalar)
+type CustScalarInt int64
+
+// UnmarshalEGGQL is just added as a method on Cust1 to indicate that it is a custom scalar
+func (*CustScalarInt) UnmarshalEGGQL(s string) error {
+	return nil // nothing needed here as we are just testing schema generation
+}
+
 var errorData = map[string]struct {
 	data    interface{}
 	enums   map[string][]string
 	problem string
 }{
-	"NonStruct":       {1, nil, "must be struct"},
-	"BadType":         {struct{ C complex128 }{}, nil, "unhandled type"},
-	"BadType2":        {struct{ C []interface{} }{}, nil, "bad element type"},
-	"BadSliceType":    {struct{ C []complex128 }{}, nil, "unhandled type"},
-	"DupeQuery":       {struct{ Q Query }{}, nil, "same name"}, // two different types with same name "Query"
-	"NoArgs":          {QueryNoArgs{}, nil, "no args"},
-	"TooFewArgs":      {QueryTooFewArgs{}, nil, "argument count"},
-	"TooManyArgs":     {QueryTooManyArgs{}, nil, "argument count"},
+	"NonStruct":    {1, nil, "must be struct"},
+	"BadType":      {struct{ C complex128 }{}, nil, "unhandled type"},
+	"BadType2":     {struct{ C []interface{} }{}, nil, "bad element type"},
+	"BadSliceType": {struct{ C []complex128 }{}, nil, "unhandled type"},
+	"DupeQuery":    {struct{ Q Query }{}, nil, "same name"}, // two different types with same name "Query"
+	"NoArgs":       {struct{ F func(int) bool }{}, nil, "no args"},
+	"TooFewArgs": {
+		struct {
+			F func(int, int) bool `egg:",args(a)"`
+		}{}, nil, "argument count",
+	},
+	"TooManyArgs": {
+		struct {
+			F func(int, int) bool `egg:"f,args(a,b,c)"`
+		}{}, nil, "argument count",
+	},
 	"ArgsNonFunc":     {QueryArgsNonFunc{}, nil, "arguments cannot be supplied"},
 	"Return0":         {QueryReturn0{}, nil, "must return a value"},
 	"Return2":         {QueryReturn2{}, nil, "must be error type"},
@@ -166,7 +183,7 @@ var errorData = map[string]struct {
 	"EnumRepeat":      {Query{}, repeatValue, "repeated enum value"},
 	"EmptyEnum":       {Query{}, emptyEnum, "has no values"},
 	"UnknownEnum":     {QueryUnknownEnum{}, nil, "not found"},
-	"EnumNotInt":      {QueryEnumNotInt{}, enums, "enum type must be an integer"},
+	"EnumNotInt":      {QueryEnumNotInt{}, enums, "must be an integer"},
 	"UnknownParam":    {QueryUnknownParam{}, nil, "not found"},
 	"EnumParamBad":    {QueryEnumParamNotInt{}, enums, "must be an integer"},
 	"BadName":         {QueryBadName{}, nil, "not a valid name"},
@@ -180,6 +197,99 @@ var errorData = map[string]struct {
 	"DupeEmbedded2":   {QueryDupe2{}, nil, "same name"},
 	"BadTypeName":     {QueryBadTypeName{}, nil, "resolver type (UnknownType)"},
 	"SquareBrackets":  {QueryBadSquareBrackets{}, nil, "did you mean [Int]"},
+	"TypeCustomScalar1": {
+		struct {
+			V CustScalarStruct `egg:":Int"`
+		}{}, nil, "ustom scalar",
+	},
+	"TypeCustomScalar2": {
+		struct {
+			V CustScalarInt `egg:":CustScalarStruct"`
+		}{}, nil, "ustom scalar",
+	},
+	"TypeCustomScalar3": {
+		struct {
+			V CustScalarInt `egg:":X"`
+		}{}, nil, "ustom scalar",
+	},
+	"TypeInt": {
+		struct {
+			V complex64 `egg:":Int"`
+		}{}, nil, "must have an integer",
+	},
+	"TypeFloat": {
+		struct {
+			V complex64 `egg:":Float!"`
+		}{}, nil, "must have a float",
+	},
+	"TypeString": {
+		struct {
+			V complex64 `egg:":String!"`
+		}{}, nil, "string resolver",
+	},
+	"TypeBool": {
+		struct {
+			V complex64 `egg:":Boolean!"`
+		}{}, nil, "bool resolver",
+	},
+	"TypeID": {
+		struct {
+			V complex64 `egg:":ID!"`
+		}{}, nil, "string resolver",
+	},
+	"TypeSlice": {
+		struct {
+			V int `egg:":[Int]"`
+		}{}, nil, "list resolver",
+	},
+	"TypeSliceFunc": {
+		struct {
+			V func() []bool `egg:":[Int]"`
+		}{}, nil, "must have an integer",
+	},
+	"TypeEnum": {
+		struct {
+			V complex64 `egg:":Unit"`
+		}{}, enums, "must be an integer",
+	},
+	"TypeStruct1": {
+		struct {
+			_ SingleInt
+			V Query `egg:":SingleInt"`
+		}{}, nil, "cannot have a resolver of type",
+	},
+	"TypeStruct2": {
+		struct {
+			Embedded
+			V SingleInt `egg:":Embedded"`
+		}{}, nil, "cannot have a resolver of type",
+	},
+	"TypeStruct3": {
+		struct {
+			_ SingleInt
+			V complex64 `egg:":SingleInt"`
+		}{}, nil, "must have a struct resolver",
+	},
+	"SubscriptOption1": {
+		struct {
+			V complex64 `egg:",subscript"`
+		}{}, nil, "cannot use subscript option",
+	},
+	"SubscriptOption2": {
+		struct {
+			V SingleInt `egg:",subscript"`
+		}{}, nil, "cannot use subscript option",
+	},
+	"SubscriptOption3": {
+		struct {
+			V map[SingleInt]int `egg:",subscript"`
+		}{}, nil, "map key for subscript option",
+	},
+	"SubscriptOption4": {
+		struct {
+			V map[bool]int `egg:",subscript"`
+		}{}, nil, "map key for subscript option",
+	},
 
 	// TODO: test defaults errors: input, list
 }
@@ -187,10 +297,13 @@ var errorData = map[string]struct {
 func TestSchemaErrors(t *testing.T) {
 	for name, data := range errorData {
 		out, err := schema.Build(data.enums, data.data)
-		Assertf(t, out == "", "TestSchemaErrors: %12s: expected empty result, got %q", name, out)
+		if out != "" {
+			Assertf(t, out == "", "TestSchemaErrors: %12s: expected empty result, got %q", name, out)
+		}
 		ok := err != nil
 		if ok {
 			// we got an error (good), but we should still make sure it's the right one
+			// Note that this is a bit fragile as it scans the error text - tests may fail if error messages are modified
 			ok = data.problem != "" && strings.Contains(err.Error(), data.problem)
 		}
 		Assertf(t, ok, "TestSchemaErrors: %12s: expected an error, got: %v", name, err)

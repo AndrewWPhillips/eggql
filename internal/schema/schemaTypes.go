@@ -42,20 +42,21 @@ func newSchemaTypes() schema {
 	}
 }
 
-// add creates a GraphQL object/input/interface declaration as a string to be added to the schema and
-// adds it to the map (using the type name as the key) avoiding adding the same type twice
+// add creates a GraphQL object/input/interface as a string to be added to the schema and adds it
+//   to the declaration map (using the type name as the key) avoiding adding the same type twice.
 // Parameters:
-//  name = preferred name for the type (if an empty string the Go type name is used)
-//  t = the Go type used to generate the GraphQL type declaration
-//  enums = enums map (just used to make sure an enum name is valid)
-//  gqlType = "type" for a GraphQL object or "input", "interface", etc
+//   name = preferred name for the type (if an empty string the Go type name is used)
+//   t = the Go type used to generate the GraphQL type declaration
+//   enums = enums map (just used to make sure an enum name is valid)
+//   gqlType = "type" for a GraphQL object or "input", "interface", etc
 // Returns an error if the type could not be added - currently this only happens if the same struct is
-//  used as an "input" type (ie resolver parameter) and as an "object" or "interface" type
+//   used as an "input" type (ie resolver parameter) and as an "object" or "interface" type
 func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlType string) error {
 	needName := name == ""
 	if needName {
 		name = t.Name()
 	}
+	// TODO check if (effective type) of t can ever be func at this point - remove reflect.Func from loop/switch below?
 	// follow indirection(s) and function return(s)
 	for k := t.Kind(); k == reflect.Ptr || k == reflect.Func || k == reflect.Map || k == reflect.Slice || k == reflect.Array; k = t.Kind() {
 		switch k {
@@ -65,14 +66,16 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 			if !needName {
 				// Get the element type name from within the square brackets
 				if len(name) < 2 || name[0] != '[' || name[len(name)-1] != ']' {
-					panic("Type name for list should be in square brackets")
+					panic("List type name should be in square brackets")
 				}
 				name = name[1 : len(name)-1]
 			}
 
 			t = t.Elem() // element type
 		case reflect.Func:
-			// TODO convert panic (function has no return type) to a returned error
+			if t.NumOut() == 0 {
+				panic("Resolver func must have at least one return value")
+			}
 			t = t.Out(0) // get 1st return value (panics if nothing is returned)
 		}
 		if needName {
@@ -175,7 +178,8 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 //  names of GraphQL interface(s) that the type implements (using Go embedded structs)
 //  text to be added (to the GraphQL schema) as a "description" of the type
 //  error: non-nil if something went wrong
-func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string][]string, gqlType string) (r map[string]string, iface []string, desc string, err error) {
+func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string][]string, gqlType string,
+) (r map[string]string, iface []string, desc string, err error) {
 	r = make(map[string]string)
 
 	// First get type info from all dummy fields - those with blank ID (_) as their name
@@ -213,13 +217,6 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			err = fmt.Errorf("%q is not a valid name", fieldInfo.Name)
 			return
 		}
-		if _, isEnum := enums[fieldInfo.GQLTypeName]; isEnum {
-			// For enums the resolver must have a Go integer type
-			if fieldInfo.ResultType.Kind() < reflect.Int || fieldInfo.ResultType.Kind() > reflect.Uintptr {
-				err = errors.New("resolver with enum type must be an integer field " + f.Name)
-				return
-			}
-		}
 		if fieldInfo.Embedded && fieldInfo.Empty {
 			// Add parent type to union f.Name
 			u := s.unions[f.Name]
@@ -229,6 +226,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 				f2 := f.Type.Field(j)
 				fieldInfo2, err2 := field.Get(&f2) // just call this to get description for union
 				if (u.desc != "" && u.desc != fieldInfo2.Description) || err2 != nil {
+					// we should not get here - panic?
 					return nil, nil, "", errors.New("Error in union description for " + f2.Name)
 				}
 				u.desc = fieldInfo2.Description
@@ -262,20 +260,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			continue // all resolvers for the "interface" have been added
 		}
 
-		// Use resolver return type from the tag (if any) and assume it's not a scalar
-		typeName, isScalar := fieldInfo.GQLTypeName, false
-		if typeName != "" {
-			// Ensure the name given is valid
-			if err2 = s.validateTypeName(fieldInfo.GQLTypeName, enums); err2 != nil {
-				var help string
-				if strings.HasPrefix(fieldInfo.GQLTypeName, "[]") { // probably used []Type when [Type] was meant
-					help = fmt.Sprintf("(did you mean %s)", "["+fieldInfo.GQLTypeName[2:]+"]")
-				}
-				err = fmt.Errorf("resolver type (%s) of field %q not recognized: %w %s", fieldInfo.GQLTypeName, fieldInfo.Name, err2, help)
-				return
-			}
-		}
-
+		// Get and description text to add to the schema
 		var resolverDesc string
 		if fieldInfo.Description != "" {
 			resolverDesc = `  """` + fieldInfo.Description + `"""` + "\n"
@@ -291,18 +276,39 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 				return
 			}
 			effectiveType = fieldInfo.ResultType
-		} else {
+		} else if f.Type.Kind() == reflect.Func {
 			// Get resolver arguments (if any) from the "args" option - eg "(p1:String!, p2:Int!=42)"
 			params, err2 = s.getParams(f.Type, enums, fieldInfo)
 			if err2 != nil {
 				err = fmt.Errorf("%w getting args for %q", err2, fieldInfo.Name)
 				return
 			}
+			if f.Type.NumOut() == 0 {
+				// should not get to here - panic?
+				err = fmt.Errorf("resolver function %q does not return a value", fieldInfo.Name)
+				return
+			}
+			effectiveType = f.Type.Out(0)
+		} else {
 			effectiveType = f.Type
 		}
-		// Get type name derived from Go type
+
+		// Use resolver return type from the tag (if any) and assume it's not a scalar
+		typeName, isScalar := fieldInfo.GQLTypeName, false
+		if typeName != "" {
+			// Ensure the name given is valid TODO also need to erturn isScalar
+			if isScalar, err2 = s.validateTypeName(typeName, enums, effectiveType); err2 != nil {
+				var help string
+				if strings.HasPrefix(fieldInfo.GQLTypeName, "[]") { // probably used []Type when [Type] was meant
+					help = fmt.Sprintf("(did you mean %s)", "["+fieldInfo.GQLTypeName[2:]+"]")
+				}
+				err = fmt.Errorf("resolver type (%s) of field %q not found: %w %s", fieldInfo.GQLTypeName, fieldInfo.Name, err2, help)
+				return
+			}
+		}
+
 		if typeName == "" {
-			// Get resolver return type
+			// Derive GraphQL type from the field type
 			typeName, isScalar, err2 = s.getTypeName(effectiveType)
 			if err2 != nil {
 				err = fmt.Errorf("%w getting name for %q", err2, fieldInfo.Name)
@@ -327,8 +333,9 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 		r[fieldInfo.Name] = resolverDesc + "  " + fieldInfo.Name + " " + params + ":" + typeName + endStr
 
 		if !isScalar {
-			// We need to determine the type of the nested object (type/input/interface), normally it's the same as the
-			// parent (eg nested types in "input" are also "input") but a type inside an "interface" is an object ("type")
+			// Determine the "type" keyword for the nested object (type/input/interface).
+			// Normally, it's the same as the parent (eg nested types in "input" are also "input") but an
+			// object inside an "interface" is an object (ie GraphQL "type" keyword) not an "interface"
 			nestedType := gqlType
 			if nestedType == gqlInterfaceKeyword {
 				nestedType = gqlObjectTypeKeyword // a field inside an embedded struct is not itself treated as an interface
@@ -341,27 +348,88 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 	return
 }
 
-// validateTypeName checks that a type name is a valid enum or object type
-func (s schema) validateTypeName(typeName string, enums map[string][]string) error {
+// validateTypeName checks for a valid type name and that it matches the field type
+func (s schema) validateTypeName(typeName string, enums map[string][]string, t reflect.Type) (bool, error) {
+	// Get "unmodified" type - without non-nullable (!) and list modifiers
+	if len(typeName) > 1 && typeName[len(typeName)-1] == '!' {
+		typeName = typeName[:len(typeName)-1] // remove non-nullability
+	} else if t.Kind() == reflect.Ptr {
+		t = t.Elem() // nullable so get pointed to type
+	}
 	// if it's a list get the element type
 	if len(typeName) > 2 && typeName[0] == '[' && typeName[len(typeName)-1] == ']' {
 		typeName = typeName[1 : len(typeName)-1]
+		if t.Kind() != reflect.Slice && t.Kind() != reflect.Array && t.Kind() != reflect.Map {
+			return false, fmt.Errorf("A field with list resolver must have a slice/array/map type (not %v)", t.Kind())
+		}
+		t = t.Elem()
+
+		if len(typeName) > 1 && typeName[len(typeName)-1] == '!' {
+			typeName = typeName[:len(typeName)-1] // remove non-nullability
+		} else if t.Kind() == reflect.Ptr {
+			t = t.Elem() // nullable so get pointed to type
+		}
 	}
-	// First check if it's an enum type
+
+	// Check for custom scalar
+	if reflect.TypeOf(reflect.New(t).Interface()).Implements(reflect.TypeOf((*field.Unmarshaler)(nil)).Elem()) {
+		if typeName != t.Name() {
+			return false, fmt.Errorf("Custom scalar field (%s) cannot have a resolver of type %q", t.Name(), typeName)
+		}
+		return true, nil
+	}
+
+	// Check for other scalar types
+	switch typeName {
+	case "Boolean":
+		if t.Kind() != reflect.Bool {
+			return false, fmt.Errorf("A Boolean GraphQL field must have a bool resolver (not %v)", t.Kind())
+		}
+		return true, nil
+	case "Int":
+		if t.Kind() < reflect.Int || t.Kind() > reflect.Uintptr {
+			return false, fmt.Errorf("An Int GraphQL field must have an integer resolver (not %v)", t.Kind())
+		}
+		return true, nil
+	case "Float":
+		if t.Kind() < reflect.Float32 || t.Kind() > reflect.Float64 {
+			return false, fmt.Errorf("A Float GraphQL field must have a floating point resolver (not %v)", t.Kind())
+		}
+		return true, nil
+	case "String", "ID":
+		if t.Kind() != reflect.String {
+			return false, fmt.Errorf("A %q GraphQL field must have a string resolver (not %v)", typeName, t.Kind())
+		}
+		return true, nil
+	}
+
+	// Check if it's a known enum type
 	if _, ok := enums[typeName]; ok {
-		return nil
+		// For enums the resolver must have a Go integer type
+		if t.Kind() < reflect.Int || t.Kind() > reflect.Uintptr {
+			return false, fmt.Errorf("An Enum (%s) field must be an integer (not %v)", typeName, t.Kind())
+		}
+		return true, nil
 	}
 	// Check if it's an object type seen already
 	if _, ok := s.declaration[typeName]; ok {
-		return nil
+		if t.Kind() != reflect.Struct {
+			return false, fmt.Errorf("An object (%s) field must have a struct resolver (not %v)", typeName, t.Kind())
+		}
+		if typeName != t.Name() {
+			return false, fmt.Errorf("Object field (%s) cannot have a resolver of type %q", t.Name(), typeName)
+		}
+		return false, nil
 	}
 	// Check if it's a union
 	if _, ok := s.unions[typeName]; ok {
-		return nil
+		if t.Kind() != reflect.Interface {
+			return false, fmt.Errorf("A union (%s) field must return an interface (not %v)", typeName, t.Kind())
+		}
+		return false, nil
 	}
-	// TODO check scalar types?
 
-	return fmt.Errorf("type %q was not found", typeName)
+	return false, fmt.Errorf("type %q is not known", typeName)
 }
 
 const paramStart, paramSep, paramEnd = "(", ", ", ")"

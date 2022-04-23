@@ -345,6 +345,12 @@ var testData = map[string]struct {
 		}{},
 		expected: "type Query{ f(i:Cust1!): String! } scalar Cust1",
 	},
+
+	"ID": {
+		data: struct {
+			Id string `egg:":ID"`
+		}{}, expected: "type Query{ id: ID! }",
+	},
 }
 
 func TestBuildSchema(t *testing.T) {
