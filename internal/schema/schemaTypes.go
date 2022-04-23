@@ -5,13 +5,14 @@ package schema
 import (
 	"errors"
 	"fmt"
-	"github.com/andrewwphillips/eggql/internal/field"
 	"log"
 	"reflect"
 	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/andrewwphillips/eggql/internal/field"
 )
 
 type (
@@ -260,7 +261,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			continue // all resolvers for the "interface" have been added
 		}
 
-		// Get and description text to add to the schema
+		// Get any description text to add to the schema
 		var resolverDesc string
 		if fieldInfo.Description != "" {
 			resolverDesc = `  """` + fieldInfo.Description + `"""` + "\n"
@@ -296,7 +297,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 		// Use resolver return type from the tag (if any) and assume it's not a scalar
 		typeName, isScalar := fieldInfo.GQLTypeName, false
 		if typeName != "" {
-			// Ensure the name given is valid TODO also need to erturn isScalar
+			// Ensure the name given is valid TODO also need to return isScalar
 			if isScalar, err2 = s.validateTypeName(typeName, enums, effectiveType); err2 != nil {
 				var help string
 				if strings.HasPrefix(fieldInfo.GQLTypeName, "[]") { // probably used []Type when [Type] was meant
@@ -348,90 +349,6 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 	return
 }
 
-// validateTypeName checks for a valid type name and that it matches the field type
-func (s schema) validateTypeName(typeName string, enums map[string][]string, t reflect.Type) (bool, error) {
-	// Get "unmodified" type - without non-nullable (!) and list modifiers
-	if len(typeName) > 1 && typeName[len(typeName)-1] == '!' {
-		typeName = typeName[:len(typeName)-1] // remove non-nullability
-	} else if t.Kind() == reflect.Ptr {
-		t = t.Elem() // nullable so get pointed to type
-	}
-	// if it's a list get the element type
-	if len(typeName) > 2 && typeName[0] == '[' && typeName[len(typeName)-1] == ']' {
-		typeName = typeName[1 : len(typeName)-1]
-		if t.Kind() != reflect.Slice && t.Kind() != reflect.Array && t.Kind() != reflect.Map {
-			return false, fmt.Errorf("A field with list resolver must have a slice/array/map type (not %v)", t.Kind())
-		}
-		t = t.Elem()
-
-		if len(typeName) > 1 && typeName[len(typeName)-1] == '!' {
-			typeName = typeName[:len(typeName)-1] // remove non-nullability
-		} else if t.Kind() == reflect.Ptr {
-			t = t.Elem() // nullable so get pointed to type
-		}
-	}
-
-	// Check for custom scalar
-	if reflect.TypeOf(reflect.New(t).Interface()).Implements(reflect.TypeOf((*field.Unmarshaler)(nil)).Elem()) {
-		if typeName != t.Name() {
-			return false, fmt.Errorf("Custom scalar field (%s) cannot have a resolver of type %q", t.Name(), typeName)
-		}
-		return true, nil
-	}
-
-	// Check for other scalar types
-	switch typeName {
-	case "Boolean":
-		if t.Kind() != reflect.Bool {
-			return false, fmt.Errorf("A Boolean GraphQL field must have a bool resolver (not %v)", t.Kind())
-		}
-		return true, nil
-	case "Int":
-		if t.Kind() < reflect.Int || t.Kind() > reflect.Uintptr {
-			return false, fmt.Errorf("An Int GraphQL field must have an integer resolver (not %v)", t.Kind())
-		}
-		return true, nil
-	case "Float":
-		if t.Kind() < reflect.Float32 || t.Kind() > reflect.Float64 {
-			return false, fmt.Errorf("A Float GraphQL field must have a floating point resolver (not %v)", t.Kind())
-		}
-		return true, nil
-	case "String", "ID":
-		if t.Kind() != reflect.String {
-			return false, fmt.Errorf("A %q GraphQL field must have a string resolver (not %v)", typeName, t.Kind())
-		}
-		return true, nil
-	}
-
-	// Check if it's a known enum type
-	if _, ok := enums[typeName]; ok {
-		// For enums the resolver must have a Go integer type
-		if t.Kind() < reflect.Int || t.Kind() > reflect.Uintptr {
-			return false, fmt.Errorf("An Enum (%s) field must be an integer (not %v)", typeName, t.Kind())
-		}
-		return true, nil
-	}
-	// Check if it's an object type seen already
-	if _, ok := s.declaration[typeName]; ok {
-		if t.Kind() != reflect.Struct {
-			return false, fmt.Errorf("An object (%s) field must have a struct resolver (not %v)", typeName, t.Kind())
-		}
-		if typeName != t.Name() {
-			return false, fmt.Errorf("Object field (%s) cannot have a resolver of type %q", t.Name(), typeName)
-		}
-		return false, nil
-	}
-	// Check if it's a union
-	if _, ok := s.unions[typeName]; ok {
-		if t.Kind() != reflect.Interface {
-			return false, fmt.Errorf("A union (%s) field must return an interface (not %v)", typeName, t.Kind())
-		}
-		return false, nil
-	}
-
-	return false, fmt.Errorf("type %q is not known", typeName)
-}
-
 const paramStart, paramSep, paramEnd = "(", ", ", ")"
 
 // getSubscript creates the arg list (just one arg) for "subscript" option on a slice/array/map
@@ -462,6 +379,8 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 	paramNum := 0
 	var contextSeen bool
 	for i := 0; i < t.NumIn(); i++ {
+		var err error
+
 		// Skip 1st param if it's a context
 		if !contextSeen && fieldInfo.HasContext {
 			// contextContext parameter is not a formal GraphQL parameter
@@ -472,116 +391,59 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 			return "", fmt.Errorf("parameter %d argument %q is not a valid name", i, fieldInfo.Args[paramNum])
 		}
 		builder.WriteString(sep)
-		if fieldInfo.DescArgs[paramNum] != "" {
+		if fieldInfo.ArgDescriptions[paramNum] != "" {
 			builder.WriteString(`"""`)
-			builder.WriteString(fieldInfo.DescArgs[paramNum])
+			builder.WriteString(fieldInfo.ArgDescriptions[paramNum])
 			builder.WriteString(`"""`)
 		}
 		builder.WriteString(fieldInfo.Args[paramNum])
 		builder.WriteString(": ")
 
-		param := t.In(i)
-		if fieldInfo.Enums[paramNum] != "" {
-			// Enum or list of enum - check its Go type is integral, and it's a real supplied enum
-			isList := false
-			kind, enumName := param.Kind(), fieldInfo.Enums[paramNum]
-			if kind == reflect.Slice || kind == reflect.Array {
-				isList = true
-				kind = param.Elem().Kind()
-				if len(enumName) < 2 || enumName[0] != '[' || enumName[len(enumName)-1] != ']' {
-					panic("Invalid enum list")
-				}
-				enumName = enumName[1 : len(enumName)-1]
-			}
-			if kind < reflect.Int || kind > reflect.Uintptr {
-				return "", fmt.Errorf("parameter %d (%s) must be an integer for enum %q", i, param.Name(), fieldInfo.Enums[paramNum])
-			}
-			values, ok := enums[enumName]
-			if !ok {
-				return "", fmt.Errorf("parameter %d (%s) enum %q was not found", i, param.Name(), fieldInfo.Enums[paramNum])
-			}
-			// If there is a default value then check it's in the enum's value list
-			if fieldInfo.Defaults[paramNum] != "" {
-				ok := false
-				if isList {
-					// Get list as comma-separated string without enclosing square brackets
-					defaults := fieldInfo.Defaults[paramNum]
-					if len(defaults) < 2 || defaults[0] != '[' || defaults[len(defaults)-1] != ']' {
-						panic("Invalid enum default list:" + defaults)
-					}
-					defaults = defaults[1 : len(defaults)-1]
-
-					// Split list at commas and check that each value is in the enum list
-					ok = true
-					for _, dv := range strings.Split(defaults, ",") {
-						defaultValue := strings.Trim(dv, " ")
-						if defaultValue == "" {
-							continue
-						}
-						found := false
-						for _, v := range values {
-							if defaultValue == v {
-								found = true
-								break
-							}
-						}
-						if !found {
-							ok = false // this list element is not a valid enum value
-							break
-						}
-					}
-				} else {
-					for _, v := range values {
-						if fieldInfo.Defaults[paramNum] == v {
-							ok = true
-							break
-						}
-					}
-				}
-				if !ok {
-					return "", fmt.Errorf("parameter %d default value %q not found in enum %q", i, fieldInfo.Defaults[paramNum], fieldInfo.Enums[paramNum])
-				}
-			}
-		} else {
-			// For args that are not enum we just need to check any defaults are of the right type
-			if fieldInfo.Defaults[paramNum] != "" {
-				// Check that the default value is a valid literal for the type
-				if !validLiteral(param.Kind(), fieldInfo.Defaults[paramNum]) {
-					return "", fmt.Errorf("parameter %d default value %q is not of the correct type", i, fieldInfo.Defaults[paramNum])
-				}
+		effectiveType := t.In(i)
+		// Get type name supplied in the tag (essential for ID, enums)
+		typeName, isScalar := fieldInfo.ArgTypes[paramNum], false
+		if typeName != "" {
+			// Ensure the name given is valid TODO also need to return isScalar
+			if isScalar, err = s.validateTypeName(typeName, enums, effectiveType); err != nil {
+				return "", fmt.Errorf("type (%s) of arg %q not found: %w", typeName, fieldInfo.Args[paramNum], err)
 			}
 		}
-		// Get type name supplied in the tag (used for enums etc)
-		typeName, isScalar := fieldInfo.Enums[paramNum], false
-
-		// If not found use the Go type (eg Go int => Int! etc) of custom scalar type
+		// No GraphQL type name supplied in the args so derive it from the Go function parameter's type
 		if typeName == "" {
-			var err error
-			typeName, isScalar, err = s.getTypeName(param)
-			if err != nil {
-				return "", fmt.Errorf("parameter %d (%s) error: %w", i, param.Name(), err)
+			if typeName, isScalar, err = s.getTypeName(effectiveType); err != nil {
+				return "", fmt.Errorf("parameter %d (%s) of arg %q error: %w",
+					i, effectiveType.Name(), fieldInfo.Args[paramNum], err)
 			}
 		}
 		// If still not found (eg inline struct literal) use the field name to generate a type name
 		if typeName == "" {
-			// Work out default type name for anon struct by upper-casing the 1st letter of the parameter name
+			// Create a type name for anon struct by upper-casing the 1st letter of the arg name
 			first, n := utf8.DecodeRuneInString(fieldInfo.Args[paramNum])
 			typeName = string(unicode.ToUpper(first)) + fieldInfo.Args[paramNum][n:]
 		}
+
+		// Now check that the default for the arg is OK
+		if fieldInfo.ArgDefaults[paramNum] != "" {
+			// Check that the default value is a valid literal for the type
+			if !validLiteral(typeName, enums, fieldInfo.ArgDefaults[paramNum]) {
+				return "", fmt.Errorf("parameter %d (%s) of arg %q default value %q is not of the correct type",
+					i, effectiveType.Name(), fieldInfo.Args[paramNum], fieldInfo.ArgDefaults[paramNum])
+			}
+		}
 		builder.WriteString(typeName)
-		if param.Kind() != reflect.Ptr {
+		if effectiveType.Kind() != reflect.Ptr {
 			builder.WriteRune('!')
 		}
 
 		// Do we also need to add = followed by the argument default value?
-		if fieldInfo.Defaults[paramNum] != "" {
+		if fieldInfo.ArgDefaults[paramNum] != "" {
 			builder.WriteString(" = ")
-			value := fieldInfo.Defaults[paramNum]
+			value := fieldInfo.ArgDefaults[paramNum]
 			builder.WriteString(value)
 		}
 		if !isScalar {
 			// If it's a struct we also need to add the "input" type to our collection
-			if err := s.add(typeName, param, enums, gqlInputKeyword); err != nil {
+			if err := s.add(typeName, effectiveType, enums, gqlInputKeyword); err != nil {
 				return "", fmt.Errorf("%w adding INPUT type %q", err, typeName)
 			}
 		}

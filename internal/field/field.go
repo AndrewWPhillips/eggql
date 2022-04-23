@@ -36,12 +36,12 @@ type Info struct {
 	ResultType  reflect.Type // Type (Go) used to generate the resolver (GraphQL) type = field type, func return type, or element type for array/slice
 
 	// The following are for function resolvers only
-	Args       []string // name(s) of args to resolver function obtained from metadata
-	Enums      []string // corresp. type name - only used for enums (else can be deduced from the function parameter type)
-	Defaults   []string // corresp. default value(s) (as strings) where an empty string means there is no default
-	DescArgs   []string // corresp. description of the argument
-	HasContext bool     // 1st function parameter is a context.Context (not a query argument)
-	HasError   bool     // has 2 return values the 2nd of which is a Go error
+	Args            []string // name(s) of args to resolver function obtained from metadata
+	ArgTypes        []string // corresp. type names - usually deduced from function parameter type but needed for ID and enums
+	ArgDefaults     []string // corresp. default value(s) (as strings) where an empty string means there is no default
+	ArgDescriptions []string // corresp. description of the argument
+	HasContext      bool     // 1st function parameter is a context.Context (not a query argument)
+	HasError        bool     // has 2 return values the 2nd of which is a Go error
 
 	Embedded bool // embedded struct (which we use as a template for a GraphQL "interface")
 	Empty    bool // embedded struct has no fields (which we use for a GraphQL "union")
@@ -230,27 +230,27 @@ func GetTagInfo(tag string) (*Info, error) {
 			return nil, fmt.Errorf("%w getting args in %q", err, tag)
 		} else if list != nil {
 			fieldInfo.Args = make([]string, len(list))
-			fieldInfo.Enums = make([]string, len(list))
-			fieldInfo.Defaults = make([]string, len(list))
-			fieldInfo.DescArgs = make([]string, len(list))
+			fieldInfo.ArgTypes = make([]string, len(list))
+			fieldInfo.ArgDefaults = make([]string, len(list))
+			fieldInfo.ArgDescriptions = make([]string, len(list))
 			for paramIndex, s := range list {
 				// Strip description after hash (#)
 				subParts := strings.SplitN(s, "#", 2)
 				s = subParts[0]
 				if len(subParts) > 1 {
-					fieldInfo.DescArgs[paramIndex] = subParts[1]
+					fieldInfo.ArgDescriptions[paramIndex] = subParts[1]
 				}
 				// Strip of default value (if any) after equals sign (=)
 				subParts = strings.Split(s, "=")
 				s = subParts[0]
 				if len(subParts) > 1 {
-					fieldInfo.Defaults[paramIndex] = strings.Trim(subParts[1], " ")
+					fieldInfo.ArgDefaults[paramIndex] = strings.Trim(subParts[1], " ")
 				}
 				// Strip of enum name after colon (:)
 				subParts = strings.Split(s, ":")
 				s = subParts[0]
 				if len(subParts) > 1 {
-					fieldInfo.Enums[paramIndex] = strings.Trim(subParts[1], " ")
+					fieldInfo.ArgTypes[paramIndex] = strings.Trim(subParts[1], " ")
 				}
 
 				fieldInfo.Args[paramIndex] = strings.Trim(s, " ")

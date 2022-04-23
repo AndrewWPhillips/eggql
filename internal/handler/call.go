@@ -67,7 +67,7 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 			}
 
 			// Now convert the "raw" value into the expected Go parameter type
-			if args[baseArg+n], err = op.getValue(v.Type().In(baseArg+n), argument.Name, fieldInfo.Enums[n], rawValue); err != nil {
+			if args[baseArg+n], err = op.getValue(v.Type().In(baseArg+n), argument.Name, fieldInfo.ArgTypes[n], rawValue); err != nil {
 				return
 			}
 			foundArgs++
@@ -78,7 +78,7 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 			// if the argument has not yet been set
 			if !arg.IsValid() {
 				// Find the arg in the field definition and get the default value
-				// (which should come from the text of fieldInfo.Defaults[argNum-baseArg])
+				// (which should come from the text of fieldInfo.ArgDefaults[argNum-baseArg])
 				ok := false
 				for _, defArg := range astField.Definition.Arguments {
 					if defArg.Name == fieldInfo.Args[argNum-baseArg] {
@@ -86,7 +86,7 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 						if err != nil {
 							panic(err)
 						}
-						args[argNum], err = op.getValue(v.Type().In(argNum), defArg.Name, fieldInfo.Enums[argNum-baseArg], tmp)
+						args[argNum], err = op.getValue(v.Type().In(argNum), defArg.Name, fieldInfo.ArgTypes[argNum-baseArg], tmp)
 						if err != nil {
 							panic(err)
 						}

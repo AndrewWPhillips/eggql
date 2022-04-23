@@ -3,9 +3,10 @@ package schema_test
 // errors_test.go has table-driven tests for error conditions in calls to schema.Build
 
 import (
-	"github.com/andrewwphillips/eggql/internal/schema"
 	"strings"
 	"testing"
+
+	"github.com/andrewwphillips/eggql/internal/schema"
 )
 
 type (
@@ -187,7 +188,7 @@ var errorData = map[string]struct {
 	"UnknownParam":    {QueryUnknownParam{}, nil, "not found"},
 	"EnumParamBad":    {QueryEnumParamNotInt{}, enums, "must be an integer"},
 	"BadName":         {QueryBadName{}, nil, "not a valid name"},
-	"BadDefaultEnum":  {QueryBadDefaultEnum{}, enums, "not found in enum"},
+	"BadDefaultEnum":  {QueryBadDefaultEnum{}, enums, "not of the correct type"},
 	"BadDefaultInt":   {QueryBadDefaultInt{}, nil, "default value"},
 	"BadDefaultFloat": {QueryBadDefaultFloat{}, nil, "default value"},
 	"BadDefaultBool":  {QueryBadDefaultBoolean{}, nil, "default value"},

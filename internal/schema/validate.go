@@ -4,7 +4,6 @@ package schema
 
 import (
 	"fmt"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -22,26 +21,70 @@ func validGraphQLName(s string) bool {
 }
 
 // validLiteral checks that a string is a valid constant for a type - eg only true/false are allowed for Boolean.
-func validLiteral(kind reflect.Kind, s string) bool {
-	switch kind {
-	case reflect.Bool:
-		return s == "true" || s == "false"
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		_, err := strconv.Atoi(s)
+func validLiteral(typeName string, enums map[string][]string, literal string) bool {
+	isList := false
+	// Get "unmodified" type name - without non-nullable (!) and list ([]) modifiers
+	if len(typeName) > 1 && typeName[len(typeName)-1] == '!' {
+		typeName = typeName[:len(typeName)-1] // remove non-nullability
+	}
+	// if it's a list get the element type
+	if len(typeName) > 2 && typeName[0] == '[' && typeName[len(typeName)-1] == ']' {
+		isList = true
+		typeName = typeName[1 : len(typeName)-1]
+		if len(typeName) > 1 && typeName[len(typeName)-1] == '!' {
+			typeName = typeName[:len(typeName)-1] // remove non-nullability
+		}
+	}
+
+	// Check that all the values in the list are valid
+	if isList {
+		// Get the list without square brackets
+		if len(literal) < 2 || literal[0] != '[' || literal[len(literal)-1] != ']' {
+			return false
+		}
+		literal = literal[1 : len(literal)-1]
+		if literal == "" {
+			return true // empty list is valid (we need this because strings.Split given an empty list still returns 1 string)
+		}
+		valid := true
+		for _, dv := range strings.Split(literal, ",") {
+			if !validLiteral(typeName, enums, strings.Trim(dv, " ")) {
+				valid = false
+				break
+			}
+		}
+		return valid
+	}
+
+	// TODO: custom scalars (needs the Go type so we can call UnmarshalEGGQL and check for an error)
+
+	switch typeName {
+	case "Boolean":
+		return literal == "true" || literal == "false"
+	case "Int":
+		_, err := strconv.Atoi(literal)
 		return err == nil
-	case reflect.Float32, reflect.Float64:
-		_, err := strconv.ParseFloat(s, 64)
+	case "Float":
+		_, err := strconv.ParseFloat(literal, 64)
 		// TODO: check if GraphQL Float allows nan, inf, etc
 		return err == nil
-	case reflect.String:
-		// return true only is string is enclosed in quotes
-		return len(s) > 1 && s[0] == '"' && s[len(s)-1] == '"'
-	case reflect.Slice, reflect.Array:
-		// TODO handle list
-	default:
-		// TODO handle any other type?
+	case "String", "ID":
+		return len(literal) > 1 && literal[0] == '"' && literal[len(literal)-1] == '"'
 	}
+
+	// For an enum type check that the literal is one of the enum values
+	if values, ok := enums[typeName]; ok {
+		// Check that the literal is in the list of enum values
+		found := false
+		for _, v := range values {
+			if literal == v {
+				found = true
+				break
+			}
+		}
+		return found
+	}
+
 	return true
 }
 

@@ -346,10 +346,30 @@ var testData = map[string]struct {
 		expected: "type Query{ f(i:Cust1!): String! } scalar Cust1",
 	},
 
-	"ID": {
+	"IDReturn": {
 		data: struct {
 			Id string `egg:":ID"`
 		}{}, expected: "type Query{ id: ID! }",
+	},
+	"IDList": {
+		data: struct {
+			Id []string `egg:":[ID!]"`
+		}{}, expected: "type Query{ id: [ID!]! }",
+	},
+	"IDPtrList": {
+		data: struct {
+			Id *[]string `egg:":[ID]"`
+		}{}, expected: "type Query{ id: [ID] }",
+	},
+	//"IDNullableList": {
+	//	data: struct {
+	//		Id []string `egg:":[ID!],nullable"`
+	//	}{}, expected: "type Query{ id: [ID!] }",
+	//},
+	"IDArg": {
+		data: struct {
+			F func(string) int `egg:",args(a:ID)"`
+		}{}, expected: "type Query{ f(a:ID!): Int! }",
 	},
 }
 

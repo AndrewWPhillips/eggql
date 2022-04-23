@@ -17,8 +17,8 @@ var testData = map[string]struct {
 	//"Nullable": {`,nullable`, field.Info{Nullable: true}},
 	"All": {
 		`a, args(b:d=f,c:e=g)`, field.Info{
-			Name: "a", Args: []string{"b", "c"}, Enums: []string{"d", "e"}, Defaults: []string{"f", "g"},
-			DescArgs: []string{"", ""},
+			Name: "a", Args: []string{"b", "c"}, ArgTypes: []string{"d", "e"}, ArgDefaults: []string{"f", "g"},
+			ArgDescriptions: []string{"", ""},
 		},
 	},
 	"NameOnly":  {`X`, field.Info{Name: "X"}},
@@ -26,46 +26,48 @@ var testData = map[string]struct {
 	//"NameNull":  {`joe,nullable`, field.Info{Name: "joe", Nullable: true}},
 	"Params0": {
 		`,args()`,
-		field.Info{Args: []string{}, Enums: []string{}, Defaults: []string{}, DescArgs: []string{}},
+		field.Info{Args: []string{}, ArgTypes: []string{}, ArgDefaults: []string{}, ArgDescriptions: []string{}},
 	},
 	"Params1": {
 		`,args(a)`, field.Info{
-			Args: []string{"a"}, Enums: []string{""}, Defaults: []string{""}, DescArgs: []string{""},
+			Args: []string{"a"}, ArgTypes: []string{""}, ArgDefaults: []string{""}, ArgDescriptions: []string{""},
 		},
 	},
 	"Params2": {
 		`,args(abc,d)`, field.Info{
-			Args: []string{"abc", "d"}, Enums: []string{"", ""}, Defaults: []string{"", ""}, DescArgs: []string{"", ""},
+			Args: []string{"abc", "d"}, ArgTypes: []string{"", ""}, ArgDefaults: []string{"", ""},
+			ArgDescriptions: []string{"", ""},
 		},
 	},
 	"Params3": {
 		`,args(abc,"d e",f)`, field.Info{
-			Args: []string{"abc", `"d e"`, "f"}, Enums: []string{"", "", ""}, Defaults: []string{"", "", ""},
-			DescArgs: []string{"", "", ""},
+			Args: []string{"abc", `"d e"`, "f"}, ArgTypes: []string{"", "", ""}, ArgDefaults: []string{"", "", ""},
+			ArgDescriptions: []string{"", "", ""},
 		},
 	},
 	"ParamsSpaced": {
 		`,args( a , bcd , efg )`, field.Info{
-			Args: []string{"a", "bcd", "efg"}, Enums: []string{"", "", ""}, Defaults: []string{"", "", ""},
-			DescArgs: []string{"", "", ""},
+			Args: []string{"a", "bcd", "efg"}, ArgTypes: []string{"", "", ""}, ArgDefaults: []string{"", "", ""},
+			ArgDescriptions: []string{"", "", ""},
 		},
 	},
 	"Defaults1": {
 		`,args(one=1,2)`, field.Info{
-			Args: []string{"one", "2"}, Enums: []string{"", ""}, Defaults: []string{"1", ""},
-			DescArgs: []string{"", ""},
+			Args: []string{"one", "2"}, ArgTypes: []string{"", ""}, ArgDefaults: []string{"1", ""},
+			ArgDescriptions: []string{"", ""},
 		},
 	},
 	"Defaults2": {
 		`,args(one=1,two="number two")`, field.Info{
-			Args: []string{"one", "two"}, Enums: []string{"", ""}, Defaults: []string{"1", `"number two"`},
-			DescArgs: []string{"", ""},
+			Args: []string{"one", "two"}, ArgTypes: []string{"", ""}, ArgDefaults: []string{"1", `"number two"`},
+			ArgDescriptions: []string{"", ""},
 		},
 	},
 	"Defaults3": {
 		`,args(list=[1,2,4],obj={a:1, b:"two"})`, field.Info{
-			Args: []string{"list", "obj"}, Enums: []string{"", ""}, Defaults: []string{"[1,2,4]", `{a:1, b:"two"}`},
-			DescArgs: []string{"", ""},
+			Args: []string{"list", "obj"}, ArgTypes: []string{"", ""},
+			ArgDefaults:     []string{"[1,2,4]", `{a:1, b:"two"}`},
+			ArgDescriptions: []string{"", ""},
 		},
 	},
 	"Enum": {`unit:Unit`, field.Info{Name: "unit", GQLTypeName: "Unit"}},
@@ -73,14 +75,14 @@ var testData = map[string]struct {
 	"EnumDefaultName": {`:A`, field.Info{GQLTypeName: "A"}},
 	"EnumParams": {
 		`,args(height, unit:Unit)`, field.Info{
-			Args: []string{"height", "unit"}, Enums: []string{"", "Unit"}, Defaults: []string{"", ""},
-			DescArgs: []string{"", ""},
+			Args: []string{"height", "unit"}, ArgTypes: []string{"", "Unit"}, ArgDefaults: []string{"", ""},
+			ArgDescriptions: []string{"", ""},
 		},
 	},
 	"EnumParams2": {
 		`,args(h, w, unit:Unit = FOOT)`, field.Info{
-			Args: []string{"h", "w", "unit"}, Enums: []string{"", "", "Unit"}, Defaults: []string{"", "", "FOOT"},
-			DescArgs: []string{"", "", ""},
+			Args: []string{"h", "w", "unit"}, ArgTypes: []string{"", "", "Unit"}, ArgDefaults: []string{"", "", "FOOT"},
+			ArgDescriptions: []string{"", "", ""},
 		},
 	},
 	"Subscript":      {`,subscript`, field.Info{Subscript: "id"}},
@@ -89,16 +91,16 @@ var testData = map[string]struct {
 	"FieldDesc":      {`# abc`, field.Info{Description: " abc"}},
 	"ArgDesc": {
 		`,args(a#desc)`, field.Info{
-			Args: []string{"a"}, Enums: []string{""}, Defaults: []string{""}, DescArgs: []string{"desc"},
+			Args: []string{"a"}, ArgTypes: []string{""}, ArgDefaults: []string{""}, ArgDescriptions: []string{"desc"},
 		},
 	},
 
 	"AllOptions": {
 		`a:b,,args(c:d=e#f,g=h#i i i i),subscript=h#d #d`, // Note that this is invalid at a higher level as you can't use both "args" and "subscript" options together
 		field.Info{
-			Name: "a", GQLTypeName: "b", Args: []string{"c", "g"}, Enums: []string{"d", ""},
-			Defaults: []string{"e", "h"},
-			DescArgs: []string{"f", "i i i i"}, Subscript: "h", Description: "d #d",
+			Name: "a", GQLTypeName: "b", Args: []string{"c", "g"}, ArgTypes: []string{"d", ""},
+			ArgDefaults:     []string{"e", "h"},
+			ArgDescriptions: []string{"f", "i i i i"}, Subscript: "h", Description: "d #d",
 		},
 	},
 }
@@ -118,14 +120,14 @@ func TestGetTagInfo(t *testing.T) {
 		if got.Args != nil || data.exp.Args != nil {
 			Assertf(t, reflect.DeepEqual(got.Args, data.exp.Args), "Args   : %12s: expected %q got %q", name, data.exp.Args, got.Args)
 		}
-		if got.Enums != nil || data.exp.Enums != nil {
-			Assertf(t, reflect.DeepEqual(got.Enums, data.exp.Enums), "Enums    : %12s: expected %q got %q", name, data.exp.Enums, got.Enums)
+		if got.ArgTypes != nil || data.exp.ArgTypes != nil {
+			Assertf(t, reflect.DeepEqual(got.ArgTypes, data.exp.ArgTypes), "Enums    : %12s: expected %q got %q", name, data.exp.ArgTypes, got.ArgTypes)
 		}
-		if got.Defaults != nil || data.exp.Defaults != nil {
-			Assertf(t, reflect.DeepEqual(got.Defaults, data.exp.Defaults), "Defaults : %12s: expected %q got %q", name, data.exp.Defaults, got.Defaults)
+		if got.ArgDefaults != nil || data.exp.ArgDefaults != nil {
+			Assertf(t, reflect.DeepEqual(got.ArgDefaults, data.exp.ArgDefaults), "Defaults : %12s: expected %q got %q", name, data.exp.ArgDefaults, got.ArgDefaults)
 		}
-		if got.DescArgs != nil || data.exp.DescArgs != nil {
-			Assertf(t, reflect.DeepEqual(got.DescArgs, data.exp.DescArgs), "Arg Desc : %12s: expected %q got %q", name, data.exp.DescArgs, got.DescArgs)
+		if got.ArgDescriptions != nil || data.exp.ArgDescriptions != nil {
+			Assertf(t, reflect.DeepEqual(got.ArgDescriptions, data.exp.ArgDescriptions), "Arg Desc : %12s: expected %q got %q", name, data.exp.ArgDescriptions, got.ArgDescriptions)
 		}
 
 		//Assertf(t, got.Nullable == data.exp.Nullable, "Nullable : %12s: expected %v got %v", name, data.exp.Nullable, got.Nullable)
