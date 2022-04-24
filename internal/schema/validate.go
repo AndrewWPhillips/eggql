@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/andrewwphillips/eggql/internal/field"
 )
@@ -24,7 +26,8 @@ func validGraphQLName(s string) bool {
 }
 
 // validLiteral checks that a string is a valid constant for a type - eg only true/false are allowed for Boolean.
-func validLiteral(typeName string, enums map[string][]string, t reflect.Type, literal string) bool {
+//   This is important to check for errors when building the schema rather than panic/client error when a query is run.
+func (s schema) validLiteral(typeName string, enums map[string][]string, t reflect.Type, literal string) bool {
 	// Get "unmodified" type name - without non-nullable (!) and list ([]) modifiers
 	if len(typeName) > 1 && typeName[len(typeName)-1] == '!' {
 		typeName = typeName[:len(typeName)-1] // remove non-nullability
@@ -50,7 +53,7 @@ func validLiteral(typeName string, enums map[string][]string, t reflect.Type, li
 		// Check that all the values in the list are valid
 		valid := true
 		for _, dv := range strings.Split(literal, ",") {
-			if !validLiteral(typeName, enums, t, strings.Trim(dv, " ")) {
+			if !s.validLiteral(typeName, enums, t, strings.Trim(dv, " ")) {
 				valid = false
 				break
 			}
@@ -60,9 +63,54 @@ func validLiteral(typeName string, enums map[string][]string, t reflect.Type, li
 
 	// Check for custom scalar
 	if reflect.TypeOf(reflect.New(t).Interface()).Implements(reflect.TypeOf((*field.Unmarshaler)(nil)).Elem()) {
-		// TODO check that typeName == t.Name()
+		if typeName != t.Name() {
+			panic("Wrong type")
+		}
 		return reflect.New(t).Interface().(field.Unmarshaler).UnmarshalEGGQL(literal) == nil
 
+	}
+
+	// if it's an object check each of the fields
+	if t.Kind() == reflect.Struct {
+		if typeName != t.Name() {
+			panic("Wrong type")
+		}
+		if len(literal) < 2 || literal[0] != '{' || literal[len(literal)-1] != '}' {
+			return false
+		}
+		literal = literal[1 : len(literal)-1]
+
+		// Split the into fields on comma TODO: handle commas inside strings
+		for _, f := range strings.Split(literal, ",") {
+			// split name:value on colon
+			parts := strings.Split(f, ":")
+			if len(parts) != 2 || !validGraphQLName(parts[0]) {
+				return false
+			}
+
+			// Find the matching field in the struct (t)
+			var fieldType reflect.Type
+			for i := 0; i < t.NumField(); i++ {
+				f := t.Field(i)
+				if f.Name != "_" && f.PkgPath != "" {
+					continue // ignore unexported fields
+				}
+				// make GraphQL name from the Go field name
+				first, n := utf8.DecodeRuneInString(f.Name)
+				name := string(unicode.ToLower(first)) + f.Name[n:]
+				if name == parts[0] {
+					fieldType = f.Type
+					break
+				}
+			}
+			if fieldType == nil {
+				return false // field not found
+			}
+			fieldTypeName, _, err := s.getTypeName(fieldType)
+			if err != nil || !s.validLiteral(fieldTypeName, enums, fieldType, parts[1]) {
+				return false
+			}
+		}
 	}
 
 	switch typeName {
@@ -98,8 +146,6 @@ func validLiteral(typeName string, enums map[string][]string, t reflect.Type, li
 		}
 		return found
 	}
-
-	// TODO check compound (input) types
 
 	return true
 }

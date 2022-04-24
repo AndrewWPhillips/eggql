@@ -264,7 +264,7 @@ var errorData = map[string]struct {
 		struct {
 			_ SingleInt
 			V complex64 `egg:":SingleInt"`
-		}{}, nil, "must have a struct resolver",
+		}{}, nil, "must have a struct/interface resolver",
 	},
 	"SubscriptOption1": {
 		struct {
@@ -372,8 +372,16 @@ var errorData = map[string]struct {
 			F func([]CustScalarInt) int `egg:",args(c:[CustScalarInt]=[1,2,false])"` // false does not decode with CustScalarInt.UnmarshalEGGQL()
 		}{}, nil, "not of the correct type ([CustScalarInt])",
 	},
-
-	// TODO: test defaults errors: input
+	"ArgDefaultInput": {
+		struct {
+			F func(SingleInt) int `egg:",args(si={i:s})"` // s is not a valid integer
+		}{}, nil, "not of the correct type (SingleInt)",
+	},
+	"ArgDefaultInput2": {
+		struct {
+			F func(SingleInt) int `egg:",args(si={j:2})"` // j is not a field of SingleInt
+		}{}, nil, "not of the correct type (SingleInt)",
+	},
 }
 
 func TestSchemaErrors(t *testing.T) {

@@ -140,7 +140,8 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 		vField := v.Field(i)
 		fieldInfo, err := field.Get(&tField)
 		if err != nil {
-			panic(err) // TODO: return an error (no panics)
+			// This condition should never occur - should have been caught during schema building
+			panic(err)
 		}
 		if tField.Name == "_" || fieldInfo == nil {
 			continue // unexported field
