@@ -425,9 +425,9 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 		// Now check that the default for the arg is OK
 		if fieldInfo.ArgDefaults[paramNum] != "" {
 			// Check that the default value is a valid literal for the type
-			if !validLiteral(typeName, enums, fieldInfo.ArgDefaults[paramNum]) {
-				return "", fmt.Errorf("parameter %d (%s) of arg %q default value %q is not of the correct type",
-					i, effectiveType.Name(), fieldInfo.Args[paramNum], fieldInfo.ArgDefaults[paramNum])
+			if !validLiteral(typeName, enums, effectiveType, fieldInfo.ArgDefaults[paramNum]) {
+				return "", fmt.Errorf("parameter %d (%s) of arg %q default value %q is not of the correct type (%s)",
+					i, effectiveType.Name(), fieldInfo.Args[paramNum], fieldInfo.ArgDefaults[paramNum], typeName)
 			}
 		}
 		builder.WriteString(typeName)

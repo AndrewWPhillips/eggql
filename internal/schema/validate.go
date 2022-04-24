@@ -4,9 +4,12 @@ package schema
 
 import (
 	"fmt"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/andrewwphillips/eggql/internal/field"
 )
 
 var nameRegex = regexp.MustCompile(`^[_a-zA-Z][_a-zA-Z0-9]*$`)
@@ -21,34 +24,33 @@ func validGraphQLName(s string) bool {
 }
 
 // validLiteral checks that a string is a valid constant for a type - eg only true/false are allowed for Boolean.
-func validLiteral(typeName string, enums map[string][]string, literal string) bool {
-	isList := false
+func validLiteral(typeName string, enums map[string][]string, t reflect.Type, literal string) bool {
 	// Get "unmodified" type name - without non-nullable (!) and list ([]) modifiers
 	if len(typeName) > 1 && typeName[len(typeName)-1] == '!' {
 		typeName = typeName[:len(typeName)-1] // remove non-nullability
 	}
-	// if it's a list get the element type
+
+	// if it's a list check the elements
 	if len(typeName) > 2 && typeName[0] == '[' && typeName[len(typeName)-1] == ']' {
-		isList = true
 		typeName = typeName[1 : len(typeName)-1]
+		t = t.Elem() // TODO check that t is slice/array/map
 		if len(typeName) > 1 && typeName[len(typeName)-1] == '!' {
 			typeName = typeName[:len(typeName)-1] // remove non-nullability
 		}
-	}
 
-	// Check that all the values in the list are valid
-	if isList {
 		// Get the list without square brackets
 		if len(literal) < 2 || literal[0] != '[' || literal[len(literal)-1] != ']' {
 			return false
 		}
 		literal = literal[1 : len(literal)-1]
+
 		if literal == "" {
 			return true // empty list is valid (we need this because strings.Split given an empty list still returns 1 string)
 		}
+		// Check that all the values in the list are valid
 		valid := true
 		for _, dv := range strings.Split(literal, ",") {
-			if !validLiteral(typeName, enums, strings.Trim(dv, " ")) {
+			if !validLiteral(typeName, enums, t, strings.Trim(dv, " ")) {
 				valid = false
 				break
 			}
@@ -56,7 +58,12 @@ func validLiteral(typeName string, enums map[string][]string, literal string) bo
 		return valid
 	}
 
-	// TODO: custom scalars (needs the Go type so we can call UnmarshalEGGQL and check for an error)
+	// Check for custom scalar
+	if reflect.TypeOf(reflect.New(t).Interface()).Implements(reflect.TypeOf((*field.Unmarshaler)(nil)).Elem()) {
+		// TODO check that typeName == t.Name()
+		return reflect.New(t).Interface().(field.Unmarshaler).UnmarshalEGGQL(literal) == nil
+
+	}
 
 	switch typeName {
 	case "Boolean":
@@ -68,8 +75,15 @@ func validLiteral(typeName string, enums map[string][]string, literal string) bo
 		_, err := strconv.ParseFloat(literal, 64)
 		// TODO: check if GraphQL Float allows nan, inf, etc
 		return err == nil
-	case "String", "ID":
+	case "String":
 		return len(literal) > 1 && literal[0] == '"' && literal[len(literal)-1] == '"'
+	case "ID":
+		// ID literal can be a string or an integer
+		if len(literal) > 1 && literal[0] == '"' && literal[len(literal)-1] == '"' {
+			return true // string
+		}
+		_, err := strconv.Atoi(literal) // check if it's a valid int
+		return err == nil
 	}
 
 	// For an enum type check that the literal is one of the enum values
@@ -84,6 +98,8 @@ func validLiteral(typeName string, enums map[string][]string, literal string) bo
 		}
 		return found
 	}
+
+	// TODO check compound (input) types
 
 	return true
 }
