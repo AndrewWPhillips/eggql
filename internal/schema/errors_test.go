@@ -73,6 +73,9 @@ type (
 		M string
 		Embedded
 	}
+	InputID struct {
+		Value string `egg:"v:ID"`
+	}
 )
 
 var (
@@ -381,6 +384,11 @@ var errorData = map[string]struct {
 		struct {
 			F func(SingleInt) int `egg:",args(si={j:2})"` // j is not a field of SingleInt
 		}{}, nil, "not of the correct type (SingleInt)",
+	},
+	"ArgDefaultInput3": {
+		struct {
+			F func(InputID) int `egg:",args(in={v:2.3})"`
+		}{}, nil, "not a valid ID",
 	},
 }
 

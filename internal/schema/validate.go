@@ -8,8 +8,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/andrewwphillips/eggql/internal/field"
 )
@@ -27,7 +25,8 @@ func validGraphQLName(s string) bool {
 
 // validLiteral checks that a string is a valid constant for a type - eg only true/false are allowed for Boolean.
 //   This is important to check for errors when building the schema rather than panic/client error when a query is run.
-func (s schema) validLiteral(typeName string, enums map[string][]string, t reflect.Type, literal string) bool {
+// Returns: nil if valid or an error explaining why it is invalid
+func (s schema) validLiteral(typeName string, enums map[string][]string, t reflect.Type, literal string) error {
 	// Get "unmodified" type name - without non-nullable (!) and list ([]) modifiers
 	if len(typeName) > 1 && typeName[len(typeName)-1] == '!' {
 		typeName = typeName[:len(typeName)-1] // remove non-nullability
@@ -43,22 +42,20 @@ func (s schema) validLiteral(typeName string, enums map[string][]string, t refle
 
 		// Get the list without square brackets
 		if len(literal) < 2 || literal[0] != '[' || literal[len(literal)-1] != ']' {
-			return false
+			return fmt.Errorf("default value %q for a list %q be enclosed in square brackets", literal, typeName)
 		}
 		literal = literal[1 : len(literal)-1]
 
 		if literal == "" {
-			return true // empty list is valid (we need this because strings.Split given an empty list still returns 1 string)
+			return nil // empty list is valid (we need this because strings.Split given an empty list still returns 1 string)
 		}
 		// Check that all the values in the list are valid
-		valid := true
 		for _, dv := range strings.Split(literal, ",") {
-			if !s.validLiteral(typeName, enums, t, strings.Trim(dv, " ")) {
-				valid = false
-				break
+			if err := s.validLiteral(typeName, enums, t, strings.Trim(dv, " ")); err != nil {
+				return fmt.Errorf("%w: value in %q for list %q is not of correct type", err, literal, typeName)
 			}
 		}
-		return valid
+		return nil
 	}
 
 	// Check for custom scalar
@@ -66,8 +63,10 @@ func (s schema) validLiteral(typeName string, enums map[string][]string, t refle
 		if typeName != t.Name() {
 			panic("Wrong type")
 		}
-		return reflect.New(t).Interface().(field.Unmarshaler).UnmarshalEGGQL(literal) == nil
-
+		if reflect.New(t).Interface().(field.Unmarshaler).UnmarshalEGGQL(literal) != nil {
+			return fmt.Errorf("default value %q is not valid for custom scalar %q", literal, typeName)
+		}
+		return nil
 	}
 
 	// if it's an object check each of the fields
@@ -76,7 +75,7 @@ func (s schema) validLiteral(typeName string, enums map[string][]string, t refle
 			panic("Wrong type")
 		}
 		if len(literal) < 2 || literal[0] != '{' || literal[len(literal)-1] != '}' {
-			return false
+			return fmt.Errorf("default value %q for object %q be enclosed in braces {}", literal, typeName)
 		}
 		literal = literal[1 : len(literal)-1]
 
@@ -85,53 +84,79 @@ func (s schema) validLiteral(typeName string, enums map[string][]string, t refle
 			// split name:value on colon
 			parts := strings.Split(f, ":")
 			if len(parts) != 2 || !validGraphQLName(parts[0]) {
-				return false
+				return fmt.Errorf("default value %q for object %q is malformed", literal, typeName)
 			}
 
 			// Find the matching field in the struct (t)
 			var fieldType reflect.Type
+			var fieldTypeName string
 			for i := 0; i < t.NumField(); i++ {
 				f := t.Field(i)
+				fieldInfo, err := field.Get(&f)
+				if err != nil {
+					return fmt.Errorf("%w getting default value of field %q in object %q", err, parts[0], typeName)
+				}
 				if f.Name != "_" && f.PkgPath != "" {
 					continue // ignore unexported fields
 				}
-				// make GraphQL name from the Go field name
-				first, n := utf8.DecodeRuneInString(f.Name)
-				name := string(unicode.ToLower(first)) + f.Name[n:]
-				if name == parts[0] {
+				if fieldInfo.Name != "" && !validGraphQLName(fieldInfo.Name) {
+					return fmt.Errorf("%q is not a valid field name in object %q", fieldInfo.Name, typeName)
+				}
+				if parts[0] == fieldInfo.Name {
+					fieldTypeName = fieldInfo.GQLTypeName
 					fieldType = f.Type
 					break
 				}
 			}
 			if fieldType == nil {
-				return false // field not found
+				return fmt.Errorf("%q (in default value %q) is not a field of %q", parts[0], literal, typeName)
 			}
-			fieldTypeName, _, err := s.getTypeName(fieldType)
-			if err != nil || !s.validLiteral(fieldTypeName, enums, fieldType, parts[1]) {
-				return false
+			if fieldTypeName == "" {
+				var err error
+				fieldTypeName, _, err = s.getTypeName(fieldType)
+				if err != nil {
+					return fmt.Errorf("%w: value in %q for object %q has bad type", err, literal, typeName)
+				}
+			}
+			if err := s.validLiteral(fieldTypeName, enums, fieldType, parts[1]); err != nil {
+				return fmt.Errorf("%w: value in %q in object %q is not of correct type", err, literal, typeName)
 			}
 		}
+		return nil // object fields were all OK
 	}
 
 	switch typeName {
 	case "Boolean":
-		return literal == "true" || literal == "false"
+		if literal != "true" && literal != "false" {
+			return fmt.Errorf("%q is not a valid Boolean (must be true or false) for %q", literal, typeName)
+		}
+		return nil
 	case "Int":
-		_, err := strconv.Atoi(literal)
-		return err == nil
+		if _, err := strconv.Atoi(literal); err != nil {
+			return fmt.Errorf("%w: %q is not a valid Int for %q", err, literal, typeName)
+		}
+		return nil
 	case "Float":
-		_, err := strconv.ParseFloat(literal, 64)
+		if _, err := strconv.ParseFloat(literal, 64); err != nil {
+			return fmt.Errorf("%w: %q is not a valid Float for %q", err, literal, typeName)
+		}
 		// TODO: check if GraphQL Float allows nan, inf, etc
-		return err == nil
+		return nil
 	case "String":
-		return len(literal) > 1 && literal[0] == '"' && literal[len(literal)-1] == '"'
+		if len(literal) < 2 || literal[0] == '"' || literal[len(literal)-1] == '"' {
+			return fmt.Errorf("<%s> is not a valid String (must be in double-quotes) for %q", literal, typeName)
+
+		}
+		return nil
 	case "ID":
 		// ID literal can be a string or an integer
 		if len(literal) > 1 && literal[0] == '"' && literal[len(literal)-1] == '"' {
-			return true // string
+			return nil // string
 		}
-		_, err := strconv.Atoi(literal) // check if it's a valid int
-		return err == nil
+		if _, err := strconv.Atoi(literal); err != nil {
+			return fmt.Errorf("%w: %q is not a valid ID (must be integer or string) for %q", err, literal, typeName)
+		}
+		return nil
 	}
 
 	// For an enum type check that the literal is one of the enum values
@@ -144,10 +169,13 @@ func (s schema) validLiteral(typeName string, enums map[string][]string, t refle
 				break
 			}
 		}
-		return found
+		if !found {
+			return fmt.Errorf("%q is not a valid enum value for for %q", literal, typeName)
+		}
+		return nil // good enum value
 	}
 
-	return true
+	return nil // assume it's OK if we get here (TODO: check if we need to check more types)
 }
 
 // validateEnums checks that the enum names are OK and returns the enums without trailing descriptions
