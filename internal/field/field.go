@@ -176,7 +176,7 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 			fieldInfo.SubscriptType = t.Key()
 			if (fieldInfo.SubscriptType.Kind() < reflect.Int || fieldInfo.SubscriptType.Kind() > reflect.Uint64) &&
 				fieldInfo.SubscriptType.Kind() != reflect.String {
-				// TODO allow other comparable types for map subscripts?
+				// for now we only allow string or int types for map subscripts
 				return nil, errors.New("map key for subscript option " + f.Name + " must be a string or int")
 			}
 		}

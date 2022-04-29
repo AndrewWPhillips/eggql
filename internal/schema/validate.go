@@ -170,7 +170,7 @@ func (s schema) validLiteral(typeName string, enums map[string][]string, t refle
 			}
 		}
 		if !found {
-			return fmt.Errorf("%q is not a valid enum value for for %q", literal, typeName)
+			return fmt.Errorf("%q is not a valid enum value for %q", literal, typeName)
 		}
 		return nil // good enum value
 	}

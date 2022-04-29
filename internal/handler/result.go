@@ -347,6 +347,9 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 		}
 		return &gqlValue{name: astField.Alias, value: results}
 	}
+	if fieldInfo.GQLTypeName == "ID" {
+		return &gqlValue{name: astField.Alias, value: v.Interface()}
+	}
 	// If enum or enum list get the integer index and look up the enum value
 	if enumName := fieldInfo.GQLTypeName; enumName != "" {
 		if len(enumName) > 2 && enumName[0] == '[' && enumName[len(enumName)-1] == ']' {

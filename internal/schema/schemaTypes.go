@@ -297,7 +297,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 		// Use resolver return type from the tag (if any) and assume it's not a scalar
 		typeName, isScalar := fieldInfo.GQLTypeName, false
 		if typeName != "" {
-			// Ensure the name given is valid TODO also need to return isScalar
+			// Ensure the name given is valid
 			if isScalar, err2 = s.validateTypeName(typeName, enums, effectiveType); err2 != nil {
 				var help string
 				if strings.HasPrefix(fieldInfo.GQLTypeName, "[]") { // probably used []Type when [Type] was meant

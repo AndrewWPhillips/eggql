@@ -53,8 +53,8 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 				}
 			}
 			if n == -1 {
-				// Note this is a BUG not an "error" as it should have been caught by validator
-				panic("unknown argument: " + argument.Name + " in " + astField.Name)
+				err = fmt.Errorf("unknown argument %q in resolver %q", argument.Name, astField.Name)
+				return
 			}
 
 			// rawValue stores the value of an argument the same way the JSON decoder does. Eg: a GraphQL "object" (to be
