@@ -143,7 +143,7 @@ func (s schema) validLiteral(typeName string, enums map[string][]string, t refle
 		// TODO: check if GraphQL Float allows nan, inf, etc
 		return nil
 	case "String":
-		if len(literal) < 2 || literal[0] == '"' || literal[len(literal)-1] == '"' {
+		if len(literal) < 2 || literal[0] != '"' || literal[len(literal)-1] != '"' {
 			return fmt.Errorf("<%s> is not a valid String (must be in double-quotes) for %q", literal, typeName)
 
 		}
