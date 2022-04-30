@@ -5,12 +5,13 @@ package handler
 import (
 	"context"
 	"fmt"
-	"github.com/dolmen-go/jsonmap"
-	"github.com/vektah/gqlparser/ast"
-	"github.com/vektah/gqlparser/gqlerror"
-	"github.com/vektah/gqlparser/parser"
-	"github.com/vektah/gqlparser/validator"
 	"reflect"
+
+	"github.com/dolmen-go/jsonmap"
+	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/gqlerror"
+	"github.com/vektah/gqlparser/v2/parser"
+	"github.com/vektah/gqlparser/v2/validator"
 )
 
 type (
@@ -55,7 +56,7 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 	// Now process the operation(s)
 	r.Data.Data = make(map[string]interface{})
 	for _, operation := range query.Operations {
-		op := gqlOperation{enums: g.h.enums}
+		op := gqlOperation{enums: g.h.enums, enumsReverse: g.h.enumsReverse}
 
 		// Get variables associated with this operation if any
 		if len(operation.VariableDefinitions) > 0 {
@@ -71,7 +72,7 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 		case ast.Query:
 			v = reflect.ValueOf(g.h.qData)
 			if AllowIntrospection {
-				introOp = &gqlOperation{enums: IntrospectionEnums}
+				introOp = &gqlOperation{enums: IntroEnums, enumsReverse: IntroEnumsReverse}
 				vIntro = reflect.ValueOf(NewIntrospectionData(g.h.schema))
 			}
 		case ast.Mutation:

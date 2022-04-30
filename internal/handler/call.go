@@ -6,12 +6,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/andrewwphillips/eggql/internal/field"
-	"github.com/vektah/gqlparser/ast"
 	"reflect"
 	"strconv"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/andrewwphillips/eggql/internal/field"
+	"github.com/vektah/gqlparser/v2/ast"
 )
 
 // fromFunc converts a Go function into the type/value of what it returns by calling it using reflection
@@ -20,17 +21,20 @@ import (
 //   astField - is the GraphQL query object field
 //   v - the reflection "value" of the Go function's return value
 //   fieldInfo - contains the args, defaults, etc obtained from the Go field metadata
-func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info) (vReturn reflect.Value, err error) {
+func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info,
+) (vReturn reflect.Value, err error) {
 	if v.IsNil() {
 		err = fmt.Errorf("function for %q is not implemented (nil)", astField.Name)
 		return
 	}
 	args := make([]reflect.Value, v.Type().NumIn()) // list of arguments for the function call
 	baseArg := 0                                    // index of 1st query resolver argument (== 1 if function call needs ctx, else == 0)
+	foundArgs := 0                                  // to ensure the
 
 	if fieldInfo.HasContext {
 		args[baseArg] = reflect.ValueOf(ctx)
 		baseArg++ // we're now expecting one less value in params/defaults lists
+		foundArgs++
 	}
 
 	// A subscript function can't use args option (though HasContext and HasError can be set)
@@ -39,7 +43,7 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 		for _, argument := range astField.Arguments {
 			// Which parameter # is it (GraphQL args are supplied by name not position)
 			n := -1
-			for paramNum, paramName := range fieldInfo.Params {
+			for paramNum, paramName := range fieldInfo.Args {
 				if paramName == argument.Name {
 					if n != -1 {
 						// Note this is a BUG not an "error" as it should have been caught by validator
@@ -49,8 +53,8 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 				}
 			}
 			if n == -1 {
-				// Note this is a BUG not an "error" as it should have been caught by validator
-				panic("unknown argument: " + argument.Name + " in " + astField.Name)
+				err = fmt.Errorf("unknown argument %q in resolver %q", argument.Name, astField.Name)
+				return
 			}
 
 			// rawValue stores the value of an argument the same way the JSON decoder does. Eg: a GraphQL "object" (to be
@@ -63,37 +67,45 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 			}
 
 			// Now convert the "raw" value into the expected Go parameter type
-			if args[baseArg+n], err = op.getValue(v.Type().In(baseArg+n), argument.Name, fieldInfo.Enums[n], rawValue); err != nil {
+			if args[baseArg+n], err = op.getValue(v.Type().In(baseArg+n), argument.Name, fieldInfo.ArgTypes[n], rawValue); err != nil {
 				return
 			}
+			foundArgs++
 		}
 
 		// For any arguments not supplied use the default
-		for n, arg := range args {
+		for argNum, arg := range args {
 			// if the argument has not yet been set
 			if !arg.IsValid() {
 				// Find the arg in the field definition and get the default value
-				// (which should come from the text of fieldInfo.Defaults[n-baseArg])
+				// (which should come from the text of fieldInfo.ArgDefaults[argNum-baseArg])
 				ok := false
 				for _, defArg := range astField.Definition.Arguments {
-					if defArg.Name == fieldInfo.Params[n-baseArg] {
+					if defArg.Name == fieldInfo.Args[argNum-baseArg] {
 						tmp, err := defArg.DefaultValue.Value(op.variables)
 						if err != nil {
 							panic(err)
 						}
-						args[n], err = op.getValue(v.Type().In(n), defArg.Name, fieldInfo.Enums[n-baseArg], tmp)
+						args[argNum], err = op.getValue(v.Type().In(argNum), defArg.Name, fieldInfo.ArgTypes[argNum-baseArg], tmp)
 						if err != nil {
 							panic(err)
 						}
+						foundArgs++
 						ok = true
 						break
 					}
 				}
 				if !ok {
-					panic("default not found for " + fieldInfo.Params[n-baseArg])
+					panic("default not found for " + fieldInfo.Args[argNum-baseArg])
 				}
 			}
 		}
+	}
+	// Check that we got the correct numbers of parameters
+	if foundArgs != len(args) {
+		// This should only be possible if there is a bug in schema generation
+		err = fmt.Errorf("found %d args but expecting %d for resolver %q", foundArgs, len(args), astField.Name)
+		return
 	}
 
 	out := v.Call(args) // === the actual function call (using reflection) ===
@@ -122,27 +134,54 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 // Parameters:
 //   t = expected type
 //   name = corresponding name of the argument
-//   enumName allows lookup of an enum value if t is an integer and value is a string
+//   typeName is enum value (t must be an integer) or "ID" (t must be int or string)
 //   value = what needs to be returned converted to a value of type t
-func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, value interface{}) (reflect.Value, error) {
-	// If it's an enum we need to convert the enum name (string) to int
-	if enumName != "" && t.Kind() >= reflect.Int && t.Kind() <= reflect.Uint64 {
+func (op *gqlOperation) getValue(t reflect.Type, name string, typeName string, value interface{},
+) (reflect.Value, error) {
+	if value == nil {
+		// Return a value of the default type
+		return reflect.ValueOf(reflect.New(t).Elem().Interface()), nil
+	}
+
+	deref := false // keeps tracks of whether we're returning the value or a reference (ptr) to it
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+		deref = true
+	}
+
+	// If it's an enum we need to convert the enum name (string) to corresp. int
+	if typeName != "" && typeName != "ID" && t.Kind() >= reflect.Int && t.Kind() <= reflect.Uint64 {
 		toFind, ok := value.(string)
 		if !ok {
-			return reflect.Value{}, fmt.Errorf("getting enum (%s) for %q expected string", enumName, name)
+			return reflect.Value{}, fmt.Errorf("getting enum (%s) for %q expected string", typeName, name)
 		}
-		for i, v := range op.enums[enumName] {
-			// TODO: pre-create a map for lookup rather than doing linear search
-			if v == toFind {
-				value = i // value changes from string to int
-				break
-			}
+		value, ok = op.enumsReverse[typeName][toFind]
+		if !ok {
+			return reflect.Value{}, fmt.Errorf("could not find enum value %q in enum %q for %q", toFind, typeName, name)
 		}
 	}
-	kind := reflect.TypeOf(value).Kind() // expected type of value to return
-	if kind == t.Kind() && kind != reflect.Map && kind != reflect.Slice {
+
+	kind := reflect.TypeOf(value).Kind()
+	if t.Name() == reflect.TypeOf(value).Name() && kind != reflect.Map && kind != reflect.Slice {
 		return reflect.ValueOf(value), nil // no conversion necessary
 	}
+
+	// It's a custom scalar if the type it implements field.Unmarshaler - ie. has method t.UnmarshalEGGQL(string) error
+	if reflect.TypeOf(reflect.New(t).Interface()).Implements(reflect.TypeOf((*field.Unmarshaler)(nil)).Elem()) {
+		in, ok := value.(string)
+		if !ok {
+			in = fmt.Sprintf("%v", value)
+		}
+		out := reflect.New(t).Interface().(field.Unmarshaler) // where to decode into (ptr)
+		if err := out.UnmarshalEGGQL(in); err != nil {
+			return reflect.Value{}, fmt.Errorf("%w unmarshaling custom scalar %q", err, value.(string))
+		}
+		if deref {
+			return reflect.ValueOf(out), nil // return pointer to the new value
+		}
+		return reflect.ValueOf(out).Elem(), nil // return the actual value pointed to
+	}
+
 	// Try to convert the type of the variable to the expected type
 	switch kind {
 	case reflect.Map:
@@ -158,10 +197,10 @@ func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, v
 		if !ok {
 			return reflect.Value{}, fmt.Errorf("decoding variable %q - expected slice of interface{}", name)
 		}
-		if len(enumName) > 2 && enumName[0] == '[' && enumName[len(enumName)-1] == ']' {
-			enumName = enumName[1 : len(enumName)-1]
+		if len(typeName) > 2 && typeName[0] == '[' && typeName[len(typeName)-1] == ']' {
+			typeName = typeName[1 : len(typeName)-1]
 		}
-		return op.getList(t, name, enumName, list)
+		return op.getList(t, name, typeName, list)
 	case reflect.String:
 		return op.getString(t, value.(string))
 	case reflect.Int:
@@ -196,7 +235,7 @@ func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, v
 // getStruct converts a map (eg a from JSON decoder) to a struct including any nested structs, and slices
 // Parameters
 //  t = type of the struct that we need to fill in from the GraphQL object
-//  name = name of the argument // TODO unnec. so remove
+//  name = name of the argument
 //  m = map key is field names of the object, map value is field values
 func (op *gqlOperation) getStruct(t reflect.Type, name string, m map[string]interface{}) (reflect.Value, error) {
 	if t.Kind() != reflect.Struct {
@@ -211,10 +250,10 @@ func (op *gqlOperation) getStruct(t reflect.Type, name string, m map[string]inte
 		if err2 != nil {
 			return reflect.Value{}, fmt.Errorf("%w getting field %q", err2, f.Name)
 		}
-		if fieldInfo == nil {
+		if f.Name == "_" || fieldInfo == nil {
 			continue // ignore unexported field
 		}
-		// TODO check if we need to handle fieldInfo.Embedded - I don't think INPUT types can implement interfaces
+
 		first, n := utf8.DecodeRuneInString(fieldInfo.Name)
 		if first == utf8.RuneError {
 			return reflect.Value{}, fmt.Errorf("field %q of variable %q is not valid non-empty UTF8 string", fieldInfo.Name, name)
@@ -239,25 +278,45 @@ func (op *gqlOperation) getStruct(t reflect.Type, name string, m map[string]inte
 //  name = name of the argument
 //  enumName = name of enum if list is a list of enums
 //  list = slice of element from the GraphQL list
-func (op *gqlOperation) getList(t reflect.Type, name string, enumName string, list []interface{}) (reflect.Value, error) {
-	if t.Kind() != reflect.Slice { // TODO also handle arrays
+func (op *gqlOperation) getList(t reflect.Type, name string, enumName string, list []interface{},
+) (reflect.Value, error) {
+	switch t.Kind() {
+	case reflect.Slice:
+		// Create an instance of the slice and fill in the elements from 'list'
+		r := reflect.MakeSlice(t, len(list), len(list))
+		for i, value := range list {
+			goElement := r.Index(i)
+
+			// Get the field value as the type of the element
+			v, err := op.getValue(goElement.Type(), fmt.Sprintf("%s[%d]", name, i), enumName, value)
+			if err != nil {
+				return reflect.Value{}, fmt.Errorf("getting slice value %s[%d]: %w", name, i, err)
+			}
+			goElement.Set(v)
+		}
+		return r, nil
+	case reflect.Array:
+		// Create an instance of the array and fill in it's elements from 'list'
+		pr := reflect.New(t)
+		if len(list) != pr.Elem().Len() {
+			return reflect.Value{}, fmt.Errorf("argument %q expecting list of length %d but got %d", name, pr.Elem().Len(), len(list))
+		}
+		for i, value := range list {
+			goElement := pr.Elem().Index(i)
+
+			// Get the field value as the type of the Go struct's field
+			v, err := op.getValue(goElement.Type(), fmt.Sprintf("%s[%d]", name, i), enumName, value)
+			if err != nil {
+				return reflect.Value{}, fmt.Errorf("getting slice value %s[%d]: %w", name, i, err)
+			}
+			goElement.Set(v)
+		}
+		return pr.Elem(), nil
+	// TODO handle reflect.Map?
+	default:
 		return reflect.Value{}, fmt.Errorf("argument %q is not a list", name)
 	}
 
-	// Create an instance of the struct and fill in the fields that we were given
-	//	r := reflect.New(t).Elem()
-	r := reflect.MakeSlice(t, len(list), len(list))
-	for i, value := range list {
-		goElement := r.Index(i)
-
-		// Get the field value as the type of the Go struct's field
-		v, err := op.getValue(goElement.Type(), fmt.Sprintf("%s[%d]", name, i), enumName, value)
-		if err != nil {
-			return reflect.Value{}, fmt.Errorf("getting slice value %s[%d]: %w", name, i, err)
-		}
-		goElement.Set(v)
-	}
-	return r, nil
 }
 
 // getInt takes an integer and returns the value as the desired Go type (incl. ints, floats, bool, & string types).

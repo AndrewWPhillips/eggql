@@ -1,24 +1,28 @@
 // Package handler implements an HTTP handler to process GraphQL queries (and
 // mutations/subscriptions) given an instance of a query struct (and optionally
 // mutation and subscription structs) and a corresponding GraphQL schema.
+// The schema is typically generated (by the schema package) from the same struct(s).
 package handler
 
-// handler.go implements the handler and it's ServeHTTP method
+// handler.go implements handler.New() to create a new handler, and it's ServeHTTP method
 
 import (
 	"encoding/json"
-	"github.com/vektah/gqlparser"
-	"github.com/vektah/gqlparser/ast"
 	"net/http"
+	"strings"
+
+	"github.com/vektah/gqlparser/v2"
+	"github.com/vektah/gqlparser/v2/ast"
 )
 
 type (
 	// Handler stores the invariants (schema and structs) used in the GraphQL requests
 	Handler struct {
-		schema *ast.Schema
-		enums  map[string][]string
-		qData  interface{}
-		mData  interface{}
+		schema       *ast.Schema
+		enums        map[string][]string       // each enum is a slice of strings
+		enumsReverse map[string]map[string]int // allows reverse lookup - int value given enum value (string)
+		qData        interface{}
+		mData        interface{}
 		//subscriptionData interface{}
 	}
 )
@@ -37,8 +41,23 @@ func New(schemaString string, qms ...interface{}) http.Handler {
 	r := &Handler{
 		schema: schema,
 	}
-	if e, ok := qms[0].(map[string][]string); ok {
-		r.enums = e
+	if rawEnums, ok := qms[0].(map[string][]string); ok {
+		r.enums = make(map[string][]string, len(rawEnums))
+		r.enumsReverse = make(map[string]map[string]int, len(rawEnums))
+		for enumName, list := range rawEnums {
+			enum := make([]string, 0, len(list))
+			enumInt := make(map[string]int, len(list))
+			for i, v := range list {
+				parts := strings.SplitN(v, "#", 2)
+				enum = append(enum, parts[0])
+				enumInt[parts[0]] = i
+			}
+			parts := strings.SplitN(enumName, "#", 2)
+			r.enums[parts[0]] = enum
+			r.enumsReverse[parts[0]] = enumInt
+		}
+
+		// Skip the enums, to get the query, mutation, subscription
 		qms = qms[1:]
 	}
 	r.qData = qms[0]
@@ -65,7 +84,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Decode the request (JSON)
 	g := gqlRequest{h: h}
 	decoder := json.NewDecoder(r.Body)
-	decoder.UseNumber() // allows us to distinguish ints from floats (see FixNumberVariables() below)
+	decoder.DisallowUnknownFields() // quickly find if a field name has been misspelt
+	decoder.UseNumber()             // allows us to distinguish ints from floats (see FixNumberVariables() below)
 	if err := decoder.Decode(&g); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"data": null,"errors": [{"message": "Error decoding JSON request:` + err.Error() + `"}]}`))

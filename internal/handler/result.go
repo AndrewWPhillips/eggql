@@ -5,24 +5,28 @@ package handler
 import (
 	"context"
 	"fmt"
-	"github.com/andrewwphillips/eggql/internal/field"
-	"github.com/dolmen-go/jsonmap"
-	"github.com/vektah/gqlparser/ast"
 	"reflect"
 	"strings"
+
+	"github.com/andrewwphillips/eggql/internal/field"
+	"github.com/dolmen-go/jsonmap"
+	"github.com/vektah/gqlparser/v2/ast"
 )
 
 const (
 	AllowIntrospection     = true
 	AllowConcurrentQueries = true
+
+	TypeNameQuery = "__typename" // Name of "introspection" query that can be performed at any level
 )
 
 type (
 	// gqlOperation controls an operation (query/mutation) of a GraphQL request
 	gqlOperation struct {
-		isMutation bool
-		variables  map[string]interface{}
-		enums      map[string][]string
+		isMutation   bool
+		variables    map[string]interface{}
+		enums        map[string][]string       // forward lookup enum value (string) from int (slice index)
+		enumsReverse map[string]map[string]int // allows reverse lookup int from enum value (map key = string)
 	}
 
 	// gqlValue contains the result of a query or queries, or an error, plus the name
@@ -52,7 +56,9 @@ type (
 //   vIntro = Go struct with values for introspection (only supplied at root level)
 //   introOp = gqlOperation struct to be used with vIntro (contains some required enums)
 //   idField = name/type of fabricated "id" field (see "field_id" option for lists of objects)
-func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, v reflect.Value, vIntro reflect.Value, introOp *gqlOperation, id *idField) (jsonmap.Ordered, error) {
+func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, v reflect.Value, vIntro reflect.Value,
+	introOp *gqlOperation, id *idField,
+) (jsonmap.Ordered, error) {
 	// Get the struct that contains the resolvers that we can use
 	for v.Type().Kind() == reflect.Ptr {
 		v = v.Elem() // follow indirection
@@ -104,7 +110,7 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 					break inner
 				}
 				if v.err != nil {
-					return r, v.err
+					return jsonmap.Ordered{}, v.err
 				}
 				r.Data[v.name] = v.value
 				r.Order = append(r.Order, v.name)
@@ -112,7 +118,7 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 					panic("map and slice in the jsonmap.Ordered should be the same size (map element replaced?)")
 				}
 			case <-ctx.Done():
-				return r, ctx.Err()
+				return jsonmap.Ordered{}, ctx.Err()
 			}
 		}
 	}
@@ -124,31 +130,36 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 // If no match is found, or the matched field is excluded (by a directive) the chan is closed without any value sent.
 func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, v reflect.Value) <-chan gqlValue {
 	if v.Type().Kind() != reflect.Struct { // struct = 25
-		// param. 'v' validation - note that this is a bug which is precluded during building of the schema
+		// param. 'v' validation - note that this is a bug that should have been caught during schema building
 		panic("FindSelection: search of query field in non-struct")
 	}
 
 	//r := make(chan gqlValue) //
-	if astField.Name == "__typename" {
+	if astField.Name == TypeNameQuery {
 		// Special "introspection" field
 		r := make(chan gqlValue, 1)
-		//r <- gqlValue{name: astField.Alias, value: astField.ObjectDefinition.Name}
-		r <- gqlValue{name: astField.Alias, value: v.Type().Name()} // TODO: check if this is always correct
+		//r <- gqlValue{name: astField.Alias, value: v.Type().Name()}
+		r <- gqlValue{name: astField.Alias, value: astField.ObjectDefinition.Name}
 		close(r)
 		return r
 	}
 
 	var i int
 	// Check all the (exported) fields of the struct for a match to astField.Name
+	// TODO: use map lookup O(1) [instead of O(n) linear search] to help perf. eg. for a large # of root query fields
 	for i = 0; i < v.Type().NumField(); i++ {
 		tField := v.Type().Field(i)
 		vField := v.Field(i)
 		fieldInfo, err := field.Get(&tField)
 		if err != nil {
-			panic(err) // TODO: return an error (no panics)
+			// This condition should never occur - should have been caught during schema building
+			panic(err)
 		}
-		if fieldInfo == nil { // TODO: if embedded and empty then continue
+		if tField.Name == "_" || fieldInfo == nil {
 			continue // unexported field
+		}
+		if fieldInfo.Embedded && fieldInfo.Empty {
+			continue // union (no point scanning unexported fields)
 		}
 		// Recursively check fields of embedded struct
 		if fieldInfo.Embedded {
@@ -166,33 +177,19 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 				close(r)
 				return r
 			}
-			// chan closed (no match found) so continue below
+			// end of chan (no match found) so continue below
 		}
 		if fieldInfo.Name == astField.Name {
 			// resolver found so run it (concurrently)
 			if op.isMutation || !AllowConcurrentQueries { // Mutations are run sequentially
-				r := make(chan gqlValue, 1)
-				if value := op.resolve(ctx, astField, vField, reflect.Value{}, fieldInfo); value != nil {
-					r <- *value
-				}
-				close(r)
-				return r
+				ch := make(chan gqlValue, 1)
+				op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, ch)
+				return ch
 			} else {
-				// This go routine allows resolvers to run in parallel
-				r := make(chan gqlValue)
-				go func() {
-					defer func() {
-						// Convert any panics in resolvers into an (internal) error
-						if recoverValue := recover(); recoverValue != nil {
-							r <- gqlValue{err: fmt.Errorf("Internal error: panic %v", recoverValue)}
-						}
-						close(r)
-					}()
-					if value := op.resolve(ctx, astField, vField, reflect.Value{}, fieldInfo); value != nil {
-						r <- *value
-					}
-				}()
-				return r
+				ch := make(chan gqlValue)
+				// Calling wrapResolve as a go routine allows resolvers to run in parallel
+				go op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, ch)
+				return ch
 			}
 		}
 	}
@@ -200,6 +197,22 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 	r := make(chan gqlValue)
 	close(r)
 	return r
+}
+
+// wrapResolve calls resolve putting the return value on a chan and converting any panic to an error
+func (op *gqlOperation) wrapResolve(
+	ctx context.Context, astField *ast.Field, v, vID reflect.Value, fieldInfo *field.Info, ch chan<- gqlValue,
+) {
+	defer func() {
+		// Convert any panics in resolvers into an (internal) error
+		if recoverValue := recover(); recoverValue != nil {
+			ch <- gqlValue{err: fmt.Errorf("Internal error: panic %v", recoverValue)}
+		}
+		close(ch)
+	}()
+	if value := op.resolve(ctx, astField, v, vID, fieldInfo); value != nil {
+		ch <- *value
+	}
 }
 
 func (op *gqlOperation) FindFragments(ctx context.Context, set ast.SelectionSet, v reflect.Value) <-chan gqlValue {
@@ -231,7 +244,8 @@ func (op *gqlOperation) FindFragments(ctx context.Context, set ast.SelectionSet,
 //   v = value of the resolver (field of Go struct)
 //   vID = value of "id" (only supplied if an element of a list)
 //   fieldInfo = metadata for the resolver (eg parameter name) obtained from the struct field tag
-func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID reflect.Value, fieldInfo *field.Info) *gqlValue {
+func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID reflect.Value, fieldInfo *field.Info,
+) *gqlValue {
 	if op.directiveBypass(astField) {
 		return nil
 	}
@@ -280,6 +294,37 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		}
 	}
 
+	// It's a custom scalar if there exists a method on ptr to type: func (*T) UnmarshalEGGQL(string) error
+	// Note: we check for ptr receiver not value receiver as the receiver is modified
+	t := v.Type()
+	pt := reflect.TypeOf(reflect.New(t).Interface())
+	if pt.Implements(reflect.TypeOf((*field.Unmarshaler)(nil)).Elem()) {
+		var valueString string
+		var err error
+
+		if t.Implements(reflect.TypeOf((*field.Marshaler)(nil)).Elem()) {
+			// Call the Marshal method, ie: func (T) MarshalEGGQL() (string, error)
+			valueString, err = v.Interface().(field.Marshaler).MarshalEGGQL()
+			if err != nil {
+				return &gqlValue{err: fmt.Errorf("%w marshaling custom scalar %q", err, v.Type().Name())}
+			}
+		} else if pt.Implements(reflect.TypeOf((*field.Marshaler)(nil)).Elem()) {
+			// In case Marshal method uses ptr receiver (value receiver preferred) ie: func (*T) MarshalEGGQL() (string, error)
+			tmp := reflect.New(v.Type()) // we have to make an addressable copy of v so we can call with ptr receiver
+			tmp.Elem().Set(v)
+			valueString, err = tmp.Interface().(field.Marshaler).MarshalEGGQL()
+			if err != nil {
+				return &gqlValue{err: fmt.Errorf("%w marshalling pointer to custom scalar %q", err, v.Type().Name())}
+			}
+		} else if t.Implements(reflect.TypeOf((*fmt.Stringer)(nil)).Elem()) {
+			// func (T) String() string - method is present
+			valueString = v.Interface().(fmt.Stringer).String()
+		} else {
+			valueString = fmt.Sprintf("%v", v.Interface())
+		}
+		return &gqlValue{name: astField.Alias, value: valueString}
+	}
+
 	switch v.Type().Kind() {
 	case reflect.Struct:
 		// Check if we have to fabricate an "id" field
@@ -311,16 +356,26 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 			results = make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
 			for i := 0; i < v.Len(); i++ {
 				if value := op.resolve(ctx, astField, v.Index(i), reflect.ValueOf(i), fieldInfo); value != nil {
+					if value.err != nil {
+						return value
+					}
 					results = append(results, value.value)
 				}
 			}
 		}
 		return &gqlValue{name: astField.Alias, value: results}
 	}
+	if fieldInfo.GQLTypeName == "ID" {
+		return &gqlValue{name: astField.Alias, value: v.Interface()}
+	}
 	// If enum or enum list get the integer index and look up the enum value
 	if enumName := fieldInfo.GQLTypeName; enumName != "" {
 		if len(enumName) > 2 && enumName[0] == '[' && enumName[len(enumName)-1] == ']' {
 			enumName = enumName[1 : len(enumName)-1]
+		}
+		// Check that the enum exists
+		if _, ok := op.enums[enumName]; !ok {
+			return &gqlValue{err: fmt.Errorf("enum %q not found for field %q", enumName, fieldInfo.Name)}
 		}
 		idx := -1
 		switch value := v.Interface().(type) {
@@ -347,6 +402,8 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		}
 		return &gqlValue{name: astField.Alias, value: op.enums[enumName][idx]}
 	}
+
+	// Just return the scalar value (Int, String, Boolean, or Float)
 	return &gqlValue{name: astField.Alias, value: v.Interface()}
 }
 

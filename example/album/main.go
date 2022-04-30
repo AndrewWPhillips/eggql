@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/andrewwphillips/eggql"
 	"net/http"
+
+	"github.com/andrewwphillips/eggql"
 )
 
 // Album stores info about a record album.
@@ -25,8 +26,8 @@ var q = struct {
 	//  - we can have different names for the fabricated "id" field but can only have one name in the schema
 	//  - the "id" field might need different types - eg int for a slice, string (etc) for map key
 
-	Albums map[string]Album `graphql:",field_id"`
-	Album  map[string]Album `graphql:",subscript"`
+	Albums map[string]Album `egg:",field_id"`
+	Album  map[string]Album `egg:",subscript"`
 }{
 	Album:  albums,
 	Albums: albums,
