@@ -134,9 +134,9 @@ func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v ref
 // Parameters:
 //   t = expected type
 //   name = corresponding name of the argument
-//   enumName allows lookup of an enum value if t is an integer and value is a string
+//   typeName is enum value (t must be an integer) or "ID" (t must be int or string)
 //   value = what needs to be returned converted to a value of type t
-func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, value interface{},
+func (op *gqlOperation) getValue(t reflect.Type, name string, typeName string, value interface{},
 ) (reflect.Value, error) {
 	if value == nil {
 		// Return a value of the default type
@@ -150,14 +150,14 @@ func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, v
 	}
 
 	// If it's an enum we need to convert the enum name (string) to corresp. int
-	if enumName != "" && t.Kind() >= reflect.Int && t.Kind() <= reflect.Uint64 {
+	if typeName != "" && typeName != "ID" && t.Kind() >= reflect.Int && t.Kind() <= reflect.Uint64 {
 		toFind, ok := value.(string)
 		if !ok {
-			return reflect.Value{}, fmt.Errorf("getting enum (%s) for %q expected string", enumName, name)
+			return reflect.Value{}, fmt.Errorf("getting enum (%s) for %q expected string", typeName, name)
 		}
-		value, ok = op.enumsReverse[enumName][toFind]
+		value, ok = op.enumsReverse[typeName][toFind]
 		if !ok {
-			return reflect.Value{}, fmt.Errorf("could not find enum value %q in enum %q for %q", toFind, enumName, name)
+			return reflect.Value{}, fmt.Errorf("could not find enum value %q in enum %q for %q", toFind, typeName, name)
 		}
 	}
 
@@ -166,8 +166,7 @@ func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, v
 		return reflect.ValueOf(value), nil // no conversion necessary
 	}
 
-	// If the value is a custom scalar unmarshal it
-	// TODO find better way to get type of ptr to t than reflect.TypeOf(reflect.New(t).Interface())
+	// It's a custom scalar if the type it implements field.Unmarshaler - ie. has method t.UnmarshalEGGQL(string) error
 	if reflect.TypeOf(reflect.New(t).Interface()).Implements(reflect.TypeOf((*field.Unmarshaler)(nil)).Elem()) {
 		in, ok := value.(string)
 		if !ok {
@@ -198,10 +197,10 @@ func (op *gqlOperation) getValue(t reflect.Type, name string, enumName string, v
 		if !ok {
 			return reflect.Value{}, fmt.Errorf("decoding variable %q - expected slice of interface{}", name)
 		}
-		if len(enumName) > 2 && enumName[0] == '[' && enumName[len(enumName)-1] == ']' {
-			enumName = enumName[1 : len(enumName)-1]
+		if len(typeName) > 2 && typeName[0] == '[' && typeName[len(typeName)-1] == ']' {
+			typeName = typeName[1 : len(typeName)-1]
 		}
-		return op.getList(t, name, enumName, list)
+		return op.getList(t, name, typeName, list)
 	case reflect.String:
 		return op.getString(t, value.(string))
 	case reflect.Int:

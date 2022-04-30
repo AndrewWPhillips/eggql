@@ -5,11 +5,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/andrewwphillips/eggql"
 	"log"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/andrewwphillips/eggql"
 )
 
 // ReviewTime implements a GraphQL custom scalar used to keep track of when a movie review was posted
@@ -165,12 +166,14 @@ type (
 
 var (
 	gqlEnums = map[string][]string{
-		"Episode# Movies of the Star Wars trilogy": { // order should match the episodes slice below
+		"Episode# Movies of the Star Wars trilogy": {
+			// order should match the episodes slice below
 			"NEWHOPE# A New Hope (1977)",
 			"EMPIRE# The Empire Strikes Back (1980)",
 			"JEDI# Return of the Jedi (1983)",
 		},
-		"LengthUnit# Units for spatial measurements": { // order of strings in the slice should match METER, etc consts below
+		"LengthUnit# Units for spatial measurements": {
+			// order of strings in the slice should match METER, etc consts below
 			"METER# Standard metric spatial unit",
 			"FOOT# Imperial spatial unit used mainly in the US",
 		},

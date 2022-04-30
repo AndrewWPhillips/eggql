@@ -122,6 +122,7 @@ func (s schema) validLiteral(typeName string, enums map[string][]string, t refle
 				return fmt.Errorf("%w: value in %q in object %q is not of correct type", err, literal, typeName)
 			}
 		}
+		// TODO: check that all fields with non-nullable types were supplied
 		return nil // object fields were all OK
 	}
 

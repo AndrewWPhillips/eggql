@@ -106,6 +106,7 @@ func (s schema) validateTypeName(typeName string, enums map[string][]string, t r
 // getTypeName returns the GraphQL type name corresponding to a Go type.
 // Parameters:
 //  t = effective Go type of GraphQL field - for a function it uses the type of the 1st return value
+//  nullable = true a value of the type can be assigned NULL
 // Returns: name, isScalar, error
 //  name = type name [in square brackets for a list(array/slice/map)], empty string if not know (eg anon struct)
 //     if t is a function it uses the 1st return value

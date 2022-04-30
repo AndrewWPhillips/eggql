@@ -424,6 +424,9 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 			// Create a type name for anon struct by upper-casing the 1st letter of the arg name
 			first, n := utf8.DecodeRuneInString(fieldInfo.Args[paramNum])
 			typeName = string(unicode.ToUpper(first)) + fieldInfo.Args[paramNum][n:]
+			if effectiveType.Kind() != reflect.Ptr {
+				typeName += "!"
+			}
 		}
 
 		// Now check that the default for the arg is OK
@@ -435,9 +438,6 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 			}
 		}
 		builder.WriteString(typeName)
-		if effectiveType.Kind() != reflect.Ptr {
-			builder.WriteRune('!')
-		}
 
 		// Do we also need to add = followed by the argument default value?
 		if fieldInfo.ArgDefaults[paramNum] != "" {

@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/andrewwphillips/eggql"
 	"net/http"
+
+	"github.com/andrewwphillips/eggql"
 )
 
 // Album stores info about a record album.
@@ -20,7 +21,7 @@ var albums = map[string]Album{
 
 type Query struct {
 	Albums map[string]Album // query list of all albums
-	Album  map[string]Album `graphql:",subscript"` // query one album using arg "id"
+	Album  map[string]Album `egg:",subscript"` // query one album using arg "id"
 }
 
 func main() {

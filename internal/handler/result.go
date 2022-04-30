@@ -384,6 +384,8 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 		}
 		return &gqlValue{name: astField.Alias, value: op.enums[enumName][idx]}
 	}
+
+	// Just return the scalar value (Int, String, Boolean, or Float)
 	return &gqlValue{name: astField.Alias, value: v.Interface()}
 }
 

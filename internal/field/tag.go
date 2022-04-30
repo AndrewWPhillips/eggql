@@ -1,6 +1,6 @@
 package field
 
-// tag.go handles extracting info from the tag string (from struct field metadata)
+// tag.go handles extracting info from the "egg:" tag string (from struct field metadata)
 
 import (
 	"errors"
@@ -117,7 +117,7 @@ func SplitArgs(s string) ([]string, error) {
 // TODO somehow reduce duplicate code in SplitArgs/SplitWithDesc
 
 // SplitWithDesc is like SplitArgs but also allows a trailing "description" (anything after the first #).
-// On success it returns a list strings, the description (if any) and a nil error.
+// On success, it returns a list of strings, the description (if any) and a nil error.
 // A non-nil error is returned if there is a problem with the input string such as unmatched brackets.
 func SplitWithDesc(s string) ([]string, string, error) {
 	// First count the number of commas that aren't within brackets

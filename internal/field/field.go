@@ -1,7 +1,7 @@
 // Package field is for analysing Go struct fields for use as GraphQL query fields (resolvers)
 package field
 
-// field.go generates GraphQL resolver info from a Go struct field
+// field.go generates GraphQL resolver info from a Go struct field using reflection
 
 import (
 	"context"
@@ -13,16 +13,25 @@ import (
 	"unicode/utf8"
 )
 
-const TagKey = "egg" // the "key" for our app used to find our metadata in the field tag string
+const (
+	// TagKey is tag string "key" for our app - used to find optiond in the field metadata (tag string)
+	TagKey = "egg"
+
+	AllowSubscript  = true // "subscript" option generates a resolver to subscript into a list (array/slice/map)
+	AllowFieldID    = true // "field_id" option generates an extra "id" field for queries on a list (array/slice/map)
+	AllowComplexity = true // "complexity" option specifies how to estimate the complexity of a resalver
+)
 
 type (
-	// Marshaler is implemented by custom scalar types
-	Marshaler interface {
-		MarshalEGGQL() (string, error)
-	}
-	// Unmarshaler is implemented by custom scalar types
+	// Unmarshaler must be implemented by custom scalar types to decode a string into the type
 	Unmarshaler interface {
 		UnmarshalEGGQL(string) error
+	}
+	// Marshaler may be implemented by custom scalar types to encode the type in a string
+	// It should create a string compatible with Unmarshaller (above).
+	// If not given then the Stringer interface is used - if that's not given then fmt.Sprintf with %v is used
+	Marshaler interface {
+		MarshalEGGQL() (string, error)
 	}
 )
 
@@ -45,7 +54,7 @@ type Info struct {
 
 	Embedded bool // embedded struct (which we use as a template for a GraphQL "interface")
 	Empty    bool // embedded struct has no fields (which we use for a GraphQL "union")
-	Nullable bool // only pointer fields can be null
+	Nullable bool // pointers (plus slice/map if "nullable" option was specified)
 
 	// Subscript holds the result of the "subscript" option (for a slice/array/map)
 	Subscript     string       // name resolver arg (default is "id")
@@ -221,12 +230,8 @@ func GetTagInfo(tag string) (*Info, error) {
 		if part == "" {
 			continue // ignore empty sections
 		}
-		if strings.HasPrefix(part, "subscript") {
-			subParts := strings.Split(part, "=")
-			fieldInfo.Subscript = "id" // default argument name used to access slice or map elements
-			if len(subParts) > 1 && subParts[1] != "" {
-				fieldInfo.Subscript = subParts[1]
-			}
+		if subscript := getSubscript(part); subscript != "" {
+			fieldInfo.Subscript = subscript
 			continue
 		}
 		if part == "nullable" {
@@ -267,4 +272,17 @@ func GetTagInfo(tag string) (*Info, error) {
 		return nil, fmt.Errorf("unknown option %q in %q key (%s)", part, TagKey, tag)
 	}
 	return fieldInfo, nil
+}
+
+func getSubscript(s string) string {
+	if !AllowSubscript {
+		return ""
+	}
+	if s == "subscript" {
+		return "id" // default field name if none given
+	}
+	if strings.HasPrefix(s, "subscript=") {
+		return strings.TrimPrefix(s, "subscript=")
+	}
+	return ""
 }

@@ -33,7 +33,7 @@ func (pt *Time) UnmarshalEGGQL(in string) error {
 	if err != nil {
 		return fmt.Errorf("%w error in UnmarshalEGGQL for custom scalar Time", err)
 	}
-	*pt = Time(tmp)
+	*pt = Time(tmp) // cast from time.Time to eggql.Time
 	return nil
 }
 
