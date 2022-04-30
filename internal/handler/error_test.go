@@ -22,69 +22,77 @@ var (
 	errorFuncData = struct{ V func() (int, error) }{func() (int, error) { return 0, errors.New(errorMessage) }}
 )
 
-// errorData is for testing GraphQL error responses returned for a bad query or internal error/timeout
-var errorData = map[string]struct {
-	schema    string      // GraphQL schema
-	data      interface{} // corresponding matching struct
-	query     string      // GraphQL query to send to the handler (query syntax)
-	variables string      // GraphQL variables to use with the query (JSON)
-	expError  string      // expected error decoded from the returned JSON response
-}{
-	"FuncError":  {"type Query{v:Int!}", errorFuncData, `{v}`, "", errorMessage},
-	"QueryError": {"type Query{v:Int!}", errorFuncData, `x`, "", `Unexpected Name "x"`},
-	"UnknownQuery": {
-		"type Query{v:Int!}", errorFuncData, `{ unknown }`, "",
-		`Cannot query field "unknown" on type "Query".`,
-	},
-	// TODO test all error conditions
-}
-
+// TestErrors checks error responses returned for a bad GraphQL query or internal error/timeout
 func TestErrors(t *testing.T) {
+	errorData := map[string]struct {
+		schema    string      // GraphQL schema
+		data      interface{} // corresponding matching struct
+		query     string      // GraphQL query to send to the handler (query syntax)
+		variables string      // GraphQL variables to use with the query (JSON)
+		expError  string      // expected error decoded from the returned JSON response
+	}{
+		"FuncError":  {"type Query{v:Int!}", errorFuncData, `{v}`, "", errorMessage},
+		"QueryError": {"type Query{v:Int!}", errorFuncData, `x`, "", `Unexpected Name "x"`},
+		"UnknownQuery": {
+			"type Query{v:Int!}", errorFuncData, `{ unknown }`, "",
+			`Cannot query field "unknown" on type "Query".`,
+		},
+		"UnknownArg": {
+			"type Query{f(i:Int!):Int!}", struct {
+				F func(int) int `egg:",args(j)"`
+			}{F: func(j int) int { return j }}, `{ f(i:1) }`, "",
+			`unknown argument "i" in resolver "f"`,
+		},
+		// TODO test all error conditions
+	}
+
 	for name, testData := range errorData {
-		h := handler.New(testData.schema, testData.data)
+		t.Run(name, func(t *testing.T) {
+			h := handler.New(testData.schema, testData.data)
 
-		// Make the request body and the HTTP request that uses it
-		body := strings.Builder{}
-		body.WriteString(`{"query":"`)
-		body.WriteString(testData.query)
-		body.WriteString(`"`)
-		if testData.variables != "" {
-			body.WriteString(`,"variables":`)
-			body.WriteString(testData.variables)
-		}
-		body.WriteString(`}`)
+			// Make the request body and the HTTP request that uses it
+			body := strings.Builder{}
+			body.WriteString(`{"query":"`)
+			body.WriteString(testData.query)
+			body.WriteString(`"`)
+			if testData.variables != "" {
+				body.WriteString(`,"variables":`)
+				body.WriteString(testData.variables)
+			}
+			body.WriteString(`}`)
 
-		request := httptest.NewRequest("POST", "/", strings.NewReader(body.String()))
-		request.Header.Add("Content-Type", "application/json")
+			request := httptest.NewRequest("POST", "/", strings.NewReader(body.String()))
+			request.Header.Add("Content-Type", "application/json")
 
-		// Invoke the handler, recording the response
-		writer := httptest.NewRecorder()
-		h.ServeHTTP(writer, request) /****/
+			// Invoke the handler, recording the response
+			writer := httptest.NewRecorder()
+			h.ServeHTTP(writer, request) /****/
 
-		// All of these tests should give status OK
-		if status := writer.Result().StatusCode; status != http.StatusOK {
-			Assertf(t, false, "%12s: Expected Status OK (200) got %d", name, status)
-			continue
-		}
+			// All of these tests should give status OK
+			if status := writer.Result().StatusCode; status != http.StatusOK {
+				Assertf(t, false, "Expected Status OK (200) got %d", status)
+				return
+			}
 
-		// Decode the JSON response
-		var result struct {
-			Data map[string]interface{} `json:"data,omitempty"`
-			//Data   interface{}                `json:",omitempty"`
-			Errors []struct{ Message string } `json:",omitempty"`
-		}
-		//json.Unmarshal(writer.Body.Bytes(), &result)
-		decoder := json.NewDecoder(writer.Body)
-		if err := decoder.Decode(&result); err != nil {
-			t.Logf("%12s: Error decoding JSON: %v", name, err)
-			continue
-		}
+			// Decode the JSON response
+			var result struct {
+				Data map[string]interface{} `json:"data,omitempty"`
+				//Data   interface{}                `json:",omitempty"`
+				Errors []struct{ Message string } `json:",omitempty"`
+			}
+			//json.Unmarshal(writer.Body.Bytes(), &result)
+			decoder := json.NewDecoder(writer.Body)
+			if err := decoder.Decode(&result); err != nil {
+				t.Logf("Error decoding JSON: %v", err)
+				return
+			}
 
-		// Check that the resulting GraphQL result (error and data)
-		if len(result.Data) > 0 {
-			Assertf(t, false, "%12s: Expected no data and got %v", name, result.Data)
-		}
-		Assertf(t, result.Errors != nil && result.Errors[0].Message == testData.expError, "%12s: Expected error %q, got %v", name, testData.expError, result.Errors)
+			// Check that the resulting GraphQL result (error and data)
+			if len(result.Data) > 0 {
+				Assertf(t, false, "Expected no data and got %v", result.Data)
+			}
+			Assertf(t, result.Errors != nil && result.Errors[0].Message == testData.expError, "Expected error %q, got %v", testData.expError, result.Errors)
+		})
 	}
 }
 
