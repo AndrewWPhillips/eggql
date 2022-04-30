@@ -40,16 +40,15 @@
 package eggql
 
 // TODO:
-// object param with an enum field
-// allow map to return a list where key = a field (default name ID)
-// allow slice/array to return list where ID = index
-// add ID type
-// ext. types
-// add Date (extension) type
-// null handling and non-nullability
-// unions
+// allow multiple schemas - stitching?
 // subscriptions
-// more systematic error handling
-// caching of requests
+// complexity limiting:
+//   - add complexity(len, <int>, <arg>, <arg>) option
+//     where len = length for field returning a list and the value *can* be precalculated
+//           <int> = integer literal (eg 10)
+//           <arg> = integer argument
+//   -  calc complexity (recursively) before running a root query (if below option on) (eg <int>*<arg>*<arg>)
+//   -  add complexity limit option
+// caching of requests?
 // dataloader
-// finish introspection (__type.interfaces, input types, directives)
+// finish introspection (__type.interfaces, directives)
