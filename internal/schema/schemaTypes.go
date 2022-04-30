@@ -56,6 +56,8 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 	needName := name == ""
 	if needName {
 		name = t.Name()
+	} else if name[len(name)-1] == '!' {
+		name = name[:len(name)-1]
 	}
 	// TODO check if (effective type) of t can ever be func at this point - remove reflect.Func from loop/switch below?
 	// follow indirection(s) and function return(s)
@@ -66,10 +68,13 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 		case reflect.Map, reflect.Slice, reflect.Array:
 			if !needName {
 				// Get the element type name from within the square brackets
-				if len(name) < 2 || name[0] != '[' || name[len(name)-1] != ']' {
+				if len(name) < 2 || name[0] != '[' && name[len(name)-1] != ']' {
 					panic("List type name should be in square brackets")
 				}
-				name = name[1 : len(name)-1]
+				name = name[1 : len(name)-1] // remove sq. brackets
+				if name[len(name)-1] == '!' {
+					name = name[:len(name)-1]
+				}
 			}
 
 			t = t.Elem() // element type
@@ -310,7 +315,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 
 		if typeName == "" {
 			// Derive GraphQL type from the field type
-			typeName, isScalar, err2 = s.getTypeName(effectiveType)
+			typeName, isScalar, err2 = s.getTypeName(effectiveType, fieldInfo.Nullable)
 			if err2 != nil {
 				err = fmt.Errorf("%w getting name for %q", err2, fieldInfo.Name)
 				return
@@ -319,19 +324,18 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 
 		if typeName == "" { // TODO: check if this is always correct thing to do
 			typeName = f.Name // use field name for anon structs
+			if !fieldInfo.Nullable {
+				typeName += "!"
+			}
 		}
 
-		endStr := "\n"
-		if !fieldInfo.Nullable {
-			endStr = "!\n" // add exclamation mark for required (non-nullable) field
-		}
 		if _, ok := r[fieldInfo.Name]; ok {
 			// We already have a field with this name - probably to metadata (field tag) name
 			// Note that this will be caught gqlparser.LoadSchema but we may as well signal it earlier
 			err = fmt.Errorf("two fields with the same name %q", fieldInfo.Name)
 			return
 		}
-		r[fieldInfo.Name] = resolverDesc + "  " + fieldInfo.Name + " " + params + ":" + typeName + endStr
+		r[fieldInfo.Name] = resolverDesc + "  " + fieldInfo.Name + " " + params + ":" + typeName + "\n"
 
 		if !isScalar {
 			// Determine the "type" keyword for the nested object (type/input/interface).
@@ -353,7 +357,7 @@ const paramStart, paramSep, paramEnd = "(", ", ", ")"
 
 // getSubscript creates the arg list (just one arg) for "subscript" option on a slice/array/map
 func (s schema) getSubscript(fieldInfo *field.Info) (string, error) {
-	typeName, isScalar, err := s.getTypeName(fieldInfo.SubscriptType)
+	typeName, isScalar, err := s.getTypeName(fieldInfo.SubscriptType, false)
 	if err != nil {
 		return "", fmt.Errorf("%w getting subscript type for %q", err, fieldInfo.Name)
 	}
@@ -361,7 +365,7 @@ func (s schema) getSubscript(fieldInfo *field.Info) (string, error) {
 		// TODO check if this restriction is necessary
 		return "", fmt.Errorf("you can't use an object type (%s) as a subscript", fieldInfo.Name)
 	}
-	return fmt.Sprintf("(%s: %s!)", fieldInfo.Subscript, typeName), nil
+	return fmt.Sprintf("(%s: %s)", fieldInfo.Subscript, typeName), nil
 }
 
 // getParams creates the list of GraphQL arguments for a resolver function
@@ -410,7 +414,7 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 		}
 		// No GraphQL type name supplied in the args so derive it from the Go function parameter's type
 		if typeName == "" {
-			if typeName, isScalar, err = s.getTypeName(effectiveType); err != nil {
+			if typeName, isScalar, err = s.getTypeName(effectiveType, false); err != nil {
 				return "", fmt.Errorf("parameter %d (%s) of arg %q error: %w",
 					i, effectiveType.Name(), fieldInfo.Args[paramNum], err)
 			}

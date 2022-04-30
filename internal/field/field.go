@@ -110,12 +110,8 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 		return
 	}
 
-	// Get base type if it's a pointer
+	// Work with the field type (becomes the func return type if func field)
 	t := f.Type
-	for t.Kind() == reflect.Ptr {
-		fieldInfo.Nullable = true // Pointer types can be null
-		t = t.Elem()              // follow indirection
-	}
 
 	// For a func we need to check for the correct number of args and use the func return type as the resolver type
 	if t.Kind() == reflect.Func {
@@ -154,6 +150,17 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 		if fieldInfo.Args != nil {
 			return nil, errors.New("arguments cannot be supplied for non-function resolver " + f.Name)
 		}
+	}
+
+	// Check that "nullable" flag was only used on slice/map
+	if fieldInfo.Nullable && t.Kind() != reflect.Slice && t.Kind() != reflect.Map {
+		return nil, errors.New("cannot use nullable option since field " + f.Name + " is not a slice, or map (try using a pointer)")
+	}
+
+	// Get "base type" if it's a pointer and remember that it's nullable
+	for t.Kind() == reflect.Ptr {
+		fieldInfo.Nullable = true // Pointer types can be null
+		t = t.Elem()              // follow indirection
 	}
 
 	fieldInfo.ResultType = t
@@ -222,10 +229,10 @@ func GetTagInfo(tag string) (*Info, error) {
 			}
 			continue
 		}
-		//if part == "nullable" {
-		//	fieldInfo.Nullable = true
-		//	continue
-		//}
+		if part == "nullable" {
+			fieldInfo.Nullable = true
+			continue
+		}
 		if list, err := getBracketedList(part, "args"); err != nil {
 			return nil, fmt.Errorf("%w getting args in %q", err, tag)
 		} else if list != nil {

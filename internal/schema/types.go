@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/andrewwphillips/eggql/internal/field"
 )
@@ -109,9 +110,14 @@ func (s schema) validateTypeName(typeName string, enums map[string][]string, t r
 //  name = type name [in square brackets for a list(array/slice/map)], empty string if not know (eg anon struct)
 //     if t is a function it uses the 1st return value
 //  isScalar = true for Int/String/etc or custom scalars, or lists thereof (array/slice/map), false for struct or if not known
-//  error = non-nil for type that can't be handled (eg func that returns nothing)
+//  err = non-nil for type that can't be handled (eg func that returns nothing)
 //     for anonymous structs it does not return an error but the returned name is an empty string
-func (s schema) getTypeName(t reflect.Type) (string, bool, error) {
+func (s schema) getTypeName(t reflect.Type, nullable bool) (name string, isScalar bool, err error) {
+	defer func() {
+		if err == nil && name != "" && !nullable {
+			name += "!"
+		}
+	}()
 	// Assume it's a custom scalar if there is a method with signature: func (*T) UnmarshalEGGQL(string) error
 	// Note that reflect.TypeOf(reflect.New(t).Interface()) is used to get the type of ptr to t.
 	// (UnmarshalEGGQL must have a pointer (not value) receiver since the new value is saved.)
@@ -126,48 +132,54 @@ func (s schema) getTypeName(t reflect.Type) (string, bool, error) {
 		if !found {
 			*s.scalars = append(*s.scalars, t.Name())
 		}
-		return t.Name(), true, nil
+		name = t.Name()
+		isScalar = true
+		return
 	}
 
 	switch t.Kind() {
 	case reflect.Bool:
-		return "Boolean", true, nil
+		name = "Boolean"
+		isScalar = true
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return "Int", true, nil
+		name = "Int"
+		isScalar = true
 	case reflect.Float32, reflect.Float64:
-		return "Float", true, nil
+		name = "Float"
+		isScalar = true
 	case reflect.String:
-		return "String", true, nil
+		if t.Name() == "ID" && strings.HasSuffix(t.PkgPath(), "/eggql") {
+			name = "ID"
+		} else {
+			name = "String"
+		}
+		isScalar = true
 
 	case reflect.Struct:
-		if tmp := t.Name(); tmp != "" {
-			return tmp, false, nil // use struct's type name and indicate it's not a scalar
-		}
-		return "", false, nil // not an error but struct is anon
+		name = t.Name() // may be "" for anon struct
+
 	case reflect.Ptr:
-		return s.getTypeName(t.Elem())
+		name, isScalar, err = s.getTypeName(t.Elem(), false)
+		nullable = true
+		if name != "" && name[len(name)-1] == '!' {
+			name = name[:len(name)-1] // remove non-nullability
+		}
 	case reflect.Map, reflect.Array, reflect.Slice:
-		elemType, isScalar, err := s.getTypeName(t.Elem())
+		name, isScalar, err = s.getTypeName(t.Elem(), false)
 		if err != nil {
-			return "", false, err
+			return
 		}
-		if elemType == "" {
-			return "", false, errors.New("bad element type for slice/array/map " + t.Name())
+		if name == "" {
+			err = errors.New("bad element type for slice/array/map " + t.Name())
+			return
 		}
-		return "[" + elemType + "]", isScalar, nil
-	// Note we now get the "effective" field type so never a func - TODO check if we should allow for func effective type
-	//case reflect.Func:
-	//	// For functions the (1st) return type is the type of the resolver
-	//	if t.NumOut() == 0 { // help caller fix their defect by returning an error instead of panicking
-	//		return "", false, errors.New("resolver functions must return a value: " + t.Name())
-	//	}
-	//	return s.getTypeName(t.Out(0))
+		name = "[" + name + "]"
 	case reflect.Interface:
-		// Resolver functions returning a GraphQL "interface" type return a Go interface{} but we
-		// don't know the type name, or whether it is a scalar or not
-		return "", false, nil
+		// Nothing needed here - return empty name and no error.  This is for GraphQL "interface" fields where
+		// the Gofunc returns and interface{} but we don't know the type name, or whether it is a scalar or not
 	default:
-		return "", false, errors.New("unhandled type " + t.Name())
+		err = errors.New("unhandled type " + t.Name())
 	}
+	return
 }

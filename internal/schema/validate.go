@@ -113,7 +113,7 @@ func (s schema) validLiteral(typeName string, enums map[string][]string, t refle
 			}
 			if fieldTypeName == "" {
 				var err error
-				fieldTypeName, _, err = s.getTypeName(fieldType)
+				fieldTypeName, _, err = s.getTypeName(fieldType, false)
 				if err != nil {
 					return fmt.Errorf("%w: value in %q for object %q has bad type", err, literal, typeName)
 				}
