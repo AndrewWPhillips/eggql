@@ -205,7 +205,7 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 			if (fieldInfo.ElementType.Kind() < reflect.Int || fieldInfo.ElementType.Kind() > reflect.Float64) &&
 				fieldInfo.ElementType.Kind() != reflect.String {
 				// for now we only allow string or int types for map subscripts
-				return nil, errors.New("map key for subscript option " + f.Name + " must be a scalar")
+				return nil, errors.New("map key for subscript option " + f.Name + " must be an integer or string")
 			}
 		}
 	}
@@ -245,12 +245,8 @@ func GetTagInfo(tag string) (*Info, error) {
 		if part == "" {
 			continue // ignore empty sections
 		}
-		if strings.HasPrefix(part, "field_id") {
-			subParts := strings.Split(part, "=")
-			fieldInfo.FieldID = "id" // default field name for ID field
-			if len(subParts) > 1 && subParts[1] != "" {
-				fieldInfo.FieldID = subParts[1]
-			}
+		if fieldID := getFieldID(part); fieldID != "" {
+			fieldInfo.FieldID = fieldID
 			continue
 		}
 		if subscript := getSubscript(part); subscript != "" {
@@ -306,6 +302,19 @@ func getSubscript(s string) string {
 	}
 	if strings.HasPrefix(s, "subscript=") {
 		return strings.TrimPrefix(s, "subscript=")
+	}
+	return ""
+}
+
+func getFieldID(s string) string {
+	if !AllowFieldID {
+		return ""
+	}
+	if s == "field_id" {
+		return "id"
+	}
+	if strings.HasPrefix(s, "field_id=") {
+		return strings.TrimPrefix(s, "field_id=")
 	}
 	return ""
 }

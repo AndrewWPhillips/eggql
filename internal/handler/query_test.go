@@ -60,10 +60,10 @@ type (
 
 	Element           struct{ B byte }
 	QuerySliceFieldID struct {
-		S []Element `graphql:",field_id"`
+		S []Element `egg:",field_id"`
 	}
 	QueryMapFieldID struct {
-		M map[string]Element `graphql:",field_id"`
+		M map[string]Element `egg:",field_id"`
 	}
 
 	// U is embedded in other structs to implement a union

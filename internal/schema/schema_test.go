@@ -34,10 +34,10 @@ type (
 	QuerySlice   struct{ Slice []int }
 	QueryMap     struct{ Map map[string]int }
 	QueryFieldID struct {
-		Slice []QueryString `graphql:",field_id"`
+		Slice []QueryString `egg:",field_id"`
 	}
 	QueryMapFieldID struct {
-		Map map[int]QueryString `graphql:",field_id"`
+		Map map[int]QueryString `egg:",field_id"`
 	}
 
 	QueryIntFunc   struct{ F func() int }
