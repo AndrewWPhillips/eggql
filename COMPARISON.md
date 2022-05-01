@@ -2,7 +2,9 @@
 
 ## Performance Comparison
 
-To compare the performance of the packages I wrote the same random number generator in each (see [Source Code](#source-code)).  I compared the average response time over 100,000 requests using jMeter.  Note that this is a very simple test using in-memory data.  With a production GraphQL server based on a database the results would undoubtedly be different.
+To compare the performance of the packages I wrote the same random number generator in each (see [Source Code](#source-code)).  I compared the average response time over 100,000 requests using jMeter.
+
+Note that this is a very simple test using in-memory data.  With a production GraphQL server based on a database the results would undoubtedly be different.  Also with a large number of queries **eggql** would be a lot slower than some others as it currently does a linear search to find the of the fields of the root query object.
 
 I ran the tests using this query:
 
@@ -11,7 +13,10 @@ I ran the tests using this query:
 	"query": "{ random }"
 }
 ```
-except that for **graphql-go** where I could not get the default argument values to work.  This appears to be a bug but if I have done something please tell me (see the code below).  I suspect the **graphql-go** performance would have been better if I didn't have to use this query instead:
+except that for **graphql-go** the default argument values do not work (bug?) and for **thunder** I could not work out how to specify defaults for arguments (not implemented?).  If you know how to address these problems please tell me.
+
+To test these packages I instead used the query below that does not rely on default values for arguments.  This may have affected performance but I doubt by very much.
+
 
 ```graphql
 {
@@ -27,18 +32,18 @@ The results were surprising, especially as **gqlgen** is 6 times slower (at abou
 |     [graphql](https://github.com/graphql-go/graphql)      |    graphql-go    |    0.62     |            61 |          40 |
 | [graphql-go](https://github.com/graph-gophers/graphql-go) |  graph-gophers   |    0.24     |            28 |          11 |
 |       [gqlgen](https://github.com/99designs/gqlgen)       |    99 Designs    |    1.52     |         >2500 |           6 |
-|      [thunder](https://github.com/samsarahq/thunder)      | Samsara Networks |    1.60     |            21 |           8 |
+|      [thunder](https://github.com/samsarahq/thunder)      | Samsara Networks |    1.60     |            21 |           9 |
 |     [eggql](https://github.com/AndrewWPhillips/eggql)     |   This project   |    0.28     |            14 |           4 |
 
 ## Code Comparison
 
-In all cases I took (or generated for gqlgen) a simple example project and removed anything not needed.  Then I added/modified the required lines of code (see **Written LOC** in the above table).  However, for **thunder** I greatly simplified their "Getting Started" example (halving the code size) to make the comparison fairer.
+In all cases I took (or generated for gqlgen) a simple example project and removed unneeded code specific to that example.  Then I added/modified the required lines of code (see **Written LOC** in the above table).  However, for **thunder** I greatly simplified their "Getting Started" example (halving the code size) to make the comparison fairer.
 
 The **eggql** solution gave the smallest program (and, I believe, simplest to write). It was 14 lines of code in total.  I copied the code from another simple project and modified 4 lines.
 
-**gqlgen** was next best.  Although it generated thousands of lines of code, it only required writing 6 lines of code (3 line schema + 3 line Go function).  However, it took me more than an hour to get the project set up and working, even though this is not the first gqlgen project I have created.
+**gqlgen** was next best.  Although it generated thousands of lines of code, it only required adding 6 lines of code (3 line schema + 3 line Go function).  However, it took me more than an hour to get the project set up and working, even though this is not the first gqlgen project I have created!
 
-In fact all the programs apart from the one using **eggql** took hour(s) to write and get working (but maybe I am a bit slow:).  And, yes, I have previously created at least one other test project using each of these packages.
+In fact all the programs, apart from the one using **eggql**, took hour(s) to write and get working (but maybe I am a bit slow:).  And, yes, I have previously created at least one other test project using each of these packages.
 
 I had the **eggql** project compiled and running in just a few minutes.  Please get back to me if your experience differs.
 
@@ -146,9 +151,11 @@ func main() {
 
 ## gqlgen
 
+Note that this is not the complete code, but includes the manually added changes.  (The complete code is auto-generated and is more than 2,500 lines of code.)
+
 ```graphql
 type Query {
-  random(low: Int! = 1, high: Int! = 100): Int!
+  random(low: Int! = 1, high: Int! = 6): Int!
 }
 ```
 
@@ -214,7 +221,7 @@ import (
 
 func main() {
 	http.Handle("/graphql", eggql.MustRun(struct {
-		Random func(int, int) int `graphql:",args(low=1,high=6)"`
+		Random func(int, int) int `egg:",args(low=1,high=6)"`
 	}{func(low, high int) int { return low + rand.Intn(high+1-low) }}))
 	http.ListenAndServe(":8083", nil)
 }
