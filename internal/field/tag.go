@@ -5,232 +5,135 @@ package field
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
-// SplitArgs splits a string on commas and returns the resulting slice of strings.
-// It ignores commas within strings, round brackets, square brackets or braces, which
-// allows for "nested" structures. For example "a,b(c,d),e"  => []string{ "a", "b(c,d)", "e" }
-// An error is returned if there is a problem with the input string such as unmatched brackets.
-func SplitArgs(s string) ([]string, error) {
-	// First count the number of commas that aren't within brackets
-	var count, round, square, brace int
-	var inString bool
+const (
+	// AllowSubscript etc control which options are allowed TODO: use build tags instead?
+	AllowSubscript = true // "subscript" option generates a resolver to subscript into a list (array/slice/map)
+	AllowFieldID   = true // "field_id" option generates an extra "id" field for queries on a list (array/slice/map)
+)
 
-	for _, c := range s {
-		if inString {
-			if c == '"' {
-				inString = false
+// GetInfoFromTag extracts GraphQL field name and type info from the field's tag (if any)
+// If the tag just contains a dash (-) then nil is returned (no error).  If the tag string is empty
+// (e.g. if no tag was supplied) then the returned Info is not nil but the Name field is empty.
+func GetInfoFromTag(tag string) (*Info, error) {
+	if tag == "-" {
+		return nil, nil // this field is to be ignored
+	}
+	parts, desc, err := SplitWithDesc(tag)
+	if err != nil {
+		return nil, fmt.Errorf("%w splitting tag %q", err, tag)
+	}
+	fieldInfo := &Info{Description: desc}
+	for i, part := range parts {
+		if i == 0 { // first string is the name
+			// Check for enum by splitting on a colon (:)
+			if subParts := strings.Split(part, ":"); len(subParts) > 1 {
+				fieldInfo.Name = subParts[0]
+				fieldInfo.GQLTypeName = subParts[1]
+			} else {
+				fieldInfo.Name = part
 			}
 			continue
 		}
-		switch c {
-		case '"':
-			inString = true
-		case '(':
-			round++
-		case '[':
-			square++
-		case '{':
-			brace++
-		case ')':
-			round--
-			if round < 0 {
-				return nil, fmt.Errorf("unmatched right bracket ')` in %q", s)
-			}
-		case ']':
-			square--
-			if square < 0 {
-				return nil, fmt.Errorf("unmatched right square bracket ']' in %q", s)
-			}
-		case '}':
-			brace--
-			if brace < 0 {
-				return nil, fmt.Errorf("unmatched right brace '}' in %q", s)
-			}
-		case ',':
-			if round == 0 && square == 0 && brace == 0 { // only count "top-level" commas
-				count++
-			}
+		if part == "" {
+			continue // ignore empty sections
 		}
-	}
-	if inString {
-		return nil, fmt.Errorf("unmatched quote (unterminated string) in %q", s)
-	}
-	if round > 0 {
-		return nil, fmt.Errorf("unmatched left bracket '(' in %q", s)
-	}
-	if square > 0 {
-		return nil, fmt.Errorf("unmatched left square bracket '[' in %q", s)
-	}
-	if brace > 0 {
-		return nil, fmt.Errorf("unmatched left brace '{' in %q", s)
-	}
-
-	retval := make([]string, 0, count+1)
-
-	for sepNum := 0; sepNum < count; sepNum++ {
-		// Find the next comma (that's outside brackets)
-		end := -1
-	findComma:
-		for i, c := range s {
-			if inString {
-				if c == '"' {
-					inString = false
+		if subscript := getSubscript(part); subscript != "" {
+			fieldInfo.Subscript = subscript
+			continue
+		}
+		if fieldID := getFieldID(part); fieldID != "" {
+			fieldInfo.FieldID = fieldID
+			continue
+		}
+		if offsetID := getOffsetID(part); offsetID > 0 {
+			fieldInfo.OffsetID = offsetID
+			continue
+		}
+		if part == "nullable" {
+			fieldInfo.Nullable = true
+			continue
+		}
+		if list, err := getBracketedList(part, "args"); err != nil {
+			return nil, fmt.Errorf("%w getting args in %q", err, tag)
+		} else if list != nil {
+			fieldInfo.Args = make([]string, len(list))
+			fieldInfo.ArgTypes = make([]string, len(list))
+			fieldInfo.ArgDefaults = make([]string, len(list))
+			fieldInfo.ArgDescriptions = make([]string, len(list))
+			for paramIndex, s := range list {
+				// Strip description after hash (#)
+				subParts := strings.SplitN(s, "#", 2)
+				s = subParts[0]
+				if len(subParts) > 1 {
+					fieldInfo.ArgDescriptions[paramIndex] = subParts[1]
 				}
-				continue
-			}
-			switch c {
-			case '"':
-				inString = true
-			case '(':
-				round++
-			case '[':
-				square++
-			case '{':
-				brace++
-			case ')':
-				round--
-			case ']':
-				square--
-			case '}':
-				brace--
-			case ',':
-				if round == 0 && square == 0 && brace == 0 {
-					end = i
-					break findComma
+				// Strip of default value (if any) after equals sign (=)
+				subParts = strings.Split(s, "=")
+				s = subParts[0]
+				if len(subParts) > 1 {
+					fieldInfo.ArgDefaults[paramIndex] = strings.Trim(subParts[1], " ")
 				}
-			}
-		}
-		if end == -1 {
-			return nil, fmt.Errorf("comma not found in %q", s)
-		}
-		retval = append(retval, strings.Trim(s[:end], " "))
-		s = s[end+1:]
-	}
-	// Add last (or only) segment
-	retval = append(retval, strings.Trim(s, " "))
+				// Strip of enum name after colon (:)
+				subParts = strings.Split(s, ":")
+				s = subParts[0]
+				if len(subParts) > 1 {
+					fieldInfo.ArgTypes[paramIndex] = strings.Trim(subParts[1], " ")
+				}
 
-	return retval, nil
+				fieldInfo.Args[paramIndex] = strings.Trim(s, " ")
+			}
+			continue
+		}
+		return nil, fmt.Errorf("unknown option %q in %q", part, tag)
+	}
+
+	// We can do a bit of validation here
+	if fieldInfo.OffsetID > 0 && fieldInfo.FieldID == "" {
+		return nil, fmt.Errorf("you can't use 'offset' option without `field_id` (%s)", tag)
+	}
+
+	return fieldInfo, nil
 }
 
-// TODO somehow reduce duplicate code in SplitArgs/SplitWithDesc
+func getSubscript(s string) string {
+	if !AllowSubscript {
+		return ""
+	}
+	if s == "subscript" {
+		return "id" // default field name if none given
+	}
+	if strings.HasPrefix(s, "subscript=") {
+		return strings.TrimPrefix(s, "subscript=")
+	}
+	return ""
+}
 
-// SplitWithDesc is like SplitArgs but also allows a trailing "description" (anything after the first #).
-// On success, it returns a list of strings, the description (if any) and a nil error.
-// A non-nil error is returned if there is a problem with the input string such as unmatched brackets.
-func SplitWithDesc(s string) ([]string, string, error) {
-	// First count the number of commas that aren't within brackets
-	var count, round, square, brace int
-	var inString bool
-	hash := -1
-loop:
-	for i, c := range s {
-		if inString {
-			if c == '"' {
-				inString = false
-			}
-			continue
-		}
-		switch c {
-		case '"':
-			inString = true
-		case '(':
-			round++
-		case '[':
-			square++
-		case '{':
-			brace++
-		case ')':
-			round--
-			if round < 0 {
-				return nil, "", fmt.Errorf("unmatched right bracket ')` in %q", s)
-			}
-		case ']':
-			square--
-			if square < 0 {
-				return nil, "", fmt.Errorf("unmatched right square bracket ']' in %q", s)
-			}
-		case '}':
-			brace--
-			if brace < 0 {
-				return nil, "", fmt.Errorf("unmatched right brace '}' in %q", s)
-			}
-		case ',':
-			if round == 0 && square == 0 && brace == 0 { // only count "top-level" commas
-				count++
-			}
-		case '#':
-			if hash == -1 && round == 0 && square == 0 && brace == 0 { // ignore # in brackets
-				hash = i
-				break loop
-			}
-		}
+func getFieldID(s string) string {
+	if !AllowFieldID {
+		return ""
 	}
-	if inString {
-		return nil, "", fmt.Errorf("unmatched quote (unterminated string) in %q", s)
+	if s == "field_id" {
+		return "id"
 	}
-	if round > 0 {
-		return nil, "", fmt.Errorf("unmatched left bracket '(' in %q", s)
+	if strings.HasPrefix(s, "field_id=") {
+		return strings.TrimPrefix(s, "field_id=")
 	}
-	if square > 0 {
-		return nil, "", fmt.Errorf("unmatched left square bracket '[' in %q", s)
-	}
-	if brace > 0 {
-		return nil, "", fmt.Errorf("unmatched left brace '{' in %q", s)
-	}
+	return ""
+}
 
-	desc := ""
-	if hash > -1 {
-		desc = s[hash+1:]
-		s = s[:hash]
+func getOffsetID(s string) int {
+	if !AllowFieldID {
+		return 0
 	}
-
-	retval := make([]string, 0, count+1)
-
-	for sepNum := 0; sepNum < count; sepNum++ {
-		// Find the next comma (that's outside brackets)
-		end := -1
-	findComma:
-		for i, c := range s {
-			if inString {
-				if c == '"' {
-					inString = false
-				}
-				continue
-			}
-			switch c {
-			case '"':
-				inString = true
-			case '(':
-				round++
-			case '[':
-				square++
-			case '{':
-				brace++
-			case ')':
-				round--
-			case ']':
-				square--
-			case '}':
-				brace--
-			case ',':
-				if round == 0 && square == 0 && brace == 0 {
-					end = i
-					break findComma
-				}
-			}
-		}
-		if end == -1 {
-			return nil, "", fmt.Errorf("comma not found in %q", s)
-		}
-		retval = append(retval, strings.Trim(s[:end], " "))
-		s = s[end+1:]
+	if strings.HasPrefix(s, "offset=") {
+		offset, _ := strconv.Atoi(strings.TrimPrefix(s, "offset="))
+		return offset
 	}
-	// Add last (or only) segment
-	retval = append(retval, strings.Trim(s, " "))
-
-	return retval, desc, nil
+	return 0
 }
 
 // getBracketedList gets a list of values from a string enclosed in brackets and preceded by a keyword
