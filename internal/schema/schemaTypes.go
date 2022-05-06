@@ -20,6 +20,7 @@ type (
 	schema struct {
 		declaration map[string]string       // stores the text declaration of all types generated
 		description map[string]string       // corresponding description of the types
+		idFieldName map[string]string       // if this object is stored in a list this is the name of a fabricated id field
 		usedAs      map[reflect.Type]string // tracks which types (structs) we have seen and their GraphQL "type" (type/input/interface) - this is mainly to handle recursive data structures
 		unions      map[string]union        // key is union name
 		scalars     *[]string               // names of custom scalar types (implement MarshalEGGQL/UnmarshalEGGQL)
@@ -43,6 +44,7 @@ func newSchemaTypes() schema {
 	return schema{
 		declaration: make(map[string]string),
 		description: make(map[string]string),
+		idFieldName: make(map[string]string),
 		usedAs:      make(map[reflect.Type]string),
 		unions:      make(map[string]union),
 		scalars:     &[]string{},
@@ -100,6 +102,14 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 		return nil // ignore it if not a struct (this is *not* an error situation)
 	}
 
+	// if idField has already been used for this struct then check it used the same name (otherwise generated schema is inconsistent)
+	if idField != nil {
+		if previous, ok := s.idFieldName[name]; ok && previous != idField.name {
+			return fmt.Errorf("id_field on %q must have the same name (not %q and %q)", name, previous, idField.name)
+		}
+		s.idFieldName[name] = idField.name
+	}
+
 	// Check if we have already seen this struct
 	if previousType, ok := s.usedAs[t]; ok {
 		if previousType == gqlObjectTypeKeyword && gqlType == gqlInterfaceKeyword {
@@ -133,6 +143,11 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 	}
 	var idTypeName string
 	if idField != nil {
+		// check that none of the resolver names is the same as id field name
+		if _, ok := resolvers[idField.name]; ok {
+			return fmt.Errorf("field %q can't have the same name as 'field_id' of %q", idField.name, name)
+		}
+
 		idTypeName, _, err = s.getTypeName(idField.typ, false)
 		if err != nil {
 			return fmt.Errorf("%w getting type for ID field %q in %q", err, idField.name, name)

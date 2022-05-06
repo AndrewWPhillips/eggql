@@ -81,6 +81,15 @@ func (s schema) validateTypeName(typeName string, enums map[string][]string, t r
 		return true, nil
 	}
 
+	// Check if it's a known union
+	if _, ok := s.unions[typeName]; ok {
+		if t.Kind() != reflect.Struct && t.Kind() != reflect.Interface {
+			// return false, fmt.Errorf("A union (%s) field must return an interface (not %v)", typeName, t.Kind())
+			return false, fmt.Errorf("expecting resolver type %q but got %v", typeName, t.Kind())
+		}
+		return false, nil
+	}
+
 	// Check if it's an object type seen already
 	if _, ok := s.declaration[typeName]; ok {
 		if t.Kind() != reflect.Struct && t.Kind() != reflect.Interface {
@@ -88,14 +97,6 @@ func (s schema) validateTypeName(typeName string, enums map[string][]string, t r
 		}
 		if typeName != t.Name() && t.Name() != "" {
 			return false, fmt.Errorf("Object field (%s) cannot have a resolver of type %q", t.Name(), typeName)
-		}
-		return false, nil
-	}
-
-	// Check if it's a known union
-	if _, ok := s.unions[typeName]; ok {
-		if t.Kind() != reflect.Interface {
-			return false, fmt.Errorf("A union (%s) field must return an interface (not %v)", typeName, t.Kind())
 		}
 		return false, nil
 	}

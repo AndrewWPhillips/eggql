@@ -306,15 +306,15 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 			// Call the Marshal method, ie: func (T) MarshalEGGQL() (string, error)
 			valueString, err = v.Interface().(field.Marshaler).MarshalEGGQL()
 			if err != nil {
-				return &gqlValue{err: fmt.Errorf("%w marshaling custom scalar %q", err, v.Type().Name())}
+				return &gqlValue{err: fmt.Errorf("%w marshaling custom scalar %q", err, t.Name())}
 			}
 		} else if pt.Implements(reflect.TypeOf((*field.Marshaler)(nil)).Elem()) {
 			// In case Marshal method uses ptr receiver (value receiver preferred) ie: func (*T) MarshalEGGQL() (string, error)
-			tmp := reflect.New(v.Type()) // we have to make an addressable copy of v so we can call with ptr receiver
+			tmp := reflect.New(t) // we have to make an addressable copy of v so we can call with ptr receiver
 			tmp.Elem().Set(v)
 			valueString, err = tmp.Interface().(field.Marshaler).MarshalEGGQL()
 			if err != nil {
-				return &gqlValue{err: fmt.Errorf("%w marshalling pointer to custom scalar %q", err, v.Type().Name())}
+				return &gqlValue{err: fmt.Errorf("%w marshalling pointer to custom scalar %q", err, t.Name())}
 			}
 		} else if t.Implements(reflect.TypeOf((*fmt.Stringer)(nil)).Elem()) {
 			// func (T) String() string - method is present
@@ -325,7 +325,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		return &gqlValue{name: astField.Alias, value: valueString}
 	}
 
-	switch v.Type().Kind() {
+	switch t.Kind() {
 	case reflect.Struct:
 		// Check if we have to fabricate an "id" field
 		var id *idField
@@ -340,19 +340,32 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		}
 
 	case reflect.Map:
-		// resolve for all values in the map
-		results := make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
-		for it := v.MapRange(); it.Next(); {
-			if value := op.resolve(ctx, astField, it.Value(), it.Key(), fieldInfo); value != nil {
-				results = append(results, value.value)
+		var results []interface{}
+		if v.IsNil() {
+			if !fieldInfo.Nullable {
+				return &gqlValue{err: fmt.Errorf("returning null when list %q is not nullable", astField.Alias)}
+			}
+			// else return nil (for null list)
+		} else {
+			// resolve for all values in the map
+			results = make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
+			for it := v.MapRange(); it.Next(); {
+				if value := op.resolve(ctx, astField, it.Value(), it.Key(), fieldInfo); value != nil {
+					results = append(results, value.value)
+				}
 			}
 		}
 		return &gqlValue{name: astField.Alias, value: results}
 
 	case reflect.Slice, reflect.Array:
-		// resolve for all values in the list
 		var results []interface{}
-		if v.Type().Kind() == reflect.Array || !v.IsNil() {
+		if t.Kind() == reflect.Slice && v.IsNil() {
+			if !fieldInfo.Nullable {
+				return &gqlValue{err: fmt.Errorf("returning null when list %q is not nullable", astField.Alias)}
+			}
+			// else return nil (for null list)
+		} else {
+			// resolve for all values in the list
 			results = make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
 			for i := 0; i < v.Len(); i++ {
 				if value := op.resolve(ctx, astField, v.Index(i), reflect.ValueOf(i), fieldInfo); value != nil {
