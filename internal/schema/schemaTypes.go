@@ -58,9 +58,10 @@ func newSchemaTypes() schema {
 //   t = the Go type used to generate the GraphQL type declaration
 //   enums = enums map (just used to make sure an enum name is valid)
 //   gqlType = "type" for a GraphQL object or "input", "interface", etc
-//   idField = info for "id" field to be added to an object
-// Returns an error if the type could not be added - currently this only happens if the same struct is
-//   used as an "input" type (ie resolver parameter) and as an "object" or "interface" type
+//   idField = info for "id" field to be added to an object (or nil if not in a list)
+// Returns an error if the type could not be added - this may happen if the same struct is
+//   used as an "input" type (ie resolver parameter) and as an "object" or "interface" type or
+//   there is an error with the field declarations
 func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlType string, idField *objectField,
 ) error {
 	needName := name == ""
@@ -102,16 +103,25 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 		return nil // ignore it if not a struct (this is *not* an error situation)
 	}
 
+	var force bool // Do we need to force regeneration due to field_id not being present in the previous declaration
+
 	// if idField has already been used for this struct then check it used the same name (otherwise generated schema is inconsistent)
 	if idField != nil {
-		if previous, ok := s.idFieldName[name]; ok && previous != idField.name {
-			return fmt.Errorf("id_field on %q must have the same name (not %q and %q)", name, previous, idField.name)
+		if previous, ok := s.idFieldName[name]; ok {
+			if previous != idField.name {
+				// id_field used in previous declaration has a different name
+				return fmt.Errorf("id_field on %q must have the same name (not %q and %q)", name, previous, idField.name)
+			}
+			// no need to force regeneration as it will be the same
+		} else {
+			force = true // force regeneration so we also get the fabricated "id" field
 		}
 		s.idFieldName[name] = idField.name
 	}
 
-	// Check if we have already seen this struct
+	// Check if we have already seen this struct so we don't need to regenerate it
 	if previousType, ok := s.usedAs[t]; ok {
+		// Already seen but check that we are not using it in an incompatible way
 		if previousType == gqlObjectTypeKeyword && gqlType == gqlInterfaceKeyword {
 			// switch type of declaration from "type" to "interface"
 			s.usedAs[t] = gqlInterfaceKeyword
@@ -123,7 +133,10 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 		} else if previousType != gqlType {
 			return fmt.Errorf("can't use %q for different GraphQL types (%s and %s)", name, previousType, gqlType)
 		}
-		return nil // already done
+		if !force {
+			return nil // we already have the correct declaration
+		}
+		delete(s.declaration, name) // remove it, to be regenerated
 	}
 	s.usedAs[t] = gqlType
 
@@ -352,7 +365,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 				if strings.HasPrefix(fieldInfo.GQLTypeName, "[]") { // probably used []Type when [Type] was meant
 					help = fmt.Sprintf("(did you mean %s)", "["+fieldInfo.GQLTypeName[2:]+"]")
 				}
-				err = fmt.Errorf("resolver type (%s) of field %q not found: %w %s", fieldInfo.GQLTypeName, fieldInfo.Name, err2, help)
+				err = fmt.Errorf("%w: resolver type (%s) of field %q: %s", err2, fieldInfo.GQLTypeName, fieldInfo.Name, help)
 				return
 			}
 		}

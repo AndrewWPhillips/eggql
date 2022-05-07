@@ -36,6 +36,10 @@ type (
 	QueryFieldID struct {
 		Slice []QueryString `egg:",field_id"`
 	}
+	QueryFieldID2 struct {
+		S1 []QueryString
+		S2 []QueryString `egg:",field_id"` // make sure "id" field as added for when QueryString is added the 2nd time
+	}
 	QueryMapFieldID struct {
 		Map map[int]QueryString `egg:",field_id"`
 	}
@@ -240,6 +244,10 @@ func TestBuildSchema(t *testing.T) {
 		"SliceFieldID": {
 			QueryFieldID{}, "schema{ query:QueryFieldID }" +
 				"type QueryFieldID{ slice:[QueryString!]! } type QueryString{ id:Int! m:String! }",
+		},
+		"SliceFieldID2": {
+			QueryFieldID2{}, "schema{ query:QueryFieldID2 }" +
+				"type QueryFieldID2{ s1:[QueryString!]! s2:[QueryString!]! } type QueryString{ id:Int! m:String! }",
 		},
 		"MapFieldID": {
 			QueryMapFieldID{}, "schema{ query:QueryMapFieldID }" +
