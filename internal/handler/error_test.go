@@ -105,7 +105,7 @@ func TestErrors(t *testing.T) {
 				return
 			}
 
-			// Check that the resulting GraphQL result (error and data)
+			// Check the GraphQL result (error and data)
 			if len(result.Data) > 0 {
 				Assertf(t, false, "Expected no data and got %v", result.Data)
 			}

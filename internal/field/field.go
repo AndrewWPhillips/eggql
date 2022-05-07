@@ -16,6 +16,9 @@ import (
 const TagKey = "egg"
 
 type (
+	// ID indicates that a field is to be used as a GraphQL ID type
+	ID string
+
 	// Unmarshaler must be implemented by custom scalar types to decode a string into the type
 	// It must be able to handle a string created with MarshalerEGGQL() (below) [or String() if there is no marshaler]
 	Unmarshaler interface {

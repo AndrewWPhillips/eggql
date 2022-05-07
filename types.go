@@ -5,13 +5,15 @@ package eggql
 import (
 	"fmt"
 	"time"
+
+	"github.com/andrewwphillips/eggql/internal/field"
 )
 
 // ID is used when a standard GraphQL ID type is required.
 // An ID can be used like any other scalar (Int, etc) as a field type, resolver argument type etc.
 // It is typically used for a field that uniquely identifies an object, but it is up to the server
 // to guarantee uniqueness. It is stored as a string but can be encoded from an integer or string.
-type ID string
+type ID = field.ID
 
 // TagHolder is used to declare a field with name "_" (underscore) in a struct to allow metadata (tags)
 // to be attached to a struct.  (Metadata can only be attached to fields, so we use an "_" field

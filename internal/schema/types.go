@@ -151,7 +151,7 @@ func (s schema) getTypeName(t reflect.Type, nullable bool) (name string, isScala
 		name = "Float"
 		isScalar = true
 	case reflect.String:
-		if t.Name() == "ID" && strings.HasSuffix(t.PkgPath(), "/eggql") {
+		if t.Name() == "ID" && strings.Contains(t.PkgPath(), "eggql") {
 			name = "ID"
 		} else {
 			name = "String"
@@ -179,7 +179,7 @@ func (s schema) getTypeName(t reflect.Type, nullable bool) (name string, isScala
 		name = "[" + name + "]"
 	case reflect.Interface:
 		// Nothing needed here - return empty name and no error.  This is for GraphQL "interface" fields where
-		// the Gofunc returns and interface{} but we don't know the type name, or whether it is a scalar or not
+		// the Go func returns an interface{} but we don't know the type name, or whether it is a scalar or not
 	default:
 		err = errors.New("unhandled type " + t.Name())
 	}

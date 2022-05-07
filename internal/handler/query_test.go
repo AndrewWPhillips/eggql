@@ -238,6 +238,13 @@ func TestQuery(t *testing.T) {
 			argsSchema, paramData, `{ dbl(v: 21) }`, "",
 			JsonObject{"dbl": 42.0},
 		},
+		"ArgID": {
+			"type Query { f(id: ID!): String! }",
+			struct {
+				F func(eggql.ID) string `egg:",args(id)"`
+			}{func(id eggql.ID) string { return string(id) }}, `{ f(id: 123) }`, "",
+			JsonObject{"f": "123"},
+		},
 		"Arg2": {
 			args2Schema, param2ArgData, `{ f(i:7, s:\"abc\") }`, "",
 			JsonObject{"f": "abc7"},

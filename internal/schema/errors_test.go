@@ -147,7 +147,7 @@ func TestSchemaErrors(t *testing.T) {
 		"UnknownEnum": {
 			struct {
 				Fg func() int8 `egg:":EnumUnknown"`
-			}{}, nil, "not found",
+			}{}, nil, "not known",
 		},
 		"EnumNotInt": {
 			struct {
