@@ -269,7 +269,6 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		if len(astField.Arguments) != 1 || astField.Arguments[0].Name != fieldInfo.Subscript {
 			return &gqlValue{err: fmt.Errorf("subscript resolver %q must supply an argument called %q", fieldInfo.Name, fieldInfo.Subscript)}
 		}
-		// TODO: check if we should allow an enum as a subscript
 		arg, err := op.getValue(fieldInfo.ElementType, fieldInfo.Subscript, "", astField.Arguments[0].Value.Raw)
 		if err != nil {
 			return &gqlValue{err: err}
@@ -331,6 +330,10 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		var id *idField
 		if fieldInfo.FieldID != "" {
 			id = &idField{name: fieldInfo.FieldID, value: vID}
+			if fieldInfo.OffsetID > 0 {
+				offset := vID.Interface().(int) + fieldInfo.OffsetID
+				id.value = reflect.ValueOf(offset)
+			}
 		}
 		// Look up all sub-queries in this object
 		if result, err := op.GetSelections(ctx, astField.SelectionSet, v, reflect.Value{}, nil, id); err != nil {

@@ -65,6 +65,9 @@ type (
 	QueryMapFieldID struct {
 		M map[string]Element `egg:",field_id"`
 	}
+	QueryOffsetID struct {
+		S []Element `egg:",field_id,offset=100"`
+	}
 
 	// U is embedded in other structs to implement a union
 	U  struct{}
@@ -141,8 +144,9 @@ var (
 		Slice: []string{"zero", "", "two"},
 		Map:   map[string]float64{"pi": 3.14159265359, "root2": 1.41421356237},
 	}
-	sliceFieldID = QuerySliceFieldID{[]Element{{11}, {12}}}
-	mapFieldID   = QueryMapFieldID{map[string]Element{"a": {1}}}
+	sliceFieldID  = QuerySliceFieldID{[]Element{{11}, {12}}}
+	mapFieldID    = QueryMapFieldID{map[string]Element{"a": {1}}}
+	sliceOffsetID = QueryOffsetID{[]Element{{21}, {22}}}
 )
 
 func (p *ParentRef) valueFunc() int {
@@ -404,6 +408,10 @@ func TestQuery(t *testing.T) {
 		"MapFieldID2": {
 			mapFieldSchema, mapFieldID, `{ m { b id } }`, "",
 			JsonObject{"m": []interface{}{JsonObject{"b": 1.0, "id": "a"}}},
+		},
+		"SliceOffsetID": {
+			sliceFieldSchema, sliceOffsetID, `{ s { id b } }`, "",
+			JsonObject{"s": []interface{}{JsonObject{"id": 100.0, "b": 21.0}, JsonObject{"id": 101.0, "b": 22.0}}},
 		},
 	}
 

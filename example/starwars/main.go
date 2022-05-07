@@ -45,6 +45,9 @@ type (
 		// 1st field of the struct and is declared as a zero-length array it uses no memory.
 		_ [0]Character
 
+		// Humans returns a list of all humans
+		Humans []Human `egg:",field_id,offset=1000"`
+
 		// Hero is a function used to implement the GraphQL resolver: "hero(episode: Episode = JEDI): Character", where:
 		//   hero = the resolver name taken from the 1st tag option (but could have been deduced from the field name "Hero")
 		//   episode = the name of the resolver argument (can't be deduced from the func parameter name as Go reflection only includes types, not names, of parameters)
@@ -57,7 +60,7 @@ type (
 		// Human is a function used to implement the GraphQl resolver: "human(id: Int! = 1000): Human"
 		//   human = the resolver name, derived from the field name "Human", with the 1st letter lower-cased
 		//   id = the first (and only) argument name obtained from the "args" option
-		//   Int! = the type of the argument, deduced from the func's parameter is an integer type (int, int8, uint, ect)
+		//   Int! = the type of the argument, deduced from the func's parameter is an integer type (int, int8, uint, etc)
 		//   1000 = default value for id, which means that Luke is returned is the argument is not given in a query
 		//   Human = return type, deduced from the 1st return value of the func (nullable because a pointer is returned)
 		Human func(int) (*Human, error) `egg:",args(id = 1000)"`
@@ -300,6 +303,7 @@ func main() {
 				}
 				return &humans[ID], nil
 			},
+			Humans: humans,
 			Droid: func(ID int) (*Droid, error) {
 				ID -= FirstDroidID
 				if ID < 0 || ID >= len(droids) {
