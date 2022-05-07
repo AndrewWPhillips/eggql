@@ -95,7 +95,7 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 				return "", errors.New("More than 3 structs provided for schema (can only have query, mutation, subscription)")
 			}
 		}
-		if err := schemaTypes.add(entry[i], t, enums, gqlObjectTypeKeyword); err != nil {
+		if err := schemaTypes.add(entry[i], t, enums, gqlObjectTypeKeyword, nil); err != nil {
 			return "", fmt.Errorf("%w adding entry point %d %q", err, i, entry[i])
 		}
 	}

@@ -353,7 +353,11 @@ func (op *gqlOperation) getInt(t reflect.Type, i int64) (reflect.Value, error) {
 	case reflect.Float64:
 		return reflect.ValueOf(float64(i)), nil
 	case reflect.String:
-		return reflect.ValueOf(strconv.FormatInt(i, 10)), nil
+		s := strconv.FormatInt(i, 10)
+		if t.Name() == "ID" {
+			return reflect.ValueOf(field.ID(s)), nil
+		}
+		return reflect.ValueOf(s), nil
 	}
 	return reflect.Value{}, errors.New("TODO")
 }
@@ -428,6 +432,9 @@ func (op *gqlOperation) getString(t reflect.Type, s string) (reflect.Value, erro
 		floatValue, err := strconv.ParseFloat(s, 64)
 		return reflect.ValueOf(floatValue), err
 	case reflect.String:
+		if t.Name() == "ID" {
+			return reflect.ValueOf(field.ID(s)), nil
+		}
 		return reflect.ValueOf(s), nil
 	}
 

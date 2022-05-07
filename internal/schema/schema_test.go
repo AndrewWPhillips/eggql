@@ -27,12 +27,22 @@ type (
 	QueryNested     struct{ Str QueryString }
 	QueryTypeReuse  struct{ Q1, Q2 QueryString }
 	QueryPtr        struct{ Ptr QueryInt }
-	QueryList       struct{ List []int }
 	QueryList2      struct{ List []QueryString }
 	QueryAnonNested struct{ Anon struct{ B byte } } // anon type - should use field name as "type" name
 
-	QuerySlice     struct{ Slice []int }
-	QueryMap       struct{ Map map[string]int }
+	QuerySlice   struct{ Slice []int }
+	QueryMap     struct{ Map map[string]int }
+	QueryFieldID struct {
+		Slice []QueryString `egg:",field_id"`
+	}
+	QueryFieldID2 struct {
+		S1 []QueryString
+		S2 []QueryString `egg:",field_id"` // make sure "id" field as added for when QueryString is added the 2nd time
+	}
+	QueryMapFieldID struct {
+		Map map[int]QueryString `egg:",field_id"`
+	}
+
 	QueryIntFunc   struct{ F func() int }
 	QueryBoolFunc  struct{ F func() bool }
 	QueryErrorFunc struct{ F func() (int, error) }
@@ -127,7 +137,7 @@ type (
 		Slice []string `egg:",subscript"`
 	}
 	QuerySubscriptArray struct {
-		A [3]bool `egg:",subscript="`
+		A [3]bool `egg:",subscript"`
 	}
 	QuerySubscriptMap struct {
 		M map[string]float64 `egg:",subscript=s"`
@@ -201,10 +211,16 @@ func TestBuildSchema(t *testing.T) {
 		data     interface{}
 		expected string
 	}{
-		"List": {QueryList{}, "schema{ query:QueryList } type QueryList{ list:[Int!]! }"},
+		"List1": {struct{ List []int }{}, "type Query{list:[Int!]!}"},
 		"List2": {
 			QueryList2{},
 			"schema{query:QueryList2} type QueryList2{list:[QueryString!]!} type QueryString{m:String!}",
+		},
+		"ListNullable": {
+			struct {
+				List []*int `egg:",nullable"`
+			}{nil},
+			"type Query{list:[Int]}",
 		},
 		"Empty":     {QueryEmpty{}, "schema{ query:QueryEmpty } type QueryEmpty{}"},
 		"String":    {QueryString{}, "schema{ query:QueryString } type QueryString{ m:String! }"},
@@ -228,8 +244,20 @@ func TestBuildSchema(t *testing.T) {
 			QueryAnonNested{}, "schema{ query:QueryAnonNested }" +
 				"type Anon{ b:Int! } type QueryAnonNested{ anon:Anon! }",
 		},
-		"Slice":     {QuerySlice{}, "schema{ query:QuerySlice } type QuerySlice{ slice:[Int!]! }"},
-		"Map":       {QueryMap{}, "schema{ query:QueryMap } type QueryMap{ map:[Int!]! }"},
+		"Slice": {QuerySlice{}, "schema{ query:QuerySlice } type QuerySlice{ slice:[Int!]! }"},
+		"Map":   {QueryMap{}, "schema{ query:QueryMap } type QueryMap{ map:[Int!]! }"},
+		"SliceFieldID": {
+			QueryFieldID{}, "schema{ query:QueryFieldID }" +
+				"type QueryFieldID{ slice:[QueryString!]! } type QueryString{ id:Int! m:String! }",
+		},
+		"SliceFieldID2": {
+			QueryFieldID2{}, "schema{ query:QueryFieldID2 }" +
+				"type QueryFieldID2{ s1:[QueryString!]! s2:[QueryString!]! } type QueryString{ id:Int! m:String! }",
+		},
+		"MapFieldID": {
+			QueryMapFieldID{}, "schema{ query:QueryMapFieldID }" +
+				"type QueryMapFieldID{ map:[QueryString!]! } type QueryString{ id:Int! m:String! }",
+		},
 		"Int Func":  {QueryIntFunc{}, "schema{ query:QueryIntFunc } type QueryIntFunc{ f:Int! }"},
 		"BoolFunc":  {QueryBoolFunc{}, "schema{ query:QueryBoolFunc } type QueryBoolFunc{ f:Boolean! }"},
 		"ErrorFunc": {QueryErrorFunc{}, "schema{ query:QueryErrorFunc } type QueryErrorFunc{ f:Int! }"},

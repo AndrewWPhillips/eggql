@@ -5,12 +5,13 @@ package handler
 import (
 	"context"
 	"fmt"
+	"reflect"
+
 	"github.com/dolmen-go/jsonmap"
 	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	"github.com/vektah/gqlparser/v2/parser"
 	"github.com/vektah/gqlparser/v2/validator"
-	"reflect"
 )
 
 type (
@@ -83,7 +84,7 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 		default:
 			panic("unexpected")
 		}
-		result, err := op.GetSelections(ctx, operation.SelectionSet, v, vIntro, introOp)
+		result, err := op.GetSelections(ctx, operation.SelectionSet, v, vIntro, introOp, nil)
 
 		// TODO: don't stop on 1st error but record all errors to save the client debug time
 		if err != nil {

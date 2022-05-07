@@ -13,10 +13,10 @@ func TestGetTagInfo(t *testing.T) {
 		in  string
 		exp field.Info // Expected results
 	}{
-		"Empty":  {``, field.Info{}},
-		"Empty2": {`,`, field.Info{}},
-		"Empty3": {`,,`, field.Info{}},
-		//"Nullable": {`,nullable`, field.Info{Nullable: true}},
+		"Empty":    {``, field.Info{}},
+		"Empty2":   {`,`, field.Info{}},
+		"Empty3":   {`,,`, field.Info{}},
+		"Nullable": {`,nullable`, field.Info{Nullable: true}},
 		"All": {
 			`a, args(b:d=f,c:e=g)`, field.Info{
 				Name: "a", Args: []string{"b", "c"}, ArgTypes: []string{"d", "e"}, ArgDefaults: []string{"f", "g"},
@@ -88,8 +88,8 @@ func TestGetTagInfo(t *testing.T) {
 				ArgDescriptions: []string{"", "", ""},
 			},
 		},
-		"Subscript":      {`,subscript`, field.Info{Subscript: "id"}},
-		"SubscriptEmpty": {`,subscript=`, field.Info{Subscript: "id"}},
+		"Subscript": {`,subscript`, field.Info{Subscript: "id"}},
+		//"SubscriptEmpty": {`,subscript=`, field.Info{Subscript: "id"}},  // now an error since it could catch a typo
 		"SubscriptNamed": {`,subscript=idx`, field.Info{Subscript: "idx"}},
 		"FieldDesc":      {`# abc`, field.Info{Description: " abc"}},
 		"ArgDesc": {
@@ -111,7 +111,7 @@ func TestGetTagInfo(t *testing.T) {
 
 	for name, data := range testData {
 		t.Run(name, func(t *testing.T) {
-			got, err := field.GetTagInfo(data.in)
+			got, err := field.GetInfoFromTag(data.in)
 			if err != nil {
 				Assertf(t, err == nil, "Error    : expected no error got %v", err)
 				return

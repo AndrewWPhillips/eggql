@@ -81,21 +81,22 @@ func (s schema) validateTypeName(typeName string, enums map[string][]string, t r
 		return true, nil
 	}
 
-	// Check if it's an object type seen already
-	if _, ok := s.declaration[typeName]; ok {
+	// Check if it's a known union
+	if _, ok := s.unions[typeName]; ok {
 		if t.Kind() != reflect.Struct && t.Kind() != reflect.Interface {
-			return false, fmt.Errorf("An object (%s) field must have a struct/interface resolver (not %v)", typeName, t.Kind())
-		}
-		if typeName != t.Name() && t.Name() != "" {
-			return false, fmt.Errorf("Object field (%s) cannot have a resolver of type %q", t.Name(), typeName)
+			// return false, fmt.Errorf("A union (%s) field must return an interface (not %v)", typeName, t.Kind())
+			return false, fmt.Errorf("expecting resolver type %q but got %v", typeName, t.Kind())
 		}
 		return false, nil
 	}
 
-	// Check if it's a known union
-	if _, ok := s.unions[typeName]; ok {
-		if t.Kind() != reflect.Interface {
-			return false, fmt.Errorf("A union (%s) field must return an interface (not %v)", typeName, t.Kind())
+	// Check if it's an object type seen already
+	if _, ok := s.declaration[typeName]; ok {
+		if t.Kind() != reflect.Struct && t.Kind() != reflect.Interface {
+			return false, fmt.Errorf("expecting resolver type %q but got %v", typeName, t.Kind())
+		}
+		if typeName != t.Name() && t.Name() != "" {
+			return false, fmt.Errorf("Object field (%s) cannot have a resolver of type %q", t.Name(), typeName)
 		}
 		return false, nil
 	}
@@ -150,7 +151,7 @@ func (s schema) getTypeName(t reflect.Type, nullable bool) (name string, isScala
 		name = "Float"
 		isScalar = true
 	case reflect.String:
-		if t.Name() == "ID" && strings.HasSuffix(t.PkgPath(), "/eggql") {
+		if t.Name() == "ID" && strings.Contains(t.PkgPath(), "eggql") {
 			name = "ID"
 		} else {
 			name = "String"
@@ -172,13 +173,13 @@ func (s schema) getTypeName(t reflect.Type, nullable bool) (name string, isScala
 			return
 		}
 		if name == "" {
-			err = errors.New("bad element type for slice/array/map " + t.Name())
+			err = errors.New("element type unknown for slice/array/map " + t.Name())
 			return
 		}
 		name = "[" + name + "]"
 	case reflect.Interface:
 		// Nothing needed here - return empty name and no error.  This is for GraphQL "interface" fields where
-		// the Gofunc returns and interface{} but we don't know the type name, or whether it is a scalar or not
+		// the Go func returns an interface{} but we don't know the type name, or whether it is a scalar or not
 	default:
 		err = errors.New("unhandled type " + t.Name())
 	}

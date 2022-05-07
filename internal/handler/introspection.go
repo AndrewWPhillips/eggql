@@ -53,7 +53,7 @@ type (
 	gqlType struct {
 		Kind              int `egg:"kind:__TypeKind"`
 		Name, Description string
-		Fields            func() []gqlField
+		Fields            func() []gqlField `egg:",nullable"`
 		Interfaces        func() []gqlType
 		PossibleTypes     func() []gqlType
 		//EnumValues        func(bool) []gqlEnumValue `egg:",args(includeDeprecated=false)"`
@@ -104,8 +104,12 @@ type (
 var IntroEnums = map[string][]string{
 	"__TypeKind": {"SCALAR", "OBJECT", "INTERFACE", "UNION", "ENUM", "INPUT_OBJECT", "LIST", "NON_NULL"},
 
-	"__DirectiveLocation": {"QUERY", "MUTATION", "SUBSCRIPTION", "FIELD", "FRAGMENT_DEFINITION", "FRAGMENT_SPREAD", "INLINE_FRAGMENT", "SCHEMA",
-		"SCALAR", "OBJECT", "FIELD_DEFINITION", "ARGUMENT_DEFINITION", "INTERFACE", "UNION", "ENUM", "ENUM_VALUE", "INPUT_OBJECT", "INPUT_FIELD_DEFINITION"},
+	"__DirectiveLocation": {
+		"QUERY", "MUTATION", "SUBSCRIPTION", "FIELD", "FRAGMENT_DEFINITION", "FRAGMENT_SPREAD", "INLINE_FRAGMENT",
+		"SCHEMA",
+		"SCALAR", "OBJECT", "FIELD_DEFINITION", "ARGUMENT_DEFINITION", "INTERFACE", "UNION", "ENUM", "ENUM_VALUE",
+		"INPUT_OBJECT", "INPUT_FIELD_DEFINITION",
+	},
 }
 
 // IntroEnumsReverse stores the same enums as IntroEnum, as maps for reverse lookup of int values

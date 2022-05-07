@@ -17,6 +17,8 @@ type (
 		S string `egg:"@9"`
 	}
 	Embedded      struct{ M string }
+	Union         struct{}
+	UnionMember   struct{ Union }
 	InputDefaults struct {
 		Id string `egg:"id:ID"`
 		En int    `egg:"e:Unit"`
@@ -57,12 +59,13 @@ func TestSchemaErrors(t *testing.T) {
 		enums   map[string][]string
 		problem string
 	}{
-		"NonStruct":    {1, nil, "must be struct"},
-		"BadType":      {struct{ C complex128 }{}, nil, "unhandled type"},
-		"BadType2":     {struct{ C []interface{} }{}, nil, "bad element type"},
-		"BadSliceType": {struct{ C []complex128 }{}, nil, "unhandled type"},
-		"DupeQuery":    {struct{ Q Query }{}, nil, "same name"}, // two different types with same name "Query"
-		"NoArgs":       {struct{ F func(int) bool }{}, nil, "no args"},
+		"NonStruct":     {1, nil, "must be struct"},
+		"BadType":       {struct{ C complex128 }{}, nil, "unhandled type"},
+		"BadSliceType":  {struct{ C []interface{} }{}, nil, "element type unknown"},
+		"BadSliceType2": {struct{ C []complex128 }{}, nil, "unhandled type"},
+		"BadPtrType":    {struct{ C *complex128 }{}, nil, "unhandled type complex128"},
+		"DupeQuery":     {struct{ Q Query }{}, nil, "same name"}, // two different types with same name "Query"
+		"NoArgs":        {struct{ F func(int) bool }{}, nil, "no args"},
 		"TooFewArgs": {
 			struct {
 				F func(int, int) bool `egg:",args(a)"`
@@ -99,7 +102,7 @@ func TestSchemaErrors(t *testing.T) {
 				Query `egg:":SingleInt"`
 			}{}, nil, "same name",
 		},
-		"BadInterface": {struct{ QueryBadName }{}, nil, "not a valid name"},
+		"InvalidTypeName": {struct{ QueryBadName }{}, nil, "not a valid name"},
 		"BadReserved": {
 			struct {
 				Message string `egg:"__message"`
@@ -144,7 +147,7 @@ func TestSchemaErrors(t *testing.T) {
 		"UnknownEnum": {
 			struct {
 				Fg func() int8 `egg:":EnumUnknown"`
-			}{}, nil, "not found",
+			}{}, nil, "not known",
 		},
 		"EnumNotInt": {
 			struct {
@@ -286,8 +289,14 @@ func TestSchemaErrors(t *testing.T) {
 		"TypeStruct3": {
 			struct {
 				_ SingleInt
-				V complex64 `egg:":SingleInt"`
-			}{}, nil, "must have a struct/interface resolver",
+				V int `egg:":SingleInt"`
+			}{}, nil, `expecting resolver type "SingleInt" but got int`,
+		},
+		"TypeUnion": {
+			struct {
+				_ UnionMember // this is to find embedded "Union" (so it knows it's for a GraphQL union)
+				V int         `egg:":Union"`
+			}{}, nil, `expecting resolver type "Union" but got int`,
 		},
 		"SubscriptOption1": {
 			struct {
@@ -429,6 +438,17 @@ func TestSchemaErrors(t *testing.T) {
 			struct {
 				F func(defaults InputDefaults) int `egg:",args(in={id:\"4-7\",e:FOOT,sc:abc})"`
 			}{}, enums, "not valid for custom scalar",
+		},
+		"IDSameAsFieldName": {
+			struct {
+				Slice []SingleInt `egg:",field_id=i"`
+			}{}, enums, "can't have the same name",
+		},
+		"DifferentIDSameObject": {
+			struct {
+				S1 []SingleInt `egg:",field_id=id"`
+				S2 []SingleInt `egg:",field_id=id2"`
+			}{}, enums, "must have the same name",
 		},
 	}
 

@@ -35,6 +35,8 @@ const (
 	union3Schema         = "type Query { c: [U] } type U1 { v: Int! } type U2 { v: Int! w: String!} union U = U1|U2"
 	subscriptSlice       = "schema {query: QuerySubscript} type QuerySubscript { slice(id: Int!): String! }"
 	subscriptMap         = "schema {query: QuerySubscript} type QuerySubscript { map(number: String!): Float! }"
+	sliceFieldSchema     = "schema {query:QuerySliceFieldID} type QuerySliceFieldID{ s:[Element]! } type Element{ id:String! b:Int!}"
+	mapFieldSchema       = "schema {query:QueryMapFieldID} type QueryMapFieldID{ m:[Element]! } type Element{ id:String! b:Int!}"
 )
 
 type (
@@ -54,6 +56,17 @@ type (
 	D struct {
 		X
 		E string
+	}
+
+	Element           struct{ B byte }
+	QuerySliceFieldID struct {
+		S []Element `egg:",field_id"`
+	}
+	QueryMapFieldID struct {
+		M map[string]Element `egg:",field_id"`
+	}
+	QueryOffsetID struct {
+		S []Element `egg:",field_id,base=100"`
 	}
 
 	// U is embedded in other structs to implement a union
@@ -131,6 +144,9 @@ var (
 		Slice: []string{"zero", "", "two"},
 		Map:   map[string]float64{"pi": 3.14159265359, "root2": 1.41421356237},
 	}
+	sliceFieldID  = QuerySliceFieldID{[]Element{{11}, {12}}}
+	mapFieldID    = QueryMapFieldID{map[string]Element{"a": {1}}}
+	sliceOffsetID = QueryOffsetID{[]Element{{21}, {22}}}
 )
 
 func (p *ParentRef) valueFunc() int {
@@ -221,6 +237,13 @@ func TestQuery(t *testing.T) {
 		"ArgInt": {
 			argsSchema, paramData, `{ dbl(v: 21) }`, "",
 			JsonObject{"dbl": 42.0},
+		},
+		"ArgID": {
+			"type Query { f(id: ID!): String! }",
+			struct {
+				F func(eggql.ID) string `egg:",args(id)"`
+			}{func(id eggql.ID) string { return string(id) }}, `{ f(id: 123) }`, "",
+			JsonObject{"f": "123"},
 		},
 		"Arg2": {
 			args2Schema, param2ArgData, `{ f(i:7, s:\"abc\") }`, "",
@@ -376,6 +399,26 @@ func TestQuery(t *testing.T) {
 		"SubscriptMap": {
 			subscriptMap, subscript, `{ map(number:\"pi\") }`, "",
 			JsonObject{"map": 3.14159265359},
+		},
+		"SliceFieldID": {
+			sliceFieldSchema, sliceFieldID, `{ s { id b } }`, "",
+			JsonObject{"s": []interface{}{JsonObject{"id": 0.0, "b": 11.0}, JsonObject{"id": 1.0, "b": 12.0}}},
+		},
+		"MapFieldID": {
+			mapFieldSchema, mapFieldID, `{ m { id } }`, "",
+			JsonObject{"m": []interface{}{JsonObject{"id": "a"}}},
+		},
+		"MapFieldID1": {
+			mapFieldSchema, mapFieldID, `{ m { b } }`, "",
+			JsonObject{"m": []interface{}{JsonObject{"b": 1.0}}},
+		},
+		"MapFieldID2": {
+			mapFieldSchema, mapFieldID, `{ m { b id } }`, "",
+			JsonObject{"m": []interface{}{JsonObject{"b": 1.0, "id": "a"}}},
+		},
+		"SliceOffsetID": {
+			sliceFieldSchema, sliceOffsetID, `{ s { id b } }`, "",
+			JsonObject{"s": []interface{}{JsonObject{"id": 100.0, "b": 21.0}, JsonObject{"id": 101.0, "b": 22.0}}},
 		},
 	}
 

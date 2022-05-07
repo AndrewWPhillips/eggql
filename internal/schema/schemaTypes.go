@@ -20,9 +20,16 @@ type (
 	schema struct {
 		declaration map[string]string       // stores the text declaration of all types generated
 		description map[string]string       // corresponding description of the types
-		usedAs      map[reflect.Type]string // tracks which types (structs) we have seen (mainly to handle recursive data structures)
+		idFieldName map[string]string       // if this object is stored in a list this is the name of a fabricated id field
+		usedAs      map[reflect.Type]string // tracks which types (structs) we have seen and their GraphQL "type" (type/input/interface) - this is mainly to handle recursive data structures
 		unions      map[string]union        // key is union name
 		scalars     *[]string               // names of custom scalar types (implement MarshalEGGQL/UnmarshalEGGQL)
+	}
+
+	// objectField stores info on one field to be added to a GraphQL object
+	objectField struct {
+		name string
+		typ  reflect.Type
 	}
 
 	// union contains details used to generate one GraphQL union
@@ -37,6 +44,7 @@ func newSchemaTypes() schema {
 	return schema{
 		declaration: make(map[string]string),
 		description: make(map[string]string),
+		idFieldName: make(map[string]string),
 		usedAs:      make(map[reflect.Type]string),
 		unions:      make(map[string]union),
 		scalars:     &[]string{},
@@ -50,9 +58,12 @@ func newSchemaTypes() schema {
 //   t = the Go type used to generate the GraphQL type declaration
 //   enums = enums map (just used to make sure an enum name is valid)
 //   gqlType = "type" for a GraphQL object or "input", "interface", etc
-// Returns an error if the type could not be added - currently this only happens if the same struct is
-//   used as an "input" type (ie resolver parameter) and as an "object" or "interface" type
-func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlType string) error {
+//   idField = info for "id" field to be added to an object (or nil if not in a list)
+// Returns an error if the type could not be added - this may happen if the same struct is
+//   used as an "input" type (ie resolver parameter) and as an "object" or "interface" type or
+//   there is an error with the field declarations
+func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlType string, idField *objectField,
+) error {
 	needName := name == ""
 	if needName {
 		name = t.Name()
@@ -92,8 +103,25 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 		return nil // ignore it if not a struct (this is *not* an error situation)
 	}
 
-	// Check if we have already seen this struct
+	var force bool // Do we need to force regeneration due to field_id not being present in the previous declaration
+
+	// if idField has already been used for this struct then check it used the same name (otherwise generated schema is inconsistent)
+	if idField != nil {
+		if previous, ok := s.idFieldName[name]; ok {
+			if previous != idField.name {
+				// id_field used in previous declaration has a different name
+				return fmt.Errorf("id_field on %q must have the same name (not %q and %q)", name, previous, idField.name)
+			}
+			// no need to force regeneration as it will be the same
+		} else {
+			force = true // force regeneration so we also get the fabricated "id" field
+		}
+		s.idFieldName[name] = idField.name
+	}
+
+	// Check if we have already seen this struct so we don't need to regenerate it
 	if previousType, ok := s.usedAs[t]; ok {
+		// Already seen but check that we are not using it in an incompatible way
 		if previousType == gqlObjectTypeKeyword && gqlType == gqlInterfaceKeyword {
 			// switch type of declaration from "type" to "interface"
 			s.usedAs[t] = gqlInterfaceKeyword
@@ -105,7 +133,10 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 		} else if previousType != gqlType {
 			return fmt.Errorf("can't use %q for different GraphQL types (%s and %s)", name, previousType, gqlType)
 		}
-		return nil // already done
+		if !force {
+			return nil // we already have the correct declaration
+		}
+		delete(s.declaration, name) // remove it, to be regenerated
 	}
 	s.usedAs[t] = gqlType
 
@@ -122,6 +153,19 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 		for _, iface := range interfaces {
 			required += 1 + len(iface) // name of interface + 1 space
 		}
+	}
+	var idTypeName string
+	if idField != nil {
+		// check that none of the resolver names is the same as id field name
+		if _, ok := resolvers[idField.name]; ok {
+			return fmt.Errorf("field %q can't have the same name as 'field_id' of %q", idField.name, name)
+		}
+
+		idTypeName, _, err = s.getTypeName(idField.typ, false)
+		if err != nil {
+			return fmt.Errorf("%w getting type for ID field %q in %q", err, idField.name, name)
+		}
+		required += 4 + len(idField.name) + len(idTypeName)
 	}
 	// Get space for resolvers AND get a sorted list of resolver keys so resolvers are always written in the same order
 	keys := make([]string, 0, len(resolvers))
@@ -148,8 +192,16 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 		}
 	}
 
-	// Add resolvers in order of (sorted) keys
 	builder.WriteString(openString)
+	if idField != nil {
+		// Add fabricated ID field
+		builder.WriteString("  ")
+		builder.WriteString(idField.name)
+		builder.WriteRune(':')
+		builder.WriteString(idTypeName)
+		builder.WriteRune('\n')
+	}
+	// Add resolvers in order of (sorted) keys
 	for _, k := range keys {
 		builder.WriteString(resolvers[k])
 	}
@@ -166,7 +218,7 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 	s.description[name] = desc
 	actual := len(s.declaration[name])
 	if required != actual {
-		log.Fatalln("string buffer size was incorrect (TODO: remove this)", required, actual)
+		log.Fatalln("string buffer size was incorrect", required, actual)
 	}
 	return nil
 }
@@ -202,7 +254,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 				desc = fieldInfo.Description
 			} else {
 				// This field is just included for its type so that eggql know about it (currently just used for implementing GraphQL interfaces)
-				if err = s.add("", f.Type, enums, gqlObjectTypeKeyword); err != nil {
+				if err = s.add("", f.Type, enums, gqlObjectTypeKeyword, nil); err != nil {
 					return
 				}
 				// if proposal to allow scalars to implement interfaces goes ahead we may need to call s.getTypeName(f.Type) here
@@ -241,7 +293,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			continue // embedding empty struct just signals a "union" so don't add a resolver for this
 		} else if fieldInfo.Embedded {
 			// Add struct to our collection as an "interface"
-			if err2 = s.add(fieldInfo.GQLTypeName, f.Type, enums, gqlInterfaceKeyword); err2 != nil {
+			if err2 = s.add(fieldInfo.GQLTypeName, f.Type, enums, gqlInterfaceKeyword, nil); err2 != nil {
 				err = fmt.Errorf("%w adding embedded (interface) type %q", err2, f.Name)
 				return
 			}
@@ -299,6 +351,11 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			effectiveType = f.Type
 		}
 
+		var idField *objectField
+		if fieldInfo.FieldID != "" {
+			idField = &objectField{name: fieldInfo.FieldID, typ: fieldInfo.ElementType}
+		}
+
 		// Use resolver return type from the tag (if any) and assume it's not a scalar
 		typeName, isScalar := fieldInfo.GQLTypeName, false
 		if typeName != "" {
@@ -308,7 +365,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 				if strings.HasPrefix(fieldInfo.GQLTypeName, "[]") { // probably used []Type when [Type] was meant
 					help = fmt.Sprintf("(did you mean %s)", "["+fieldInfo.GQLTypeName[2:]+"]")
 				}
-				err = fmt.Errorf("resolver type (%s) of field %q not found: %w %s", fieldInfo.GQLTypeName, fieldInfo.Name, err2, help)
+				err = fmt.Errorf("%w: resolver type (%s) of field %q: %s", err2, fieldInfo.GQLTypeName, fieldInfo.Name, help)
 				return
 			}
 		}
@@ -345,7 +402,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			if nestedType == gqlInterfaceKeyword {
 				nestedType = gqlObjectTypeKeyword // a field inside an embedded struct is not itself treated as an interface
 			}
-			if err = s.add(typeName, effectiveType, enums, nestedType); err != nil {
+			if err = s.add(typeName, effectiveType, enums, nestedType, idField); err != nil {
 				return
 			}
 		}
@@ -357,7 +414,7 @@ const paramStart, paramSep, paramEnd = "(", ", ", ")"
 
 // getSubscript creates the arg list (just one arg) for "subscript" option on a slice/array/map
 func (s schema) getSubscript(fieldInfo *field.Info) (string, error) {
-	typeName, isScalar, err := s.getTypeName(fieldInfo.SubscriptType, false)
+	typeName, isScalar, err := s.getTypeName(fieldInfo.ElementType, false)
 	if err != nil {
 		return "", fmt.Errorf("%w getting subscript type for %q", err, fieldInfo.Name)
 	}
@@ -447,7 +504,7 @@ func (s schema) getParams(t reflect.Type, enums map[string][]string, fieldInfo *
 		}
 		if !isScalar {
 			// If it's a struct we also need to add the "input" type to our collection
-			if err := s.add(typeName, effectiveType, enums, gqlInputKeyword); err != nil {
+			if err := s.add(typeName, effectiveType, enums, gqlInputKeyword, nil); err != nil {
 				return "", fmt.Errorf("%w adding INPUT type %q", err, typeName)
 			}
 		}

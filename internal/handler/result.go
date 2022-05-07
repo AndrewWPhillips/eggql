@@ -35,6 +35,12 @@ type (
 		value interface{} // scalar, nested result (jsonmap.Ordered), list ([]interface{})
 		err   error       // non-nil if something went wrong whence the contents of value should be ignored
 	}
+
+	// idField stores name and type of fabricated id field (if required) for maps/slices/arrays
+	idField struct {
+		name  string
+		value reflect.Value
+	}
 )
 
 // GetSelections resolves the selections in a query by finding and evaluating the corresponding resolver(s)
@@ -49,8 +55,9 @@ type (
 //   v = value of Go struct whose (exported) fields are the resolvers
 //   vIntro = Go struct with values for introspection (only supplied at root level)
 //   introOp = gqlOperation struct to be used with vIntro (contains some required enums)
-func (op *gqlOperation) GetSelections(
-	ctx context.Context, set ast.SelectionSet, v, vIntro reflect.Value, introOp *gqlOperation,
+//   idField = name/type of fabricated "id" field (see "field_id" option for lists of objects)
+func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, v reflect.Value, vIntro reflect.Value,
+	introOp *gqlOperation, id *idField,
 ) (jsonmap.Ordered, error) {
 	// Get the struct that contains the resolvers that we can use
 	for v.Type().Kind() == reflect.Ptr {
@@ -67,7 +74,12 @@ func (op *gqlOperation) GetSelections(
 		switch astType := s.(type) {
 		case *ast.Field:
 			// Find and execute the "resolver" in the struct (or recursively in embedded structs)
-			if vIntro.IsValid() && strings.HasPrefix(astType.Name, "__") && astType.Name != TypeNameQuery {
+			if id != nil && astType.Name == id.name {
+				ch := make(chan gqlValue, 1)
+				ch <- gqlValue{name: id.name, value: id.value.Interface()}
+				close(ch)
+				resultChans = append(resultChans, ch)
+			} else if vIntro.IsValid() && strings.HasPrefix(astType.Name, "__") {
 				resultChans = append(resultChans, introOp.FindSelection(ctx, astType, vIntro))
 			} else {
 				resultChans = append(resultChans, op.FindSelection(ctx, astType, v))
@@ -171,12 +183,12 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 			// resolver found so run it (concurrently)
 			if op.isMutation || !AllowConcurrentQueries { // Mutations are run sequentially
 				ch := make(chan gqlValue, 1)
-				op.wrapResolve(ctx, astField, vField, fieldInfo, ch)
+				op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, ch)
 				return ch
 			} else {
 				ch := make(chan gqlValue)
 				// Calling wrapResolve as a go routine allows resolvers to run in parallel
-				go op.wrapResolve(ctx, astField, vField, fieldInfo, ch)
+				go op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, ch)
 				return ch
 			}
 		}
@@ -189,7 +201,7 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 
 // wrapResolve calls resolve putting the return value on a chan and converting any panic to an error
 func (op *gqlOperation) wrapResolve(
-	ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info, ch chan<- gqlValue,
+	ctx context.Context, astField *ast.Field, v, vID reflect.Value, fieldInfo *field.Info, ch chan<- gqlValue,
 ) {
 	defer func() {
 		// Convert any panics in resolvers into an (internal) error
@@ -198,13 +210,13 @@ func (op *gqlOperation) wrapResolve(
 		}
 		close(ch)
 	}()
-	if value := op.resolve(ctx, astField, v, fieldInfo); value != nil {
+	if value := op.resolve(ctx, astField, v, vID, fieldInfo); value != nil {
 		ch <- *value
 	}
 }
 
 func (op *gqlOperation) FindFragments(ctx context.Context, set ast.SelectionSet, v reflect.Value) <-chan gqlValue {
-	result, err := op.GetSelections(ctx, set, v, reflect.Value{}, nil)
+	result, err := op.GetSelections(ctx, set, v, reflect.Value{}, nil, nil)
 
 	var ch chan gqlValue
 	if err != nil {
@@ -230,8 +242,9 @@ func (op *gqlOperation) FindFragments(ctx context.Context, set ast.SelectionSet,
 //   ctx = a Go context that could expire at any time
 //   astField = a query or sub-query - a field of a GraphQL object
 //   v = value of the resolver (field of Go struct)
+//   vID = value of "id" (only supplied if an element of a list)
 //   fieldInfo = metadata for the resolver (eg parameter name) obtained from the struct field tag
-func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info,
+func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID reflect.Value, fieldInfo *field.Info,
 ) *gqlValue {
 	if op.directiveBypass(astField) {
 		return nil
@@ -256,8 +269,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 		if len(astField.Arguments) != 1 || astField.Arguments[0].Name != fieldInfo.Subscript {
 			return &gqlValue{err: fmt.Errorf("subscript resolver %q must supply an argument called %q", fieldInfo.Name, fieldInfo.Subscript)}
 		}
-		// TODO: check if we should allow an enum as a subscript
-		arg, err := op.getValue(fieldInfo.SubscriptType, fieldInfo.Subscript, "", astField.Arguments[0].Value.Raw)
+		arg, err := op.getValue(fieldInfo.ElementType, fieldInfo.Subscript, "", astField.Arguments[0].Value.Raw)
 		if err != nil {
 			return &gqlValue{err: err}
 		}
@@ -274,8 +286,9 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 				//return &gqlValue{err: fmt.Errorf("subscript %q for resolver %q must be an integer to index a list", fieldInfo.Subscript, fieldInfo.Name)}
 				panic(fmt.Sprintf("subscript %q for resolver %q must be an integer to index a list", fieldInfo.Subscript, fieldInfo.Name))
 			}
+			idx -= fieldInfo.BaseIndex
 			if idx < 0 || idx >= v.Len() {
-				return &gqlValue{err: fmt.Errorf("index '%s' (value %d) is out of range for field %s", fieldInfo.Subscript, idx, fieldInfo.Name)}
+				return &gqlValue{err: fmt.Errorf(`%s (with %s of %d) not found`, fieldInfo.Name, fieldInfo.Subscript, idx+fieldInfo.BaseIndex)}
 			}
 			v = v.Index(idx)
 		}
@@ -293,15 +306,15 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 			// Call the Marshal method, ie: func (T) MarshalEGGQL() (string, error)
 			valueString, err = v.Interface().(field.Marshaler).MarshalEGGQL()
 			if err != nil {
-				return &gqlValue{err: fmt.Errorf("%w marshaling custom scalar %q", err, v.Type().Name())}
+				return &gqlValue{err: fmt.Errorf("%w marshaling custom scalar %q", err, t.Name())}
 			}
 		} else if pt.Implements(reflect.TypeOf((*field.Marshaler)(nil)).Elem()) {
 			// In case Marshal method uses ptr receiver (value receiver preferred) ie: func (*T) MarshalEGGQL() (string, error)
-			tmp := reflect.New(v.Type()) // we have to make an addressable copy of v so we can call with ptr receiver
+			tmp := reflect.New(t) // we have to make an addressable copy of v so we can call with ptr receiver
 			tmp.Elem().Set(v)
 			valueString, err = tmp.Interface().(field.Marshaler).MarshalEGGQL()
 			if err != nil {
-				return &gqlValue{err: fmt.Errorf("%w marshalling pointer to custom scalar %q", err, v.Type().Name())}
+				return &gqlValue{err: fmt.Errorf("%w marshalling pointer to custom scalar %q", err, t.Name())}
 			}
 		} else if t.Implements(reflect.TypeOf((*fmt.Stringer)(nil)).Elem()) {
 			// func (T) String() string - method is present
@@ -312,32 +325,54 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v refl
 		return &gqlValue{name: astField.Alias, value: valueString}
 	}
 
-	switch v.Type().Kind() {
+	switch t.Kind() {
 	case reflect.Struct:
+		// Check if we have to fabricate an "id" field
+		var id *idField
+		if fieldInfo.FieldID != "" {
+			id = &idField{name: fieldInfo.FieldID, value: vID}
+			if fieldInfo.BaseIndex > 0 {
+				tmp := vID.Interface().(int)
+				id.value = reflect.ValueOf(tmp + fieldInfo.BaseIndex)
+			}
+		}
 		// Look up all sub-queries in this object
-		if result, err := op.GetSelections(ctx, astField.SelectionSet, v, reflect.Value{}, nil); err != nil {
+		if result, err := op.GetSelections(ctx, astField.SelectionSet, v, reflect.Value{}, nil, id); err != nil {
 			return &gqlValue{err: err}
 		} else {
 			return &gqlValue{name: astField.Alias, value: result}
 		}
 
 	case reflect.Map:
-		// resolve for all values in the map
-		results := make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
-		for it := v.MapRange(); it.Next(); {
-			if value := op.resolve(ctx, astField, it.Value(), fieldInfo); value != nil {
-				results = append(results, value.value)
+		var results []interface{}
+		if v.IsNil() {
+			if !fieldInfo.Nullable {
+				return &gqlValue{err: fmt.Errorf("returning null when list %q is not nullable", astField.Alias)}
+			}
+			// else return nil (for null list)
+		} else {
+			// resolve for all values in the map
+			results = make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
+			for it := v.MapRange(); it.Next(); {
+				if value := op.resolve(ctx, astField, it.Value(), it.Key(), fieldInfo); value != nil {
+					results = append(results, value.value)
+				}
 			}
 		}
 		return &gqlValue{name: astField.Alias, value: results}
 
 	case reflect.Slice, reflect.Array:
-		// resolve for all values in the list
 		var results []interface{}
-		if v.Type().Kind() == reflect.Array || !v.IsNil() {
+		if t.Kind() == reflect.Slice && v.IsNil() {
+			if !fieldInfo.Nullable {
+				return &gqlValue{err: fmt.Errorf("returning null when list %q is not nullable", astField.Alias)}
+			}
+			// else return nil (for null list)
+		} else {
+			// resolve for all values in the list
 			results = make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
 			for i := 0; i < v.Len(); i++ {
-				if value := op.resolve(ctx, astField, v.Index(i), fieldInfo); value != nil {
+				if value := op.resolve(ctx, astField, v.Index(i), reflect.ValueOf(i), fieldInfo); value != nil {
 					if value.err != nil {
 						return value
 					}
