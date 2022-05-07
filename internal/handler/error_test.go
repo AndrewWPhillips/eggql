@@ -43,6 +43,24 @@ func TestErrors(t *testing.T) {
 			}{F: func(j int) int { return j }}, `{ f(i:1) }`, "",
 			`unknown argument "i" in resolver "f"`,
 		},
+		"NullFromNonNullableSlice": {
+			"type Query{ list: [Int!]!}",
+			struct{ List []int }{}, // if slice is nil then nullable option must be used
+			`{ list }`, "",
+			`returning null when list "list" is not nullable`,
+		},
+		"NullFromNonNullableMap": {
+			"type Query{ mapList: [Int!]!}",
+			struct{ MapList map[string]int }{}, // if map is nil then nullable option must be used
+			`{ mapList }`, "",
+			`returning null when list "mapList" is not nullable`,
+		},
+		"ListElement": {
+			"type Query{ list: [Float!]!}",
+			struct{ List []interface{} }{},
+			`{ list }`, "",
+			`returning null when list "list" is not nullable`,
+		},
 		// TODO test all error conditions
 	}
 

@@ -11,8 +11,9 @@ import (
 
 const (
 	// AllowSubscript etc control which options are allowed TODO: use build tags instead?
-	AllowSubscript = true // "subscript" option generates a resolver to subscript into a list (array/slice/map)
-	AllowFieldID   = true // "field_id" option generates an extra "id" field for queries on a list (array/slice/map)
+	AllowSubscript  = true // "subscript" option generates a resolver to subscript into a list (array/slice/map)
+	AllowFieldID    = true // "field_id" option generates an extra "id" field for queries on a list (array/slice/map)
+	AllowComplexity = true // "complexity" option specifies how to estimate the complexity of a resalver
 )
 
 // GetInfoFromTag extracts GraphQL field name and type info from the field's tag (if any)
@@ -49,8 +50,8 @@ func GetInfoFromTag(tag string) (*Info, error) {
 			fieldInfo.FieldID = fieldID
 			continue
 		}
-		if offsetID := getOffsetID(part); offsetID > 0 {
-			fieldInfo.OffsetID = offsetID
+		if baseIndex := getBaseIndex(part); baseIndex > 0 {
+			fieldInfo.BaseIndex = baseIndex
 			continue
 		}
 		if part == "nullable" {
@@ -92,13 +93,15 @@ func GetInfoFromTag(tag string) (*Info, error) {
 	}
 
 	// We can do a bit of validation here
-	if fieldInfo.OffsetID > 0 && fieldInfo.FieldID == "" {
-		return nil, fmt.Errorf("you can't use 'offset' option without `field_id` (%s)", tag)
+	if fieldInfo.BaseIndex > 0 && fieldInfo.Subscript == "" && fieldInfo.FieldID == "" {
+		return nil, fmt.Errorf(`you can't use "base" option without "subscript" or "field_id" (%s)`, tag)
 	}
 
 	return fieldInfo, nil
 }
 
+// getSubscript checks for the subscript option string and if found returns the value (after
+// the =) or "id" if no value is given
 func getSubscript(s string) string {
 	if !AllowSubscript {
 		return ""
@@ -112,6 +115,8 @@ func getSubscript(s string) string {
 	return ""
 }
 
+// getSubscript checks for the "field_id" option and if found returns the value (after
+// the =) or "id" if no value is given
 func getFieldID(s string) string {
 	if !AllowFieldID {
 		return ""
@@ -125,13 +130,15 @@ func getFieldID(s string) string {
 	return ""
 }
 
-func getOffsetID(s string) int {
+// getBaseIndex checks for the "base" option (only used if "subscript" or "field_id" is specified).
+// It returns the integer value after the = or zero if not specified or there was an error
+func getBaseIndex(s string) int {
 	if !AllowFieldID {
 		return 0
 	}
-	if strings.HasPrefix(s, "offset=") {
-		offset, _ := strconv.Atoi(strings.TrimPrefix(s, "offset="))
-		return offset
+	if strings.HasPrefix(s, "base=") {
+		base, _ := strconv.Atoi(strings.TrimPrefix(s, "base="))
+		return base
 	}
 	return 0
 }

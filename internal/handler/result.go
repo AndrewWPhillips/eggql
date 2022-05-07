@@ -286,8 +286,9 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 				//return &gqlValue{err: fmt.Errorf("subscript %q for resolver %q must be an integer to index a list", fieldInfo.Subscript, fieldInfo.Name)}
 				panic(fmt.Sprintf("subscript %q for resolver %q must be an integer to index a list", fieldInfo.Subscript, fieldInfo.Name))
 			}
+			idx -= fieldInfo.BaseIndex
 			if idx < 0 || idx >= v.Len() {
-				return &gqlValue{err: fmt.Errorf("index '%s' (value %d) is out of range for field %s", fieldInfo.Subscript, idx, fieldInfo.Name)}
+				return &gqlValue{err: fmt.Errorf(`%s (with %s of %d) not found`, fieldInfo.Name, fieldInfo.Subscript, idx+fieldInfo.BaseIndex)}
 			}
 			v = v.Index(idx)
 		}
@@ -330,9 +331,9 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		var id *idField
 		if fieldInfo.FieldID != "" {
 			id = &idField{name: fieldInfo.FieldID, value: vID}
-			if fieldInfo.OffsetID > 0 {
-				offset := vID.Interface().(int) + fieldInfo.OffsetID
-				id.value = reflect.ValueOf(offset)
+			if fieldInfo.BaseIndex > 0 {
+				tmp := vID.Interface().(int)
+				id.value = reflect.ValueOf(tmp + fieldInfo.BaseIndex)
 			}
 		}
 		// Look up all sub-queries in this object

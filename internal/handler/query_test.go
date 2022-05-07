@@ -66,7 +66,7 @@ type (
 		M map[string]Element `egg:",field_id"`
 	}
 	QueryOffsetID struct {
-		S []Element `egg:",field_id,offset=100"`
+		S []Element `egg:",field_id,base=100"`
 	}
 
 	// U is embedded in other structs to implement a union

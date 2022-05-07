@@ -51,12 +51,14 @@ type Info struct {
 	Empty    bool // embedded struct has no fields (which we use for a GraphQL "union")
 	Nullable bool // pointers (plus slice/map if "nullable" option was specified)
 
-	// FieldID holds the result of the "field_id" option (for a slice/array/map)
-	FieldID string // name of id field (default is "id")
-	// OffsetID holds the offset for numeric IDs (for slice/array only)
-	OffsetID int
 	// Subscript holds the result of the "subscript" option (for a slice/array/map)
 	Subscript string // name of resolver arg (default is "id")
+	// FieldID holds the result of the "field_id" option (for a slice/array/map)
+	FieldID string // name of id field (default is "id")
+	// BaseIndex is the offset (from zero) for numeric IDs (slice/array only)
+	// Eg if BaseIndex is 10 then ID 10 refers to element 0, ID 11 => element 1, etc
+	// This is only used in conjunction with Subscript or FieldID options (on slices/arrays, but not maps)
+	BaseIndex int
 	// ElementType is the type of elements if the field is a map/slice/array - only used if FieldID or Subscript are not empty
 	ElementType reflect.Type //  int for slice/array, type of the key for maps
 	// Description is text used as a GraphQL description for the field - taken from the tag string after any # character (outside brackets)
@@ -77,7 +79,7 @@ var errorType = reflect.TypeOf((*error)(nil)).Elem()
 // - ptr to field.Info, or nil if the field is not used (ie: not exported or metadata is just a dash (-))
 //   A special case is a field name of underscore (_) which return field.Info but only with the Description field set
 // - error for different reasons such as:
-//   - malformed metadata such as an unknown option (not one of args, nullable, subscript, field_id, offset)
+//   - malformed metadata such as an unknown option (not one of args, nullable, subscript, field_id, base)
 //   - type of the field is invalid (eg resolver function with no return value)
 //   - inconsistency between the type and metadata (eg function parameters do not match the "args" option)
 func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
@@ -177,7 +179,7 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 		t = t.Elem()              // follow indirection
 	}
 
-	// Validation of "subscript", "field_id", "offset" etc
+	// Validation of "subscript", "field_id", "base" etc
 	if fieldInfo.FieldID != "" && fieldInfo.Subscript != "" {
 		return nil, errors.New(`cannot use "field_id" and "subscript" options together in field ` + f.Name)
 	}
@@ -199,9 +201,12 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 			return nil, errors.New("cannot use field_id option since field " + f.Name + " is not a slice, array, or map")
 		}
 	}
-	if fieldInfo.OffsetID > 0 {
+	if fieldInfo.BaseIndex > 0 {
 		if t.Kind() != reflect.Slice && t.Kind() != reflect.Array {
-			return nil, errors.New("cannot use `offset` option since field " + f.Name + " is not a slice or array")
+			return nil, errors.New(`cannot use "base" option since field ` + f.Name + " is not a slice or array")
+		}
+		if fieldInfo.FieldID == "" && fieldInfo.Subscript == "" {
+			return nil, errors.New(`cannot use "base" without "subscript" or "field_id" in field ` + f.Name)
 		}
 	}
 

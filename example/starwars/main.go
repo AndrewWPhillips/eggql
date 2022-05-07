@@ -45,9 +45,6 @@ type (
 		// 1st field of the struct and is declared as a zero-length array it uses no memory.
 		_ [0]Character
 
-		// Humans returns a list of all humans
-		Humans []Human `egg:",field_id,offset=1000"`
-
 		// Hero is a function used to implement the GraphQL resolver: "hero(episode: Episode = JEDI): Character", where:
 		//   hero = the resolver name taken from the 1st tag option (but could have been deduced from the field name "Hero")
 		//   episode = the name of the resolver argument (can't be deduced from the func parameter name as Go reflection only includes types, not names, of parameters)
@@ -57,23 +54,23 @@ type (
 		//    - this can't be deduced from the func return type which must be an interface{} when implementing a GraphQL interface
 		Hero func(episode int) (interface{}, error) `egg:"hero:Character,args(episode:Episode=JEDI)"`
 
-		// Human is a function used to implement the GraphQl resolver: "human(id: Int! = 1000): Human"
-		//   human = the resolver name, derived from the field name "Human", with the 1st letter lower-cased
-		//   id = the first (and only) argument name obtained from the "args" option
-		//   Int! = the type of the argument, deduced from the func's parameter is an integer type (int, int8, uint, etc)
-		//   1000 = default value for id, which means that Luke is returned is the argument is not given in a query
-		//   Human = return type, deduced from the 1st return value of the func (nullable because a pointer is returned)
-		Human func(int) (*Human, error) `egg:",args(id = 1000)"`
+		// Human resolves one human given their id: "human(id: Int!): Human"
+		Human []Human `egg:",subscript,base=1000"` // base = FirstHumanID
 
-		// Droid is a function used to implement the GraphQl resolver: "droid(id: Int!): Droid"
-		//   droid = the resolver name, derived from the field name "Droid"
-		//   id = the argument name which must be supplied in a GraphQL query as there is no default value
-		//   Int! = the type of the argument, the exclamation mark (!) means it is required (NULL can't be used)
-		//   Droid = return type, deduced from the 1st return value of the func (nullable because a pointer is returned)
-		Droid func(int) (*Droid, error) `egg:",args(id)"` // id is required
+		// Humans resolves a list of all humans: "humans: [Human!]"
+		Humans []Human `egg:",field_id,base=1000,nullable"` // base = FirstHumanID
 
-		// Starship is a function used to implement the GraphQl resolver: "starship(id: Int! = 3000): Starship"
-		Starship func(int) (*Starship, error) `egg:",args(id = 3000)"`
+		// Droid resolves a droid given their id: "droid(id: Int!): Droid"
+		Droid []Droid `egg:",subscript,base=2000"` // base = FirstDroidID
+
+		// Droids returns a list of all droids: "Droids: [Droid!]"
+		Droids []Droid `egg:",field_id,base=2000,nullable"` // base = FirstDroidID
+
+		// Starship resolves a starship given it's id: "starship(id: Int!): Starship"
+		Starship []Starship `egg:",subscript,base=3000"`
+
+		// Starships returns a list of all ships: "starships: [Starship!]"
+		Starships []Starship `egg:",field_id,base=3000,nullable"` // base = FirstStarshipID
 
 		// Reviews is a function used to implement the GraphQl resolver: "reviews(episode: Episode): [Review]"
 		//  reviews = resolver name, deduced from the field name "Reviews"
@@ -97,16 +94,16 @@ type (
 		SecretBackstory   func() (string, error)
 	}
 	Human struct {
-		_            eggql.TagHolder            `egg:"# A humanoid creature from Star Wars"`
+		_            eggql.TagHolder            `egg:"# An intelligent humanoid creature from Star Wars"`
 		SearchResult                            // Human is part of the SearchResult union so can be returned from a search query
 		Character                               // Human implements the Character interface
 		Height       func(int) (float64, error) `egg:",args(unit:LengthUnit=METER)"`
 		height       float64                    // meters
 		HomePlanet   string
-		Starships    []*Starship
+		Starships    []*Starship `egg:",nullable"`
 	}
 	Droid struct {
-		_               eggql.TagHolder `egg:"# An autonomous device from Star Wars"`
+		_               eggql.TagHolder `egg:"# A mobile, semi-autonomous machine from Star Wars"`
 		SearchResult                    // Droid is part of the SearchResult union so can be returned from a search query
 		Character                       // Droid implements the Character interface
 		PrimaryFunction string
@@ -296,28 +293,14 @@ func main() {
 				}
 				return nil, fmt.Errorf("internal error: no character with ID %d in episode %d", ID, episode)
 			},
-			Human: func(ID int) (*Human, error) {
-				ID -= FirstHumanID
-				if ID < 0 || ID >= len(humans) {
-					return nil, fmt.Errorf("Human %d not found", FirstHumanID+ID)
-				}
-				return &humans[ID], nil
-			},
-			Humans: humans,
-			Droid: func(ID int) (*Droid, error) {
-				ID -= FirstDroidID
-				if ID < 0 || ID >= len(droids) {
-					return nil, fmt.Errorf("Droid %d not found", ID)
-				}
-				return &droids[ID], nil
-			},
-			Starship: func(ID int) (*Starship, error) {
-				ID -= FirstStarshipID
-				if ID < 0 || ID >= len(starships) {
-					return nil, fmt.Errorf("Star ship %d not found", ID)
-				}
-				return &starships[ID], nil
-			},
+
+			Human:     humans, // get one (subscript)
+			Humans:    humans, // get list
+			Droid:     droids,
+			Droids:    droids,
+			Starship:  starships,
+			Starships: starships,
+
 			Reviews: func(episode int) ([]Review, error) {
 				if episode < 0 || episode >= len(episodes) {
 					return nil, fmt.Errorf("episode %d not found", episode)

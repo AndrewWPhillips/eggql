@@ -27,7 +27,6 @@ type (
 	QueryNested     struct{ Str QueryString }
 	QueryTypeReuse  struct{ Q1, Q2 QueryString }
 	QueryPtr        struct{ Ptr QueryInt }
-	QueryList       struct{ List []int }
 	QueryList2      struct{ List []QueryString }
 	QueryAnonNested struct{ Anon struct{ B byte } } // anon type - should use field name as "type" name
 
@@ -212,10 +211,16 @@ func TestBuildSchema(t *testing.T) {
 		data     interface{}
 		expected string
 	}{
-		"List": {QueryList{}, "schema{ query:QueryList } type QueryList{ list:[Int!]! }"},
+		"List1": {struct{ List []int }{}, "type Query{list:[Int!]!}"},
 		"List2": {
 			QueryList2{},
 			"schema{query:QueryList2} type QueryList2{list:[QueryString!]!} type QueryString{m:String!}",
+		},
+		"ListNullable": {
+			struct {
+				List []*int `egg:",nullable"`
+			}{nil},
+			"type Query{list:[Int]}",
 		},
 		"Empty":     {QueryEmpty{}, "schema{ query:QueryEmpty } type QueryEmpty{}"},
 		"String":    {QueryString{}, "schema{ query:QueryString } type QueryString{ m:String! }"},
