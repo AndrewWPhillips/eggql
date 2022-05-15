@@ -20,19 +20,19 @@ type (
 		E int `egg:"name:Unit!"`
 	}
 	QueryArg1 struct {
-		F func(int) string `egg:",args(u:Unit!)"`
+		F func(int) string `egg:"(u:Unit!)"`
 	}
 	QueryListParam struct {
-		F func([]int) string `egg:",args(u:[Unit!]!)"`
+		F func([]int) string `egg:"(u:[Unit!]!)"`
 	}
 	QueryDefault struct {
-		Height func(float64, int) string `egg:",args(h,u:Unit!=METER)"`
+		Height func(float64, int) string `egg:"(h,u:Unit!=METER)"`
 	}
 	QueryListDefault struct {
-		F func([]int) string `egg:",args(u:[Unit!]!=[METER, FOOT, FOOT])"`
+		F func([]int) string `egg:"(u:[Unit!]!=[METER, FOOT, FOOT])"`
 	}
 	QueryDefaultEmpty struct {
-		F func([]int) string `egg:",args(u:[Unit!]!=[])"`
+		F func([]int) string `egg:"(u:[Unit!]!=[])"`
 	}
 )
 

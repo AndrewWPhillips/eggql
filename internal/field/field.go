@@ -195,7 +195,7 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 		// and optional context) since the GraphQL "arguments" are used to provide the subscripting value.
 		// A subscript function can have a context (HasContext) and error return (HasError) but must return a slice/array/map.
 		if len(fieldInfo.Args) > 0 {
-			return nil, errors.New(`cannot use "args" and "subscript" options together in field ` + f.Name)
+			return nil, errors.New(`cannot use "subscript" option if args specified for field ` + f.Name)
 		}
 	}
 

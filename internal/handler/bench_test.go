@@ -19,7 +19,7 @@ func BenchmarkQuery(b *testing.B) {
 	// ~90microsec, 180 allocs @ 2022/04/20
 	//h := handler.New("type Query { value(low:Int!=1 high:Int!=6): Int! }",
 	//	struct {
-	//		Value func(int, int) int `egg:",args(low=1,high=6)"`
+	//		Value func(int, int) int `egg:"(low=1,high=6)"`
 	//	}{
 	//		Value: func(low, high int) int {
 	//			return low + rand.Intn(high+1-low)

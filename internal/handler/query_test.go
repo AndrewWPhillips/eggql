@@ -102,28 +102,28 @@ var (
 		V int
 	}{"mmm", 43}
 	paramData = struct {
-		Dbl func(int) int `egg:",args(v)"`
+		Dbl func(int) int `egg:"(v)"`
 	}{func(value int) int { return 2 * value }}
 	param2ArgData = struct {
-		F func(int, string) string `egg:",args(i,s)"`
+		F func(int, string) string `egg:"(i,s)"`
 	}{func(i int, s string) string { return s + strconv.Itoa(i) }}
 	default1Data = struct {
-		F func(int, string) string `egg:",args(i,s=xyz)"`
+		F func(int, string) string `egg:"(i,s=xyz)"`
 	}{func(i int, s string) string { return s + strconv.Itoa(i*2) }}
 	default2Data = struct {
-		F func(int, string) string `egg:",args(i=87,s=ijk)"`
+		F func(int, string) string `egg:"(i=87,s=ijk)"`
 	}{func(i int, s string) string { return strconv.Itoa(i) + s }}
 	inputArgData = struct {
-		InputQuery func(struct{ Field string }) int `egg:",args(param)"`
+		InputQuery func(struct{ Field string }) int `egg:"(param)"`
 	}{func(p struct{ Field string }) int { r, _ := strconv.Atoi(p.Field); return r }}
 	inputArg2FieldData = struct {
-		Q func(inputArg2FieldType) string `egg:",args(p)"`
+		Q func(inputArg2FieldType) string `egg:"(p)"`
 	}{func(parm inputArg2FieldType) string { return parm.S + strconv.FormatFloat(parm.F, 'g', 10, 64) }}
 	sliceArgData = struct {
-		ListQuery func([]int) int `egg:",args(list)"`
+		ListQuery func([]int) int `egg:"(list)"`
 	}{func(list []int) int { return len(list) }}
 	arrayArgData = struct {
-		ListQuery func([3]int) int `egg:",args(list)"`
+		ListQuery func([3]int) int `egg:"(list)"`
 	}{func(list [3]int) int { return len(list) }}
 
 	interfaceData  = struct{ A D }{D{X{4}, "fff"}}
@@ -132,10 +132,10 @@ var (
 
 	contextFunc  = struct{ Value func(context.Context) int }{func(ctx context.Context) int { return 100 }}
 	contextFunc1 = struct {
-		Dbl func(context.Context, int) int `egg:",args(v)"`
+		Dbl func(context.Context, int) int `egg:"(v)"`
 	}{func(ctx context.Context, i int) int { return 100 + 2*i }}
 	contextFunc2 = struct {
-		F func(context.Context, int, string) string `egg:",args(i,s)"`
+		F func(context.Context, int, string) string `egg:"(i,s)"`
 	}{func(ctx context.Context, i int, s string) string { return strconv.Itoa(i) + s }}
 
 	parRef = ParentRef{private: 42}
@@ -241,7 +241,7 @@ func TestQuery(t *testing.T) {
 		"ArgID": {
 			"type Query { f(id: ID!): String! }",
 			struct {
-				F func(eggql.ID) string `egg:",args(id)"`
+				F func(eggql.ID) string `egg:"(id)"`
 			}{func(id eggql.ID) string { return string(id) }}, `{ f(id: 123) }`, "",
 			JsonObject{"f": "123"},
 		},
@@ -251,13 +251,13 @@ func TestQuery(t *testing.T) {
 		},
 		"IDargInt": {
 			"type Query{f(id:ID!):Boolean!}", struct {
-				F func(int) bool `egg:",args(id:ID)"`
+				F func(int) bool `egg:"(id:ID)"`
 			}{F: func(i int) bool { return i == 42 }},
 			`{ f(id:42) }`, "", JsonObject{"f": true},
 		},
 		"IDargString": {
 			"type Query{f(id:ID!):Boolean!}", struct {
-				F func(string) bool `egg:",args(id:ID)"`
+				F func(string) bool `egg:"(id:ID)"`
 			}{F: func(s string) bool { return s == "i42" }},
 			`{ f(id:\"i42\") }`, "", JsonObject{"f": true},
 		},

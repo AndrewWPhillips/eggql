@@ -277,7 +277,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		case reflect.Map:
 			v = v.MapIndex(arg)
 			if !v.IsValid() {
-				return &gqlValue{err: fmt.Errorf("index '%s' (value %v) is not valid for field %s", fieldInfo.Subscript, arg.Interface(), fieldInfo.Name)}
+				return &gqlValue{err: fmt.Errorf("index '%s' (value %q) is not valid for field %s", fieldInfo.Subscript, arg.Interface(), fieldInfo.Name)}
 			}
 
 		case reflect.Slice, reflect.Array:

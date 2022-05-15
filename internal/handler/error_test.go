@@ -39,7 +39,7 @@ func TestErrors(t *testing.T) {
 		},
 		"UnknownArg": {
 			"type Query{f(i:Int!):Int!}", struct {
-				F func(int) int `egg:",args(j)"`
+				F func(int) int `egg:"(j)"`
 			}{F: func(j int) int { return j }}, `{ f(i:1) }`, "",
 			`unknown argument "i" in resolver "f"`,
 		},

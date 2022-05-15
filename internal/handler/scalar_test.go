@@ -91,7 +91,7 @@ func TestCustomScalar(t *testing.T) {
 		"Simple": {
 			schema: "type Query { f(a:Simple!): Simple! } scalar Simple",
 			data: struct {
-				F func(scalar SimpleScalar) SimpleScalar `egg:",args(a)"`
+				F func(scalar SimpleScalar) SimpleScalar `egg:"(a)"`
 			}{
 				F: func(a SimpleScalar) SimpleScalar { return a * a },
 			},
@@ -113,7 +113,7 @@ func TestCustomScalar(t *testing.T) {
 		"Input Field": {
 			schema: "type Query { f(a:A):Int! } input A{ v:BothScalar! } scalar BothScalar",
 			data: struct {
-				F func(struct{ V BothScalar }) int `egg:",args(a)"`
+				F func(struct{ V BothScalar }) int `egg:"(a)"`
 			}{
 				F: func(a struct{ V BothScalar }) int { return int(a.V) },
 			},
@@ -123,7 +123,7 @@ func TestCustomScalar(t *testing.T) {
 		"Arg Value": {
 			schema: "type Query { f(v:BothScalar!): Int! } scalar BothScalar",
 			data: struct {
-				F func(BothScalar) int `egg:",args(v)"`
+				F func(BothScalar) int `egg:"(v)"`
 			}{
 				F: func(v BothScalar) int { return int(v) },
 			},
@@ -133,7 +133,7 @@ func TestCustomScalar(t *testing.T) {
 		"Time": {
 			schema: "type Query { f(t:TimeScalar!): TimeScalar! } scalar TimeScalar",
 			data: struct {
-				F func(scalar TimeScalar) TimeScalar `egg:",args(t)"`
+				F func(scalar TimeScalar) TimeScalar `egg:"(t)"`
 			}{
 				F: func(t TimeScalar) (r TimeScalar) { r.Time = t.Time.Add(time.Hour); return },
 			},
@@ -143,7 +143,7 @@ func TestCustomScalar(t *testing.T) {
 		"String": {
 			schema: "type Query { f(a:StringScalar!): StringScalar! } scalar StringScalar",
 			data: struct {
-				F func(scalar StringScalar) StringScalar `egg:",args(a)"`
+				F func(scalar StringScalar) StringScalar `egg:"(a)"`
 			}{
 				F: func(a StringScalar) StringScalar { return StringScalar(strings.ToUpper(string(a))) },
 			},

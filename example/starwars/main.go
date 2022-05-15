@@ -52,7 +52,7 @@ type (
 		//   JEDI = default value of the argument - must be one of the strings in gqlEnums["Episode"] below
 		//   Character = the resolver return type (taken from the 1st tag option after the colon)
 		//    - this can't be deduced from the func return type which must be an interface{} when implementing a GraphQL interface
-		Hero func(episode int) (interface{}, error) `egg:"hero:Character,args(episode:Episode=JEDI)"`
+		Hero func(episode int) (interface{}, error) `egg:"hero(episode:Episode=JEDI):Character"`
 
 		// Human resolves one human given their id: "human(id: Int!): Human"
 		Human []Human `egg:",subscript,base=1000"` // base = FirstHumanID
@@ -74,13 +74,13 @@ type (
 
 		// Reviews is a function used to implement the GraphQl resolver: "reviews(episode: Episode): [Review]"
 		//  reviews = resolver name, deduced from the field name "Reviews"
-		//  episode = argument name (from 1st value of "args" option before the colon)
-		//  Episode = argument type (from 1st value of "args" option after the colon)
+		//  episode = argument name (from 1st bracketed value before the colon)
+		//  Episode = argument type (from 1st bracketed value after the colon)
 		//  [Review] = return type is a list of Review, deduced from the fact that the func returns a slice ([]Review)
-		Reviews func(int) ([]Review, error) `egg:",args(episode:Episode)"`
+		Reviews func(int) ([]Review, error) `egg:"(episode:Episode)"`
 
 		// Search implements the resolver: "search(text: String!): [SearchResult]"
-		Search func(context.Context, string) ([]interface{}, error) `egg:":[SearchResult],args(text)"`
+		Search func(context.Context, string) ([]interface{}, error) `egg:"(text):[SearchResult]"`
 	}
 	SearchResult struct { // SearchResult has no exported fields so represents a Union of all types in which it is embedded
 		_ eggql.TagHolder `egg:"# Union that defines which object types are searchable"`
@@ -89,7 +89,7 @@ type (
 		_                 eggql.TagHolder `egg:"# Represents a character (human or droid) in the Star Wars trilogy"`
 		Name              string          `egg:"# Name of the character"`
 		Friends           []*Character
-		FriendsConnection func(first int, after string) FriendsConnection `egg:",args(first=-1, after=\"\")"`
+		FriendsConnection func(first int, after string) FriendsConnection `egg:"(first=-1, after=\"\")"`
 		Appears           []int                                           `egg:"appearsIn:[Episode]"`
 		SecretBackstory   func() (string, error)
 	}
@@ -97,7 +97,7 @@ type (
 		_            eggql.TagHolder            `egg:"# An intelligent humanoid creature from Star Wars"`
 		SearchResult                            // Human is part of the SearchResult union so can be returned from a search query
 		Character                               // Human implements the Character interface
-		Height       func(int) (float64, error) `egg:",args(unit:LengthUnit=METER)"`
+		Height       func(int) (float64, error) `egg:"(unit:LengthUnit=METER)"`
 		height       float64                    // meters
 		HomePlanet   string
 		Starships    []*Starship `egg:",nullable"`
@@ -127,14 +127,14 @@ type (
 		_            eggql.TagHolder `egg:"# Machines for inter-planetary and inter-stellar travel"`
 		SearchResult                 // Starship is part of the SearchResult union so can be returned from a search query
 		Name         string
-		Length       func(int) (float64, error) `egg:",args(unit:LengthUnit=METER)"`
+		Length       func(int) (float64, error) `egg:"(unit:LengthUnit=METER)"`
 		length       float64                    // meters
 	}
 
 	// Movie reviews
 	Mutation struct {
 		_            eggql.TagHolder                                 `egg:"# Represents all the updates that can be made to the data"`
-		CreateReview func(int, ReviewInput) (*EpisodeDetails, error) `egg:",args(episode:Episode,review)"`
+		CreateReview func(int, ReviewInput) (*EpisodeDetails, error) `egg:"(episode:Episode,review)"`
 	}
 	ReviewInput struct {
 		_          eggql.TagHolder `egg:"# The input object sent when someone is creating a new review"`

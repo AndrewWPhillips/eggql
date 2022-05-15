@@ -25,20 +25,20 @@ const (
 
 var (
 	storeData = struct {
-		Store func(int) int `egg:",args(p)"`
+		Store func(int) int `egg:"(p)"`
 	}{
 		func(p int) int { return p * 2 },
 	}
 
 	threeData = struct {
-		Three func(int, int, int) int `egg:",args(a,b,c)"`
+		Three func(int, int, int) int `egg:"(a,b,c)"`
 	}{
 		func(a, b, c int) int {
 			return a*100 + b*10 + c
 		},
 	}
 	inputData = struct {
-		F func(struct{ I, J int }) int `egg:",args(p)"`
+		F func(struct{ I, J int }) int `egg:"(p)"`
 	}{
 		func(p struct{ I, J int }) int {
 			return p.I * p.J

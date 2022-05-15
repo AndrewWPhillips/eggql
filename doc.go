@@ -10,19 +10,21 @@
 //package main
 //
 //import (
+//    "net/http"
 //    "github.com/andrewwphillips/eggql"
 //)
 //func main() {
-//	http.Handle("/graphql", eggql.New(struct{ Message string }{Message: "hello, world"}))
-//	http.ListenAndServe(":80", nil)
+//	http.Handle("/graphql", eggql.New(struct{ Message string }{"hello, world"}))
+//	http.ListenAndServe(":8080", nil)
 //}
 
-// This creates a GraphQl object called "message", that can be used in a query like this:
+// This creates a GraphQL root "Query" containing a field called "message".
+// If you send a query (to http://localhost:8080/graphql) like this:
 // {
 //    message
 // }
-
-// which will return this JSON:
+//
+// you will get back this reply:
 // {
 //    "data": {
 //      "message": "hello, world"

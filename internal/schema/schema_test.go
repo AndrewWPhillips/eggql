@@ -47,16 +47,16 @@ type (
 	QueryBoolFunc  struct{ F func() bool }
 	QueryErrorFunc struct{ F func() (int, error) }
 	QueryFuncParam struct {
-		F func(float64) int `egg:",args(q)"`
+		F func(float64) int `egg:"(q)"`
 	}
 	QueryFuncParam2 struct {
-		F func(string, int) bool `egg:",args( p1, p2 )"`
+		F func(string, int) bool `egg:"( p1, p2 )"`
 	}
 	QueryFuncDefault struct {
-		F func(string, int) bool `egg:",args(p1,p2=42)"`
+		F func(string, int) bool `egg:"(p1,p2=42)"`
 	}
 	QueryFuncDefault2 struct {
-		F func(string, float64) bool `egg:",args(p1=\"a b\",p2=3.14)"`
+		F func(string, float64) bool `egg:"(p1=\"a b\",p2=3.14)"`
 	}
 	QueryContextFunc struct {
 		F func(context.Context) (int, error)
@@ -71,10 +71,10 @@ type (
 
 	InputInt        struct{ I int }
 	QueryInputParam struct {
-		F func(InputInt) int `egg:",args(in)"`
+		F func(InputInt) int `egg:"(in)"`
 	}
 	QueryInputAnon struct {
-		F func(struct{ J int }) bool `egg:",args(anon)"`
+		F func(struct{ J int }) bool `egg:"(anon)"`
 	}
 	QueryRecurse struct {
 		P *QueryRecurse // recursive data structure: P is (ptr to) type of enclosed struct
@@ -354,13 +354,13 @@ func TestBuildSchema(t *testing.T) {
 		},
 		"DescArg": {
 			struct {
-				R1 func(int) string `egg:",args(p#arg 1)"`
+				R1 func(int) string `egg:"(p#arg 1)"`
 			}{},
 			`type Query{r1("""arg 1""" p:Int!):String!}`,
 		},
 		"DescArg2": {
 			struct {
-				R2 func(int, float64) string `egg:",args(intArg=1#int, floatArg=3.14#float)"`
+				R2 func(int, float64) string `egg:"(intArg=1#int, floatArg=3.14#float)"`
 			}{},
 			`type Query{r2("""int""" intArg:Int!=1, """float""" floatArg:Float!=3.14):String!}`,
 		},
@@ -369,7 +369,7 @@ func TestBuildSchema(t *testing.T) {
 		"CustomScalarList":   {data: struct{ E []Cust1 }{}, expected: "type Query{ e: [Cust1!]! } scalar Cust1"},
 		"CustomScalarArg": {
 			data: struct {
-				F func(Cust1) string `egg:",args(i)"`
+				F func(Cust1) string `egg:"(i)"`
 			}{},
 			expected: "type Query{ f(i:Cust1!): String! } scalar Cust1",
 		},
@@ -400,17 +400,17 @@ func TestBuildSchema(t *testing.T) {
 		},
 		"IDArg": {
 			data: struct {
-				F func(string) int `egg:",args(a:ID!)"`
+				F func(string) int `egg:"(a:ID!)"`
 			}{}, expected: "type Query{ f(a:ID!): Int! }",
 		},
 		"IDArgType": {
 			data: struct {
-				F func(eggql.ID) int `egg:",args(a)"`
+				F func(eggql.ID) int `egg:"(a)"`
 			}{}, expected: "type Query{ f(a:ID!): Int! }",
 		},
 		"IDArgPtr": {
 			data: struct {
-				F func(*eggql.ID) int `egg:",args(a)"`
+				F func(*eggql.ID) int `egg:"(a)"`
 			}{}, expected: "type Query{ f(a:ID): Int! }",
 		},
 	}

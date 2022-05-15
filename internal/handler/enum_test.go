@@ -54,7 +54,7 @@ func TestEnumQuery(t *testing.T) {
 		"Param": {
 			schema: "type Query { f(p:E!): Int! } enum E { E0 E1 E2 }",
 			data: struct {
-				F func(int) int `egg:",args(p:E)"`
+				F func(int) int `egg:"(p:E)"`
 			}{
 				F: func(p int) int { return p },
 			},
@@ -65,7 +65,7 @@ func TestEnumQuery(t *testing.T) {
 		"DefaultParam": {
 			schema: "type Query { f(p:E=E1): Int! } enum E { E0 E1 E2 }",
 			data: struct {
-				F func(int) int `egg:",args(p:E=E0)"`
+				F func(int) int `egg:"(p:E=E0)"`
 			}{
 				F: func(p int) int { return p },
 			},
@@ -77,7 +77,7 @@ func TestEnumQuery(t *testing.T) {
 			// input type (arg to f) has an enum field (v)
 			schema: "type Query { f(p:In!): Int! } input In { v: E! } enum E { E0 E1 E2 }",
 			data: struct {
-				F func(In) int `egg:",args(p)"`
+				F func(In) int `egg:"(p)"`
 			}{
 				F: func(in In) int { return in.V },
 			},
@@ -89,7 +89,7 @@ func TestEnumQuery(t *testing.T) {
 			// input type (arg to f) has two enum fields (v1 and v2)
 			schema: "type Query { f(p:In!): Int! } input In { v1: E! v2: E! } enum E { E0 E1 E2 }",
 			data: struct {
-				F func(In2) int `egg:",args(p)"`
+				F func(In2) int `egg:"(p)"`
 			}{
 				F: func(in In2) int { return 10*in.V1 + in.V2 },
 			},

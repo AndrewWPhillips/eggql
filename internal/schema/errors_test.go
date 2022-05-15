@@ -68,17 +68,17 @@ func TestSchemaErrors(t *testing.T) {
 		"NoArgs":        {struct{ F func(int) bool }{}, nil, "no args"},
 		"TooFewArgs": {
 			struct {
-				F func(int, int) bool `egg:",args(a)"`
+				F func(int, int) bool `egg:"(a)"`
 			}{}, nil, "argument count",
 		},
 		"TooManyArgs": {
 			struct {
-				F func(int, int) bool `egg:"f,args(a,b,c)"`
+				F func(int, int) bool `egg:"f(a,b,c)"`
 			}{}, nil, "argument count",
 		},
 		"ArgsNonFunc": {
 			struct {
-				B bool `egg:"bbb, args( arg0, arg1 ) "` // only func resolver needs args
+				B bool `egg:"bbb( arg0, arg1 ) "` // only func resolver needs args
 			}{}, nil, "arguments cannot be supplied",
 		},
 		"Return0": {struct{ F0 func() }{}, nil, "must return a value"},
@@ -87,13 +87,13 @@ func TestSchemaErrors(t *testing.T) {
 		"ObjectInput": {
 			struct { // the same struct can't be used as Object type and Input
 				A SingleInt              // SingleInt is used as a (nested) object type
-				B func(SingleInt) string `egg:",args(i)"`
+				B func(SingleInt) string `egg:"(i)"`
 			}{}, nil, "different GraphQL types",
 		},
 		"InterfaceInput": {
 			struct {
 				SingleInt                        // SingleInt is embedded to be used as an interface type
-				B         func(SingleInt) string `egg:",args(i)"`
+				B         func(SingleInt) string `egg:"(i)"`
 			}{}, nil, "different GraphQL types",
 		},
 		"DupeInterface": {
@@ -116,27 +116,27 @@ func TestSchemaErrors(t *testing.T) {
 		"NoReturn": {struct{ Fa func() }{}, nil, "must return a value"},
 		"BadParam1": {
 			struct {
-				Fb func(int8) string `egg:",args(a b)"` // no comma
+				Fb func(int8) string `egg:"(a b)"` // no comma
 			}{}, nil, "not a valid name",
 		},
 		"BadParam2": {
 			struct {
-				Fc func(int8) string `egg:",args(a"` // no closing bracket
+				Fc func(int8) string `egg:"(a"` // no closing bracket
 			}{}, nil, "unmatched left bracket",
 		},
 		"BadParam3": {
 			struct {
-				Fd func(int8) string `egg:",args(a)b"`
+				Fd func(int8) string `egg:"(a)b"`
 			}{}, nil, "not in brackets",
 		},
 		"BadParam4": {
 			struct {
-				Fe func(int8) string `egg:",args((a)"`
+				Fe func(int8) string `egg:"((a)"`
 			}{}, nil, "unmatched left bracket",
 		},
 		"BadParam5": {
 			struct {
-				Ff func(int8) string `egg:",args(a))"`
+				Ff func(int8) string `egg:"(a))"`
 			}{}, nil, "unmatched right bracket",
 		},
 		"EnumName":   {Query{}, badName, "valid name"},
@@ -156,33 +156,33 @@ func TestSchemaErrors(t *testing.T) {
 		},
 		"UnknownParam": {
 			struct {
-				F func(int) string `egg:",args(i:Unknown)"`
+				F func(int) string `egg:"(i:Unknown)"`
 			}{}, nil, "not found",
 		},
 		"EnumParamBad": {
 			struct {
-				G func(bool) string `egg:",args(i:Unit)"`
+				G func(bool) string `egg:"(i:Unit)"`
 			}{}, enums, "must be an integer",
 		},
 		"BadName": {QueryBadName{}, nil, "not a valid name"},
 		"BadDefaultEnum": {
 			struct {
-				E0 func(int) int `egg:",args(unit:Unit=Inch)"` // Inch is not a valid enum value
+				E0 func(int) int `egg:"(unit:Unit=Inch)"` // Inch is not a valid enum value
 			}{}, enums, "not of the correct type",
 		},
 		"BadDefaultInt": {
 			struct {
-				E1 func(int) int `egg:"e1,args(len=ten)"` // ten is not a valid Int
+				E1 func(int) int `egg:"e1(len=ten)"` // ten is not a valid Int
 			}{}, nil, "default value",
 		},
 		"BadDefaultFloat": {
 			struct {
-				E2 func(float64) int `egg:"e2,args(f=x)"` // x is not a valid Float
+				E2 func(float64) int `egg:"e2(f=x)"` // x is not a valid Float
 			}{}, nil, "default value",
 		},
 		"BadDefaultBool": {
 			struct {
-				E3 func(bool) int `egg:"e3,args(b=1)"` // 1 is not a valid Boolean
+				E3 func(bool) int `egg:"e3(b=1)"` // 1 is not a valid Boolean
 			}{}, nil, "default value",
 		},
 		"DupeField1": {
@@ -321,122 +321,122 @@ func TestSchemaErrors(t *testing.T) {
 
 		"ArgDefaultBool": {
 			struct {
-				F func(bool) int `egg:",args(b=f)"`
+				F func(bool) int `egg:"(b=f)"`
 			}{}, nil, "not a valid Boolean",
 		},
 		"ArgDefaultString": {
 			struct {
-				F func(string) bool `egg:",args(s=4)"`
+				F func(string) bool `egg:"(s=4)"`
 			}{}, nil, "not a valid String",
 		},
 		"ArgDefaultID": {
 			struct {
-				F func(string) bool `egg:",args(id:ID=false)"`
+				F func(string) bool `egg:"(id:ID=false)"`
 			}{}, nil, "not of the correct type (ID)",
 		},
 		"ArgDefaultID2": {
 			struct {
-				F func(string) bool `egg:",args(id:ID=1.2)"` // can be int but not float
+				F func(string) bool `egg:"(id:ID=1.2)"` // can be int but not float
 			}{}, nil, "not of the correct type (ID)",
 		},
 		"ArgDefaultInt": {
 			struct {
-				F func(int) string `egg:",args(i=\"s\")"`
+				F func(int) string `egg:"(i=\"s\")"`
 			}{}, nil, "not a valid Int",
 		},
 		"ArgDefaultInt2": {
 			struct {
-				F func(int) string `egg:",args(i=3.14)"`
+				F func(int) string `egg:"(i=3.14)"`
 			}{}, nil, "not a valid Int",
 		},
 		"ArgDefaultFloat": {
 			struct {
-				F func(float64) string `egg:",args(f=s)"`
+				F func(float64) string `egg:"(f=s)"`
 			}{}, nil, "not a valid Float",
 		},
 		"ArgDefaultEnum": {
 			struct {
-				F func(int) string `egg:",args(e:Unit=1)"`
+				F func(int) string `egg:"(e:Unit=1)"`
 			}{}, enums, "not of the correct type (Unit)",
 		},
 		"ArgDefaultEnum2": {
 			struct {
-				F func(int) string `egg:",args(e:Unit=\"FOOT\")"` // enum value in quotes is seen as a string literal
+				F func(int) string `egg:"(e:Unit=\"FOOT\")"` // enum value in quotes is seen as a string literal
 			}{}, enums, "not of the correct type (Unit)",
 		},
 		"ArgCustomScalar": {
 			struct {
-				F func(CustScalarInt) int `egg:",args(c:CustScalarInt=invalid)"`
+				F func(CustScalarInt) int `egg:"(c:CustScalarInt=invalid)"`
 			}{}, nil, "not of the correct type (CustScalarInt)",
 		},
 		"ArgDefaultListBad": {
 			struct {
-				F func([]int) string `egg:",args(ii=[)"`
+				F func([]int) string `egg:"(ii=[)"`
 			}{}, nil, "unmatched left square bracket",
 		},
 		"ArgDefaultListBoolean": {
 			struct {
-				F func([]bool) string `egg:",args(bb=[false, true, 1])"` // 1 is not a Boolean literal
+				F func([]bool) string `egg:"(bb=[false, true, 1])"` // 1 is not a Boolean literal
 			}{}, nil, "not of the correct type ([Boolean",
 		},
 		"ArgDefaultListString": {
 			struct {
-				F func([]string) string `egg:",args(ss=[\"s\", t])"` // t is not in quotes
+				F func([]string) string `egg:"(ss=[\"s\", t])"` // t is not in quotes
 			}{}, nil, "not of the correct type ([String",
 		},
 		"ArgDefaultListInt": {
 			struct {
-				F func([]int) string `egg:",args(ii=[s])"`
+				F func([]int) string `egg:"(ii=[s])"`
 			}{}, nil, "not of the correct type ([Int",
 		},
 		"ArgDefaultListID": {
 			struct {
-				F func([]string) string `egg:",args(ids:[ID]=[\"1\", 2, 3.14])"` // float (3.14) is not an ID literal
+				F func([]string) string `egg:"(ids:[ID]=[\"1\", 2, 3.14])"` // float (3.14) is not an ID literal
 			}{}, nil, "not of the correct type ([ID",
 		},
 		"ArgDefaultListEnum": {
 			struct {
-				F func([]int) string `egg:",args(ii:[Unit]=[METER, FOOT, 2])"`
+				F func([]int) string `egg:"(ii:[Unit]=[METER, FOOT, 2])"`
 			}{}, enums, "not of the correct type ([Unit",
 		},
 		"ArgCustomScalarList": {
 			struct {
-				F func([]CustScalarInt) int `egg:",args(c:[CustScalarInt]=[1,2,false])"` // false does not decode with CustScalarInt.UnmarshalEGGQL()
+				F func([]CustScalarInt) int `egg:"(c:[CustScalarInt]=[1,2,false])"` // false does not decode with CustScalarInt.UnmarshalEGGQL()
 			}{}, nil, "not of the correct type ([CustScalarInt])",
 		},
 		"ArgDefaultInput": {
 			struct {
-				F func(SingleInt) int `egg:",args(si={i:s})"` // s is not a valid integer
+				F func(SingleInt) int `egg:"(si={i:s})"` // s is not a valid integer
 			}{}, nil, "not a valid Int",
 		},
 		"ArgDefaultInput2": {
 			struct {
-				F func(SingleInt) int `egg:",args(si={j:2})"` // j is not a field of SingleInt
+				F func(SingleInt) int `egg:"(si={j:2})"` // j is not a field of SingleInt
 			}{}, nil, "not a field",
 		},
 		"ArgDefaultInput3": {
 			struct {
-				F func(defaults InputDefaults) int `egg:",args(in={id:false,e:FOOT,sc:24})"`
+				F func(defaults InputDefaults) int `egg:"(in={id:false,e:FOOT,sc:24})"`
 			}{}, nil, "not a valid ID",
 		},
 		"ArgDefaultInput4": {
 			struct {
-				F func(defaults InputDefaults) int `egg:",args(in={id:3.14,e:FOOT,sc:24})"`
+				F func(defaults InputDefaults) int `egg:"(in={id:3.14,e:FOOT,sc:24})"`
 			}{}, nil, "not a valid ID",
 		},
 		"ArgDefaultInput5": {
 			struct {
-				F func(defaults InputDefaults) int `egg:",args(in={id:47,e:HOUR,sc:24})"`
+				F func(defaults InputDefaults) int `egg:"(in={id:47,e:HOUR,sc:24})"`
 			}{}, enums, "not a valid enum value",
 		},
 		"ArgDefaultInput6": {
 			struct {
-				F func(defaults InputDefaults) int `egg:",args(in={id:47,e:1,sc:24})"`
+				F func(defaults InputDefaults) int `egg:"(in={id:47,e:1,sc:24})"`
 			}{}, enums, "not a valid enum value",
 		},
 		"ArgDefaultInput7": {
 			struct {
-				F func(defaults InputDefaults) int `egg:",args(in={id:\"4-7\",e:FOOT,sc:abc})"`
+				F func(defaults InputDefaults) int `egg:"(in={id:\"4-7\",e:FOOT,sc:abc})"`
 			}{}, enums, "not valid for custom scalar",
 		},
 		"IDSameAsFieldName": {

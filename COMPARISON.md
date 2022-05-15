@@ -221,7 +221,7 @@ import (
 
 func main() {
 	http.Handle("/graphql", eggql.MustRun(struct {
-		Random func(int, int) int `egg:",args(low=1,high=6)"`
+		Random func(int, int) int `egg:"(low=1,high=6)"`
 	}{func(low, high int) int { return low + rand.Intn(high+1-low) }}))
 	http.ListenAndServe(":8083", nil)
 }

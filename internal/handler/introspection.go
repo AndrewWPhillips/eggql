@@ -36,7 +36,7 @@ type (
 	introspection struct {
 		iss       introspectionSchema
 		GetSchema func() gqlSchema      `egg:"__schema"`
-		GetType   func(string) *gqlType `egg:"__type,args(name)"`
+		GetType   func(string) *gqlType `egg:"__type(name)"`
 	}
 
 	// gqlSchema represents the GraphQL "__schema" type
@@ -56,7 +56,7 @@ type (
 		Fields            func() []gqlField `egg:",nullable"`
 		Interfaces        func() []gqlType
 		PossibleTypes     func() []gqlType
-		//EnumValues        func(bool) []gqlEnumValue `egg:",args(includeDeprecated=false)"`
+		//EnumValues        func(bool) []gqlEnumValue `egg:"(includeDeprecated=false)"`
 		EnumValues     func() []gqlEnumValue
 		InputFields    func() []gqlInputValue
 		OfType         *gqlType // nil unless kind is "LIST" or "NON_NULL"
@@ -67,7 +67,7 @@ type (
 	gqlField struct {
 		Name, Description string
 		// Remove deprecation from arguments - not (yet?) supported by vektah/gqlparser
-		//Args func(bool) []gqlInputValue `egg:",args(includeDeprecated=false)"`
+		//Args func(bool) []gqlInputValue `egg:"(includeDeprecated=false)"`
 		Args              func() []gqlInputValue
 		Type              func() gqlType
 		IsDeprecated      bool

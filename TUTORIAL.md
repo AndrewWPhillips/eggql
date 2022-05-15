@@ -120,14 +120,14 @@ It's the last advantage that we look at here - resolver arguments.  As an exampl
 
 ```Go
 type Query struct {
-	Hero func(episode int) Character `egg:"hero,args(episode=2)"`
+	Hero func(episode int) Character `egg:"hero(episode=2)"`
 }
 ```
 This also shows our first use of the **egg: key** stored in the `Hero` field's **tag string**.  This sort of metadata in Go can be attached to any field of a struct by adding a string after the field declaration.  (Note that these strings usually use back-quotes (\`) rather than double-quotes (") so we don't have to _escape_ the double quotes within the string.)  The options in the `egg:` key's data are comma-separated (using a similar format to json:, xml:, etc tag keys).
 
 The first option in the `egg:` metadata is the resolver name - in this case `hero`.  We don't really need to supply the name, in this case, as it defaults to the field name (`Hero`) with the first letter converted to lower-case.
 
-The 2nd option of the `egg:` key (`args(episode=2)`) specifies the resolver arguments. The number of arguments (comma-separated) in the `args` option must match the number of function parameters (except that the function may also include an initial `context.Context` parameter as discussed later).  The names of the argument(s) must be given in the `args` (in this case there is just one called `episode`) and you can also give an optional default value (in this case `2`). [Technical note: you always need to supply a name since we can't obtain the argument name from the `Hero` function parameter name as Go reflection only provides the types of function parameters not their names.]
+In brackets after the name (eg. `(episode=2)`) are the resolver argument(s). The number of arguments (comma-separated) in the `args` option must match the number of function parameters (except that the function may also include an initial `context.Context` parameter as discussed later).  The names of the argument(s) must be given in the `args` (in this case there is just one called `episode`) and you can also give an optional default value (in this case `2`). [Technical note: you always need to supply a name since we can't obtain the argument name from the `Hero` function parameter name as Go reflection only provides the types of function parameters not their names.]
 
 Here is a complete program with the `Hero` resolver.  Note that I changed the `Hero()` function to return a pointer to `Character`; this allows us to return a null value when an invalid episode number has been provided as the argument. (I could have instead changed the resolver function to return a 2nd `error` value as we will see later.)
 
@@ -141,7 +141,7 @@ import (
 
 type (
 	Query struct {
-		Hero func(episode int) *Character `egg:",args(episode=2)"`
+		Hero func(episode int) *Character `egg:"(episode=2)"`
 	}
 	Character struct {
 		Name    string
@@ -219,7 +219,7 @@ var gqlEnums = map[string][]string{
 It's simple to change the `Hero` resolver to use this `Episode` enum as its argument.
 
 ```Go
-	Hero func(episode int) *Character `egg:",args(episode:Episode=JEDI)"`
+	Hero func(episode int) *Character `egg:"(episode:Episode=JEDI)"`
 ```
 
 If you look closely at the above `args` option you can see that the `episode` argument now has a type name after the colon (:) which is the enum name (`Episode`).  The default value is changed from the integer literal `2` to the enum value `JEDI`.
@@ -244,7 +244,7 @@ import (
 
 type (
 	Query struct {
-		Hero func(episode int) *Character `egg:",args(episode:Episode=JEDI)"`
+		Hero func(episode int) *Character `egg:"(episode:Episode=JEDI)"`
 	}
 	Character struct {
 		Name    string
@@ -352,7 +352,7 @@ No changes are required to the earlier `Character` struct, but now it's used as 
 If you have a Character struct (or pointer to one) there is no way in Go to get the struct that embeds it or to even determine that it is embedded in another struct.  So to return a `Character` (which is either a `Human` or a `Droid` underneath) we return a Human or Droid as a **Go** `interface{}` and use metadata to indicate that the GraphQl type is a `Character` interface.
 
 ```Go
-	Hero func(episode int) interface{} `egg:"hero:Character,args(episode:Episode=JEDI)"`
+	Hero func(episode int) interface{} `egg:"hero:Character(episode:Episode=JEDI)"`
 ```
 
 Here the first option in the egg: key's metadata (`hero:Character`) says that the field is called `hero` and its type is `Character`.  Of course. you also need to change the implementation of the Hero() function so that it returns a `Human` or a `Droid` (as an `interface{}`).
@@ -369,7 +369,7 @@ import (
 
 type (
 	Query struct {
-		Hero func(episode int) interface{} `egg:"hero:Character,args(episode:Episode=JEDI)"`
+		Hero func(episode int) interface{} `egg:"hero:Character(episode:Episode=JEDI)"`
 		_    Character
 		_    Human
 		_    Droid
@@ -544,7 +544,7 @@ type (
 		Commentary string
 	}
 	Mutation struct {
-		CreateReview func(int, ReviewInput) *EpisodeDetails `egg:",args(episode:Episode,review)"`
+		CreateReview func(int, ReviewInput) *EpisodeDetails `egg:"(episode:Episode,review)"`
 	}
 	ReviewInput struct {
 		Stars      int
@@ -570,7 +570,7 @@ import (
 
 type (
 	Query struct {
-		Hero func(episode int) interface{} `egg:"hero:Character,args(episode:Episode=JEDI)"`
+		Hero func(episode int) interface{} `egg:"hero:Character(episode:Episode=JEDI)"`
 		_    Character
 		_    Human
 		_    Droid
@@ -596,7 +596,7 @@ type (
 	}
 
 	Mutation struct {
-		CreateReview func(int, ReviewInput) *EpisodeDetails `egg:",args(episode:Episode,review)"`
+		CreateReview func(int, ReviewInput) *EpisodeDetails `egg:"(episode:Episode,review)"`
 	}
 	ReviewInput struct {
 		Stars      int
@@ -728,7 +728,7 @@ Imagine we need to change the `height` resolver so that it takes an argument spe
 ```Go
 	Human struct {
 		Character
-		Height       func(int) float64 `egg:",args(unit:Unit=METER)"`
+		Height       func(int) float64 `egg:"(unit:Unit=METER)"`
 		height       float64            // meters
 	}
 ```
@@ -903,7 +903,7 @@ This adds the description " The root query object" to the `Query` type in the Gr
 For resolvers you just add the description preceded by a hash character (#) to the end of the egg: key's string.  For example, this adds the description " How tall they are" to the `height` field of the `Human` type.
 
 ```Go
-	Height  func(int) float64 `egg:"height,args(unit:LengthUnit=METER) # How tall they are"`
+	Height  func(int) float64 `egg:"height(unit:LengthUnit=METER) # How tall they are"`
 ```
 
 #### Arguments
@@ -911,7 +911,7 @@ For resolvers you just add the description preceded by a hash character (#) to t
 For resolver arguments, just add the description at the end of each argument using the `args` option of the `graphql` tag.  For example, this add "units used for the returned height" to the `unit` argument of the `height` resolver.
 
 ```Go
-	Height  func(int) float64 `egg:"height,args(unit:LengthUnit=METER# units used for the returned height)"`
+	Height  func(int) float64 `egg:"height(unit:LengthUnit=METER# units used for the returned height)"`
 ```
 
 #### Enums

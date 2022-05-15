@@ -23,19 +23,18 @@ func GetInfoFromTag(tag string) (*Info, error) {
 	if tag == "-" {
 		return nil, nil // this field is to be ignored
 	}
-	parts, desc, err := SplitWithDesc(tag)
+	parts, description, err := SplitWithDesc(tag)
 	if err != nil {
 		return nil, fmt.Errorf("%w splitting tag %q", err, tag)
 	}
-	fieldInfo := &Info{Description: desc}
+
+	var fieldInfo *Info
+	//fieldInfo := &Info{Description: description}
 	for i, part := range parts {
 		if i == 0 { // first string is the name
-			// Check for enum by splitting on a colon (:)
-			if subParts := strings.Split(part, ":"); len(subParts) > 1 {
-				fieldInfo.Name = subParts[0]
-				fieldInfo.GQLTypeName = subParts[1]
-			} else {
-				fieldInfo.Name = part
+			fieldInfo, err = getMain(part)
+			if err != nil {
+				return nil, fmt.Errorf("%w resolver %q of tag %q", err, part, tag)
 			}
 			continue
 		}
@@ -50,6 +49,10 @@ func GetInfoFromTag(tag string) (*Info, error) {
 			fieldInfo.FieldID = fieldID
 			continue
 		}
+		if strings.Contains(part, "id") {
+			// detect common mistake (id_field)
+			return nil, fmt.Errorf(`unknown option %q, - did you mean "field_id"?`, part)
+		}
 		if baseIndex := getBaseIndex(part); baseIndex > 0 {
 			fieldInfo.BaseIndex = baseIndex
 			continue
@@ -58,36 +61,8 @@ func GetInfoFromTag(tag string) (*Info, error) {
 			fieldInfo.Nullable = true
 			continue
 		}
-		if list, err := getBracketedList(part, "args"); err != nil {
-			return nil, fmt.Errorf("%w getting args in %q", err, tag)
-		} else if list != nil {
-			fieldInfo.Args = make([]string, len(list))
-			fieldInfo.ArgTypes = make([]string, len(list))
-			fieldInfo.ArgDefaults = make([]string, len(list))
-			fieldInfo.ArgDescriptions = make([]string, len(list))
-			for paramIndex, s := range list {
-				// Strip description after hash (#)
-				subParts := strings.SplitN(s, "#", 2)
-				s = subParts[0]
-				if len(subParts) > 1 {
-					fieldInfo.ArgDescriptions[paramIndex] = subParts[1]
-				}
-				// Strip of default value (if any) after equals sign (=)
-				subParts = strings.Split(s, "=")
-				s = subParts[0]
-				if len(subParts) > 1 {
-					fieldInfo.ArgDefaults[paramIndex] = strings.Trim(subParts[1], " ")
-				}
-				// Strip of enum name after colon (:)
-				subParts = strings.Split(s, ":")
-				s = subParts[0]
-				if len(subParts) > 1 {
-					fieldInfo.ArgTypes[paramIndex] = strings.Trim(subParts[1], " ")
-				}
-
-				fieldInfo.Args[paramIndex] = strings.Trim(s, " ")
-			}
-			continue
+		if strings.HasPrefix(part, "args") {
+			return nil, errors.New(`args option is no longer supported - add arguments (in brackets) after resolver name`)
 		}
 		return nil, fmt.Errorf("unknown option %q in %q", part, tag)
 	}
@@ -97,7 +72,80 @@ func GetInfoFromTag(tag string) (*Info, error) {
 		return nil, fmt.Errorf(`you can't use "base" option without "subscript" or "field_id" (%s)`, tag)
 	}
 
+	fieldInfo.Description = description
+
 	return fieldInfo, nil
+}
+
+// getMain handles the first part of the tag which may just be the resolver name (or even empty), but can
+//   also include a type after a colon (:) and resolvers arguments (comma-separated and within brackets), where
+//   each argument can have a name, type (after :) and default value (after =).  Note that many of these things
+//   can be deduced (from the GO field name/type) and left out (except for the names of arguments).
+func getMain(s string) (r *Info, err error) {
+	r = &Info{}
+
+	// First check if there is a resolver name (if not it is later derived from the field name)
+	if s == "" || s[0] != ':' && s[0] != '(' {
+		i := strings.IndexAny(s, ":(")
+		if i == -1 {
+			r.Name = s // empty string or just name
+			return
+		}
+		r.Name = s[:i]
+		s = s[i:]
+	}
+
+	// Next check if there's a trailing type (if not then it is derived from the field type)
+	colon := -1
+loop:
+	for i := len(s) - 1; i >= 0; i-- {
+		switch s[i] {
+		case ':':
+			colon = i
+			break loop
+		case ')': // stop at end of args so we don't find colons inside the args
+			break loop
+		}
+	}
+	if colon > -1 {
+		r.GQLTypeName = s[colon+1:]
+		s = s[:colon]
+	}
+
+	// Finally, if there are brackets then get the resolver arguments
+	list, err := getBracketedList(s, "")
+	if err != nil {
+		return nil, fmt.Errorf("%w getting resolver args", err)
+	} else if list != nil {
+		// use empty strings for default values for arg lists
+		r.Args = make([]string, len(list))
+		r.ArgTypes = make([]string, len(list))
+		r.ArgDefaults = make([]string, len(list))
+		r.ArgDescriptions = make([]string, len(list))
+		for paramIndex, s := range list {
+			// Strip description after hash (#)
+			subParts := strings.SplitN(s, "#", 2)
+			s = subParts[0]
+			if len(subParts) > 1 {
+				r.ArgDescriptions[paramIndex] = subParts[1]
+			}
+			// Strip of default value (if any) after equals sign (=)
+			subParts = strings.Split(s, "=")
+			s = subParts[0]
+			if len(subParts) > 1 {
+				r.ArgDefaults[paramIndex] = strings.Trim(subParts[1], " ")
+			}
+			// Strip of enum name after colon (:)
+			subParts = strings.Split(s, ":")
+			s = subParts[0]
+			if len(subParts) > 1 {
+				r.ArgTypes[paramIndex] = strings.Trim(subParts[1], " ")
+			}
+
+			r.Args[paramIndex] = strings.Trim(s, " ")
+		}
+	}
+	return
 }
 
 // getSubscript checks for the subscript option string and if found returns the value (after
@@ -115,8 +163,8 @@ func getSubscript(s string) string {
 	return ""
 }
 
-// getSubscript checks for the "field_id" option and if found returns the value (after
-// the =) or "id" if no value is given
+// getFieldID checks for the "field_id" option and if found returns the specified value (after
+// the equals sign if present) or "id" if not present
 func getFieldID(s string) string {
 	if !AllowFieldID {
 		return ""

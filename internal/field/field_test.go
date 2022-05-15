@@ -18,7 +18,7 @@ func TestGetTagInfo(t *testing.T) {
 		"Empty3":   {`,,`, field.Info{}},
 		"Nullable": {`,nullable`, field.Info{Nullable: true}},
 		"All": {
-			`a, args(b:d=f,c:e=g)`, field.Info{
+			`a(b:d=f,c:e=g)`, field.Info{
 				Name: "a", Args: []string{"b", "c"}, ArgTypes: []string{"d", "e"}, ArgDefaults: []string{"f", "g"},
 				ArgDescriptions: []string{"", ""},
 			},
@@ -27,46 +27,46 @@ func TestGetTagInfo(t *testing.T) {
 		"NameOnly2": {`joe,`, field.Info{Name: "joe"}},
 		//"NameNull":  {`joe,nullable`, field.Info{Name: "joe", Nullable: true}},
 		"Params0": {
-			`,args()`,
+			`()`,
 			field.Info{Args: []string{}, ArgTypes: []string{}, ArgDefaults: []string{}, ArgDescriptions: []string{}},
 		},
 		"Params1": {
-			`,args(a)`, field.Info{
+			`(a)`, field.Info{
 				Args: []string{"a"}, ArgTypes: []string{""}, ArgDefaults: []string{""}, ArgDescriptions: []string{""},
 			},
 		},
 		"Params2": {
-			`,args(abc,d)`, field.Info{
+			`(abc,d)`, field.Info{
 				Args: []string{"abc", "d"}, ArgTypes: []string{"", ""}, ArgDefaults: []string{"", ""},
 				ArgDescriptions: []string{"", ""},
 			},
 		},
 		"Params3": {
-			`,args(abc,"d e",f)`, field.Info{
+			`(abc,"d e",f)`, field.Info{
 				Args: []string{"abc", `"d e"`, "f"}, ArgTypes: []string{"", "", ""}, ArgDefaults: []string{"", "", ""},
 				ArgDescriptions: []string{"", "", ""},
 			},
 		},
 		"ParamsSpaced": {
-			`,args( a , bcd , efg )`, field.Info{
+			`( a , bcd , efg )`, field.Info{
 				Args: []string{"a", "bcd", "efg"}, ArgTypes: []string{"", "", ""}, ArgDefaults: []string{"", "", ""},
 				ArgDescriptions: []string{"", "", ""},
 			},
 		},
 		"Defaults1": {
-			`,args(one=1,2)`, field.Info{
+			`(one=1,2)`, field.Info{
 				Args: []string{"one", "2"}, ArgTypes: []string{"", ""}, ArgDefaults: []string{"1", ""},
 				ArgDescriptions: []string{"", ""},
 			},
 		},
 		"Defaults2": {
-			`,args(one=1,two="number two")`, field.Info{
+			`(one=1,two="number two")`, field.Info{
 				Args: []string{"one", "two"}, ArgTypes: []string{"", ""}, ArgDefaults: []string{"1", `"number two"`},
 				ArgDescriptions: []string{"", ""},
 			},
 		},
 		"Defaults3": {
-			`,args(list=[1,2,4],obj={a:1, b:"two"})`, field.Info{
+			`(list=[1,2,4],obj={a:1, b:"two"})`, field.Info{
 				Args: []string{"list", "obj"}, ArgTypes: []string{"", ""},
 				ArgDefaults:     []string{"[1,2,4]", `{a:1, b:"two"}`},
 				ArgDescriptions: []string{"", ""},
@@ -76,13 +76,13 @@ func TestGetTagInfo(t *testing.T) {
 		//"EnumNull":        {`unit:Unit,nullable`, field.Info{Name: "unit", GQLTypeName: "Unit", Nullable: true}},
 		"EnumDefaultName": {`:A`, field.Info{GQLTypeName: "A"}},
 		"EnumParams": {
-			`,args(height, unit:Unit)`, field.Info{
+			`(height, unit:Unit)`, field.Info{
 				Args: []string{"height", "unit"}, ArgTypes: []string{"", "Unit"}, ArgDefaults: []string{"", ""},
 				ArgDescriptions: []string{"", ""},
 			},
 		},
 		"EnumParams2": {
-			`,args(h, w, unit:Unit = FOOT)`, field.Info{
+			`(h, w, unit:Unit = FOOT)`, field.Info{
 				Args: []string{"h", "w", "unit"}, ArgTypes: []string{"", "", "Unit"},
 				ArgDefaults:     []string{"", "", "FOOT"},
 				ArgDescriptions: []string{"", "", ""},
@@ -93,14 +93,14 @@ func TestGetTagInfo(t *testing.T) {
 		"SubscriptNamed": {`,subscript=idx`, field.Info{Subscript: "idx"}},
 		"FieldDesc":      {`# abc`, field.Info{Description: " abc"}},
 		"ArgDesc": {
-			`,args(a#desc)`, field.Info{
+			`(a#desc)`, field.Info{
 				Args: []string{"a"}, ArgTypes: []string{""}, ArgDefaults: []string{""},
 				ArgDescriptions: []string{"desc"},
 			},
 		},
 
 		"AllOptions": {
-			`a:b,,args(c:d=e#f,g=h#i i i i),subscript=h#d #d`, // Note that this is invalid at a higher level as you can't use both "args" and "subscript" options together
+			`a(c:d=e#f,g=h#i i i i):b,,,subscript=h#d #d`, // Note that this is invalid at a higher level as you can't use both "args" and "subscript" options together
 			field.Info{
 				Name: "a", GQLTypeName: "b", Args: []string{"c", "g"}, ArgTypes: []string{"d", ""},
 				ArgDefaults:     []string{"e", "h"},
