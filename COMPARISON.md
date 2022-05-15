@@ -4,7 +4,7 @@
 
 To compare the performance of the packages I wrote the same random number generator in each (see [Source Code](#source-code)).  I compared the average response time over 100,000 requests using jMeter.
 
-Note that this is a very simple test using in-memory data.  With a production GraphQL server based on a database the results would undoubtedly be different.  Also with a large number of queries **eggql** would be a lot slower than some others as it currently does a linear search to find the of the fields of the root query object.
+Note that this is a very simple test using in-memory data.  With a production GraphQL server based on a database the results would undoubtedly be different.  Also, if your root query is big (ie has a lot of queries) **eggql** would be a lot slower than some others as it currently does a linear search of the fields of the root query object.  This will probably be addressed before the release of version 1.0.
 
 I ran the tests using this query:
 
