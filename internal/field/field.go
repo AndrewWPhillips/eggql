@@ -32,6 +32,13 @@ type (
 	}
 )
 
+// UnmarshalerType is the dynamic type of the Unmarshaler interface
+// It's used to check if a type has an UnmarshalEGGQL method, which indicates it is a custom scalar type.
+// The way it is obtained is a little tricky - you first get the type of a ptr to an Unmarshaler (which
+//   here is nil but that does not matter as we are only concerned with types not values) then get
+//   the type of what it points to (using reflect.Type.Elem()).
+var UnmarshalerType = reflect.TypeOf((*Unmarshaler)(nil)).Elem()
+
 // Info is returned from Get() with info extracted from a struct field to be used as a GraphQL query resolver.
 // The info is obtained from the field's name, type and field's tag string (using TagKey).
 // Note that the GraphQL type is usually deduced but sometimes needs to be supplied (saved in GQLTypeName

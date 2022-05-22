@@ -40,8 +40,8 @@ func (s schema) validateTypeName(typeName string, enums map[string][]string, t r
 		}
 	}
 
-	// Check for custom scalar
-	if reflect.TypeOf(reflect.New(t).Interface()).Implements(reflect.TypeOf((*field.Unmarshaler)(nil)).Elem()) {
+	// Check if the type is a custom scalar
+	if reflect.TypeOf(reflect.New(t).Interface()).Implements(field.UnmarshalerType) {
 		if typeName != t.Name() {
 			return false, fmt.Errorf("Custom scalar field (%s) cannot have a resolver of type %q", t.Name(), typeName)
 		}
@@ -123,7 +123,7 @@ func (s schema) getTypeName(t reflect.Type, nullable bool) (name string, isScala
 	// Assume it's a custom scalar if there is a method with signature: func (*T) UnmarshalEGGQL(string) error
 	// Note that reflect.TypeOf(reflect.New(t).Interface()) is used to get the type of ptr to t.
 	// (UnmarshalEGGQL must have a pointer (not value) receiver since the new value is saved.)
-	if reflect.TypeOf(reflect.New(t).Interface()).Implements(reflect.TypeOf((*field.Unmarshaler)(nil)).Elem()) {
+	if reflect.TypeOf(reflect.New(t).Interface()).Implements(field.UnmarshalerType) {
 		found := false
 		for _, name := range *s.scalars {
 			if name == t.Name() {
