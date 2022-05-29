@@ -43,3 +43,16 @@ func (pt *Time) UnmarshalEGGQL(in string) error {
 func (t Time) MarshalEGGQL() (string, error) {
 	return time.Time(t).Format(timeFormat), nil
 }
+
+// BigInt is a custom scalar for representing a big.Int
+// Note that we embed a big.Int so that we can use the standard big.Int methods
+type BigInt struct{ big.Int }
+
+// UnmarshalEGGQL is called when eggql needs to decode a string to a BigInt
+// Note that MarshalEGGQL is not needed to encode a BigInt (big.Int.String() is used)
+func (bi *BigInt) UnmarshalEGGQL(in string) error {
+	if err := bi.Int.UnmarshalText([]byte(in)); err != nil {
+		return fmt.Errorf("%w error in UnmarshalEGGQL for custom scalar BigInt", err)
+	}
+	return nil
+}
