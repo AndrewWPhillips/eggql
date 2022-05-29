@@ -323,6 +323,11 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		} else if t.Implements(reflect.TypeOf((*fmt.Stringer)(nil)).Elem()) {
 			// func (T) String() string - method is present
 			valueString = v.Interface().(fmt.Stringer).String()
+		} else if pt.Implements(reflect.TypeOf((*fmt.Stringer)(nil)).Elem()) {
+			// func (*T) String() string - method is present
+			tmp := reflect.New(t) // we have to make an addressable copy of v so we can call with ptr receiver
+			tmp.Elem().Set(v)
+			valueString = tmp.Interface().(fmt.Stringer).String()
 		} else {
 			valueString = fmt.Sprintf("%v", v.Interface())
 		}
