@@ -24,7 +24,9 @@ import (
 func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info,
 ) (vReturn reflect.Value, err error) {
 	if v.IsNil() {
-		err = fmt.Errorf("function for %q is not implemented (nil)", astField.Name)
+		if !ALlowNilResolverFunction {
+			err = fmt.Errorf("function for %q is not implemented (nil)", astField.Name)
+		}
 		return
 	}
 	args := make([]reflect.Value, v.Type().NumIn()) // list of arguments for the function call

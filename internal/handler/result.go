@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	AllowIntrospection     = true
-	AllowConcurrentQueries = true
+	AllowIntrospection       = true
+	AllowConcurrentQueries   = true
+	ALlowNilResolverFunction = true // return NULL for an unimplemented (nil) resolver function
 
 	TypeNameQuery = "__typename" // Name of "introspection" query that can be performed at any level
 )
@@ -256,6 +257,9 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		if v, err = op.fromFunc(ctx, astField, v, fieldInfo); err != nil {
 			return &gqlValue{err: err}
 		}
+	}
+	if !v.IsValid() {
+		return &gqlValue{name: astField.Alias}
 	}
 	for v.Type().Kind() == reflect.Ptr || v.Type().Kind() == reflect.Interface {
 		if v.IsNil() {
