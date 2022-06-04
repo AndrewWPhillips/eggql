@@ -61,6 +61,8 @@ type Info struct {
 	Empty    bool // embedded struct has no fields (which we use for a GraphQL "union")
 	Nullable bool // pointers (plus slice/map if "nullable" option was specified)
 
+	Directives []string // directives to apply to the field (eg "@deprecated")
+
 	// Subscript holds the result of the "subscript" option (for a slice/array/map)
 	Subscript string // name of resolver arg (default is "id")
 	// FieldID holds the result of the "field_id" option (for a slice/array/map)

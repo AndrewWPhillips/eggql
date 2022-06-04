@@ -48,13 +48,14 @@ func New(schemaString string, qms ...interface{}) http.Handler {
 			enum := make([]string, 0, len(list))
 			enumInt := make(map[string]int, len(list))
 			for i, v := range list {
-				parts := strings.SplitN(v, "#", 2)
-				enum = append(enum, parts[0])
+				parts := strings.SplitN(v, "#", 2)       // remove description
+				parts = strings.SplitN(parts[0], "@", 2) // remove directive(s)
+				enum = append(enum, strings.TrimRight(parts[0], " "))
 				enumInt[parts[0]] = i
 			}
-			parts := strings.SplitN(enumName, "#", 2)
-			r.enums[parts[0]] = enum
-			r.enumsReverse[parts[0]] = enumInt
+			name := strings.TrimRight(strings.SplitN(enumName, "#", 2)[0], " ")
+			r.enums[name] = enum
+			r.enumsReverse[name] = enumInt
 		}
 
 		// Skip the enums, to get the query, mutation, subscription

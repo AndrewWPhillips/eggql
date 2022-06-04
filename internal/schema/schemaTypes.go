@@ -392,7 +392,8 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			err = fmt.Errorf("two fields with the same name %q", fieldInfo.Name)
 			return
 		}
-		r[fieldInfo.Name] = resolverDesc + "  " + fieldInfo.Name + " " + params + ":" + typeName + "\n"
+		r[fieldInfo.Name] = resolverDesc + "  " + fieldInfo.Name + " " + params + ":" + typeName +
+			" " + strings.Join(fieldInfo.Directives, " ") + "\n"
 
 		if !isScalar {
 			// Determine the "type" keyword for the nested object (type/input/interface).

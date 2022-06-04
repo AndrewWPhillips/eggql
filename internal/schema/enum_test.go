@@ -43,9 +43,16 @@ var (
 		"B": {"B0"},
 	}
 	descEnums = map[string][]string{
-		"A#a": {"A0#a0", "A1", "A2#a2"},
-		"B":   {"B0# A description "},
-		"C":   {"C"},
+		"A #a": {"A0 #a0", "A1", "A2 #a2"},
+		"B":    {"B0# A description "},
+		"C":    {"C"},
+	}
+	deprecatedEnum = map[string][]string{
+		"D": {
+			"D0 @deprecated",
+			"D1",
+			`D2 @deprecated(reason: "any") # D2 description`,
+		},
 	}
 )
 
@@ -100,6 +107,11 @@ func TestEnumSchema(t *testing.T) {
 		"DefaultEmpty": {
 			data: QueryDefaultEmpty{}, enums: unitEnum,
 			expected: "schema{ query:QueryDefaultEmpty } type QueryDefaultEmpty{ f(u:[Unit!]!=[]): String! } enum Unit { FOOT METER }",
+		},
+		// Test of deprecated enum values
+		"deprecated": {
+			data: struct{}{}, enums: deprecatedEnum,
+			expected: `type Query{} enum D{D0 @deprecated  D1  " D2 description" D2 @deprecated(reason: "any")}`,
 		},
 	}
 

@@ -45,6 +45,9 @@ type (
 		// 1st field of the struct and is declared as a zero-length array it uses no memory.
 		_ [0]Character
 
+		// Me demonstrates use of the GraphQL "deprecated" directive
+		Me Human `egg:",@deprecated(reason: \"silly demo query\")"`
+
 		// Hero is a function used to implement the GraphQL resolver: "hero(episode: Episode = JEDI): Character", where:
 		//   hero = the resolver name taken from the 1st tag option (but could have been deduced from the field name "Hero")
 		//   episode = the name of the resolver argument (can't be deduced from the func parameter name as Go reflection only includes types, not names, of parameters)
@@ -166,16 +169,17 @@ type (
 
 var (
 	gqlEnums = map[string][]string{
-		"Episode# Movies of the Star Wars trilogy": {
+		"Episode # Movies of the Star Wars trilogy": {
 			// order should match the episodes slice below
-			"NEWHOPE# A New Hope (1977)",
-			"EMPIRE# The Empire Strikes Back (1980)",
-			"JEDI# Return of the Jedi (1983)",
+			"NEWHOPE # A New Hope (1977)",
+			"EMPIRE  # The Empire Strikes Back (1980)",
+			"JEDI    # Return of the Jedi (1983)",
+			"ROGUE   @deprecated(reason: \"not an episode in the series\") # Rogue One (2016)",
 		},
-		"LengthUnit# Units for spatial measurements": {
+		"LengthUnit # Units for spatial measurements": {
 			// order of strings in the slice should match METER, etc consts below
-			"METER# Standard metric spatial unit",
-			"FOOT# Imperial spatial unit used mainly in the US",
+			"METER # Standard metric spatial unit",
+			"FOOT # Imperial spatial unit used mainly in the US",
 		},
 	}
 )
@@ -274,6 +278,7 @@ func main() {
 	handler := eggql.MustRun(
 		gqlEnums,
 		Query{
+			Me: humans[0],
 			Hero: func(episode int) (interface{}, error) {
 				if episode < 0 || episode >= len(episodes) {
 					return nil, fmt.Errorf("episode %d not found", episode)

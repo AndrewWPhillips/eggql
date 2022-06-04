@@ -41,6 +41,11 @@ func GetInfoFromTag(tag string) (*Info, error) {
 		if part == "" {
 			continue // ignore empty sections
 		}
+		if part[0] == '@' {
+			// anything starting with @ is assumed to be a directive & stored without validation TODO: validate that brackets match?
+			fieldInfo.Directives = append(fieldInfo.Directives, part)
+			continue
+		}
 		if subscript := getSubscript(part); subscript != "" {
 			fieldInfo.Subscript = subscript
 			continue
