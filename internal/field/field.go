@@ -26,7 +26,8 @@ type (
 	}
 	// Marshaler may be implemented by custom scalar types to encode the type in a string
 	// It should create a string compatible with Unmarshaller (above).
-	// If not given then the Stringer interface is used - if that's not given then fmt.Sprintf with %v is used
+	// If not given then the fmt.Stringer is used (ie String() method is called), and
+	//    if that's not implemented then fmt.Sprintf with %v is used
 	Marshaler interface {
 		MarshalEGGQL() (string, error)
 	}

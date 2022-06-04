@@ -48,10 +48,11 @@ func New(schemaString string, qms ...interface{}) http.Handler {
 			enum := make([]string, 0, len(list))
 			enumInt := make(map[string]int, len(list))
 			for i, v := range list {
-				parts := strings.SplitN(v, "#", 2)       // remove description
-				parts = strings.SplitN(parts[0], "@", 2) // remove directive(s)
-				enum = append(enum, strings.TrimRight(parts[0], " "))
-				enumInt[parts[0]] = i
+				v = strings.SplitN(v, "#", 2)[0] // remove description
+				v = strings.SplitN(v, "@", 2)[0] // remove directive(s)
+				v = strings.TrimRight(v, " ")    // remove trailing spaces
+				enum = append(enum, v)
+				enumInt[v] = i
 			}
 			name := strings.TrimRight(strings.SplitN(enumName, "#", 2)[0], " ")
 			r.enums[name] = enum

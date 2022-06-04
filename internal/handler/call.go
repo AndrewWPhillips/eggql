@@ -187,7 +187,7 @@ func (op *gqlOperation) getValue(t reflect.Type, name string, typeName string, v
 	// Try to convert the type of the variable to the expected type
 	switch kind {
 	case reflect.Map:
-		// GraphQl "input" variables are decoded from JSON as a map[string]interface{} which we use to make
+		// GraphQL "input" variables are decoded from JSON as a map[string]interface{} which we use to make
 		// a Go struct where the string is a field name and the value in the interface is the field value.
 		m, ok := value.(map[string]interface{})
 		if !ok {

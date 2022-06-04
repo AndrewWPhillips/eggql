@@ -413,6 +413,11 @@ func TestBuildSchema(t *testing.T) {
 				F func(*eggql.ID) int `egg:"(a)"`
 			}{}, expected: "type Query{ f(a:ID): Int! }",
 		},
+		"Directive1": {
+			data: struct {
+				V int `egg:",@deprecated"`
+			}{}, expected: "type Query{ v: Int! @deprecated }",
+		},
 	}
 
 	for name, data := range testData {

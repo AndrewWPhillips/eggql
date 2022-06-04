@@ -35,7 +35,7 @@ type (
 	// union contains details used to generate one GraphQL union
 	union struct {
 		desc    string
-		objects []string // names of all GraphQL object types involved in the union
+		objects map[string]struct{} // map keys = names of all GraphQL object types involved in the union
 	}
 )
 
@@ -278,7 +278,11 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 		if fieldInfo.Embedded && fieldInfo.Empty {
 			// Add parent type to union f.Name
 			u := s.unions[f.Name]
-			u.objects = append(u.objects, parentType)
+			if u.objects == nil {
+				u.objects = make(map[string]struct{})
+			}
+			u.objects[parentType] = struct{}{} // add to the set of objects in the union
+
 			// Check for any "description" tag field in the union
 			for j := 0; j < f.Type.NumField(); j++ {
 				f2 := f.Type.Field(j)

@@ -200,8 +200,8 @@ func validateEnums(enums map[string][]string) (r map[string][]string, err error)
 
 		inUse := make(map[string]struct{}, len(list)) // for repeated value check
 		for _, v := range list {
-			v = strings.Split(v, "#")[0]                    // remove trailing description
-			v = strings.Split(v, "@")[0]                    // remove trailing directives (if any)
+			v = strings.SplitN(v, "#", 2)[0]                // remove trailing description
+			v = strings.SplitN(v, "@", 2)[0]                // remove trailing directives (if any)
 			v = strings.TrimRight(v, " ")                   // remove trailing spaces
 			if v == "true" || v == "false" || v == "null" { // reserved names
 				err = fmt.Errorf("%q is not an allowed enum value (enum %s)", v, name)

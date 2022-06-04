@@ -81,7 +81,7 @@ func TestEnumSchema(t *testing.T) {
 			expected: "schema{ query:QueryNamed } type QueryNamed{ name: Unit! } enum Unit { FOOT METER }",
 		},
 
-		// Tests of enum descriptions
+		// Test of enum descriptions
 		"desc": {
 			data: struct{}{}, enums: descEnums,
 			expected: `type Query{} "a" enum A{"a0"A0 A1 "a2"A2} enum B{" A description "B0} enum C{C}`,

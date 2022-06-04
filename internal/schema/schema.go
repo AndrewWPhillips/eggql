@@ -165,7 +165,7 @@ func (s schema) build(rawEnums map[string][]string, entry [3]string) (string, er
 		if unionValues.desc != "" {
 			objectsLength += 7 + len(unionValues.desc) // six quotes + newline
 		}
-		for _, v := range unionValues.objects {
+		for v := range unionValues.objects {
 			objectsLength += 3 + len(v) // enum value + 2 spaces and either '=' or '|'
 		}
 		objectsLength += 1 // eoln
@@ -185,7 +185,7 @@ func (s schema) build(rawEnums map[string][]string, entry [3]string) (string, er
 		builder.WriteRune(' ')
 		builder.WriteString(unionName)
 		sep := " = "
-		for _, v := range s.unions[unionName].objects {
+		for v := range s.unions[unionName].objects {
 			builder.WriteString(sep)
 			builder.WriteString(v)
 			sep = " | "
@@ -238,7 +238,7 @@ func (s schema) build(rawEnums map[string][]string, entry [3]string) (string, er
 		builder.WriteString(closeString)
 	}
 
-	// Custom scalars
+	// *** Custom scalars
 	objectsLength = 0
 	for _, name := range *s.scalars {
 		objectsLength += 8 + len(name)

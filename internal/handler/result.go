@@ -298,8 +298,8 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		}
 	}
 
-	// It's a custom scalar if there exists a method on ptr to type: func (*T) UnmarshalEGGQL(string) error
-	// Note: we check for ptr receiver not value receiver as the receiver is modified
+	// It's a custom scalar if there exists a method (on ptr to type) with signature: func (*T) UnmarshalEGGQL(string) error
+	// Note: we check for ptr (not value) receiver as "unmarshaling" modifies though we are marshaling here
 	t := v.Type()
 	pt := reflect.TypeOf(reflect.New(t).Interface())
 	if pt.Implements(field.UnmarshalerType) {
