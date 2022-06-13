@@ -1219,7 +1219,7 @@ To use the new type we just add a new `ReviewTime` field to `ReviewInput` and `E
 	}
 ```
 
-Since `Time` is a pointer in `ReviewInput` it is nullable which means that it does not need to be provided.  In the `CreateReview` mutation we check if it is nil and use the current time if so.
+Since `Time` is a pointer in `ReviewInput` it is nullable which means that it does not need to be provided.  In the `CreateReview` mutation we use the **current time** if it's not specified.
 
 ```Go
     CreateReview: func(episode int, review ReviewInput) *EpisodeDetails {

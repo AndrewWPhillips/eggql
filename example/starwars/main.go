@@ -75,7 +75,7 @@ type (
 		// Starships returns a list of all ships: "starships: [Starship!]"
 		Starships []Starship `egg:",field_id,base=3000,nullable"` // base = FirstStarshipID
 
-		// Reviews is a function used to implement the GraphQl resolver: "reviews(episode: Episode): [Review]"
+		// Reviews is a function used to implement the GraphQL resolver: "reviews(episode: Episode): [Review]"
 		//  reviews = resolver name, deduced from the field name "Reviews"
 		//  episode = argument name (from 1st bracketed value before the colon)
 		//  Episode = argument type (from 1st bracketed value after the colon)
