@@ -4,6 +4,7 @@ package eggql
 
 import (
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/andrewwphillips/eggql/internal/field"
