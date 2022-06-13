@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gorilla/websocket"
 	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
 )
@@ -23,7 +24,9 @@ type (
 		enumsReverse map[string]map[string]int // allows reverse lookup - int value given enum value (string)
 		qData        interface{}
 		mData        interface{}
-		//subscriptionData interface{}
+
+		conn             *websocket.Conn
+		subscriptionData interface{}
 	}
 )
 
@@ -84,9 +87,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	if r.Header.Get("Upgrade") == "websocket" {
+		// Call websocket handler
+		h.serveWS(w, r)
+		return
+	}
 	w.Header().Set("Content-Type", "application/graphql+json")
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		http.Error(w, "GraphQL queries must use GET or POST", http.StatusMethodNotAllowed)
 		return
 	}
 
