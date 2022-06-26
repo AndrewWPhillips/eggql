@@ -396,8 +396,14 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 	}
 	// If enum or enum list get the integer index and look up the enum value
 	if enumName := fieldInfo.GQLTypeName; enumName != "" {
+		if enumName[len(enumName)-1] == '!' {
+			enumName = enumName[:len(enumName)-1]
+		}
 		if len(enumName) > 2 && enumName[0] == '[' && enumName[len(enumName)-1] == ']' {
 			enumName = enumName[1 : len(enumName)-1]
+			if enumName[len(enumName)-1] == '!' {
+				enumName = enumName[:len(enumName)-1]
+			}
 		}
 		// Check that the enum exists
 		if _, ok := op.enums[enumName]; !ok {
