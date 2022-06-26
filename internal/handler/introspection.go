@@ -36,6 +36,17 @@ type (
 		parent introspectionSchema
 	}
 
+	// introspectionDirective represents a directive definition
+	introspectionDirective struct {
+		*ast.DirectiveDefinition
+		parent introspectionSchema
+	}
+	// introspectionDirectiveArgument represents an argument to a directive
+	introspectionDirectiveArgument struct {
+		*ast.ArgumentDefinition
+		parent introspectionDirective
+	}
+
 	// introspectionQuery represents the GraphQL root query object used for introspection queries
 	// It only has "__schema" and the "__type(name)" fields.  Note that the other introspection
 	// query (__typename) can be included at any level of a query and is not handled here.
@@ -85,7 +96,7 @@ type (
 		Name, Description string
 		Type              func() gqlType
 		DefaultValue      string
-		// Remove deprecation - not (yet?) supported by vektah/gqlparser
+		// Remove deprecation - not (yet?) supported
 		//IsDeprecated      bool
 		//DeprecationReason string
 	}
@@ -100,8 +111,8 @@ type (
 	// gqlDirective represents the GraphQL "__Directive" type
 	gqlDirective struct {
 		Name, Description string
-		Locations         []int           `egg:":[__DirectiveLocation!]!"`
-		Args              []gqlInputValue `egg:":[__InputValue!]!"`
+		Locations         func() []int           `egg:":[__DirectiveLocation!]!"`
+		Args              func() []gqlInputValue `egg:":[__InputValue!]!"`
 		IsRepeatable      bool
 	}
 )
@@ -186,7 +197,7 @@ func (iss introspectionSchema) getSchema() gqlSchema {
 		QueryType:        iss.getQueryType,
 		MutationType:     iss.getMutationType,
 		SubscriptionType: iss.getSubscriptionType,
-		Directives:       nil, // TODO
+		Directives:       iss.getDirectives,
 	}
 }
 
@@ -236,6 +247,15 @@ func (iss introspectionSchema) getSubscriptionType() *gqlType {
 	}
 	r := introspectionObject{iss.Subscription, iss}.getType()
 	return &r
+}
+
+// getDirectives gets the list of directives in the schema
+func (iss introspectionSchema) getDirectives() []gqlDirective {
+	r := make([]gqlDirective, 0, len(iss.Directives))
+	for _, definition := range iss.Directives {
+		r = append(r, introspectionDirective{definition, iss}.getDirective())
+	}
+	return r
 }
 
 // getType gets the type info for a named GraphQL type
@@ -410,4 +430,51 @@ func (ist introspectionType) getType() (r *gqlType) {
 		}
 	}
 	return
+}
+
+// getDirective gets the full info of a GraphQL directive
+func (isd introspectionDirective) getDirective() gqlDirective {
+	return gqlDirective{
+		Name:         isd.Name,
+		Description:  isd.Description,
+		Locations:    isd.getLocations,
+		Args:         isd.getArgs,
+		IsRepeatable: isd.IsRepeatable,
+	}
+}
+
+// getLocations gets the list of locations where the directive can be used
+func (isd introspectionDirective) getLocations() []int {
+	r := make([]int, 0, len(isd.Locations))
+	for _, location := range isd.Locations {
+		if value, ok := IntroEnumsReverse["__DirectiveLocation"][string(location)]; ok {
+			r = append(r, value)
+		} else {
+			panic("unknown directive location:" + location)
+		}
+	}
+	return r
+}
+
+func (isd introspectionDirective) getArgs() []gqlInputValue {
+	r := make([]gqlInputValue, 0, len(isd.Arguments))
+	for _, arg := range isd.Arguments {
+		isda := introspectionDirectiveArgument{arg, isd}
+		raw := ""
+		if arg.DefaultValue != nil {
+			raw = arg.DefaultValue.Raw
+		}
+		r = append(r, gqlInputValue{
+			Name:         arg.Name,
+			Description:  arg.Description,
+			Type:         isda.getType,
+			DefaultValue: raw,
+		})
+	}
+	return r
+}
+
+// getType gets the type associated with a GraphQL directive's argument
+func (isda introspectionDirectiveArgument) getType() gqlType {
+	return *introspectionType{isda.Type, isda.parent.parent}.getType()
 }
