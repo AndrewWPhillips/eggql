@@ -89,8 +89,7 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 			case Mutation:
 				entry[i] = "Mutation"
 			case Subscription:
-				//entry[i] = "Subscription"
-				return "", errors.New("Subscriptions are not yet supported")
+				entry[i] = "Subscription"
 			default:
 				return "", errors.New("More than 3 structs provided for schema (can only have query, mutation, subscription)")
 			}

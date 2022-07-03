@@ -57,7 +57,7 @@ func newSchemaTypes() schema {
 //   name = preferred name for the type (if an empty string the Go type name is used)
 //   t = the Go type used to generate the GraphQL type declaration
 //   enums = enums map (just used to make sure an enum name is valid)
-//   gqlType = "type" for a GraphQL object or "input", "interface", etc
+//   gqlType = "type" (for a GraphQL object), "input", "interface", etc
 //   idField = info for "id" field to be added to an object (or nil if not in a list)
 // Returns an error if the type could not be added - this may happen if the same struct is
 //   used as an "input" type (ie resolver parameter) and as an "object" or "interface" type or
@@ -121,6 +121,7 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 
 	// Check if we have already seen this struct so we don't need to regenerate it
 	if previousType, ok := s.usedAs[t]; ok {
+
 		// Already seen but check that we are not using it in an incompatible way
 		if previousType == gqlObjectTypeKeyword && gqlType == gqlInterfaceKeyword {
 			// switch type of declaration from "type" to "interface"
@@ -245,7 +246,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 		f := t.Field(i)
 		if f.Name == "_" {
 			if f.Type.Name() == "TagHolder" { // name must match the type declared in run.go
-				// this field (zero size) is just included to allow us to get the description from the field tag
+				// the field (otherwise not used) is just included to allow us to get the description from the field tag
 				fieldInfo, err2 := field.Get(&f)
 				if err2 != nil {
 					err = fmt.Errorf("%w getting decription from TagHolder", err2)
@@ -253,11 +254,11 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 				}
 				desc = fieldInfo.Description
 			} else {
-				// This field is just included for its type so that eggql know about it (currently just used for implementing GraphQL interfaces)
+				// This field is just included for its type so that eggql knows about it (this is used in implementing GraphQL interfaces)
 				if err = s.add("", f.Type, enums, gqlObjectTypeKeyword, nil); err != nil {
 					return
 				}
-				// if proposal to allow scalars to implement interfaces goes ahead we may need to call s.getTypeName(f.Type) here
+				// if GraphQL proposal to allow scalars to implement interfaces goes ahead we may need to call s.getTypeName(f.Type) here
 			}
 		}
 	}
@@ -351,6 +352,11 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 				return
 			}
 			effectiveType = f.Type.Out(0)
+			if fieldInfo.IsChan {
+				effectiveType = effectiveType.Elem() // subscriptions are always channels
+			}
+		} else if f.Type.Kind() == reflect.Chan {
+			effectiveType = f.Type.Elem()
 		} else {
 			effectiveType = f.Type
 		}
@@ -391,7 +397,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 		}
 
 		if _, ok := r[fieldInfo.Name]; ok {
-			// We already have a field with this name - probably to metadata (field tag) name
+			// We already have a field with this name - probably due to metadata (field tag) name
 			// Note that this will be caught gqlparser.LoadSchema but we may as well signal it earlier
 			err = fmt.Errorf("two fields with the same name %q", fieldInfo.Name)
 			return

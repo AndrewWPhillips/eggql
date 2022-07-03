@@ -61,6 +61,7 @@ type Info struct {
 	Embedded bool // embedded struct (which we use as a template for a GraphQL "interface")
 	Empty    bool // embedded struct has no fields (which we use for a GraphQL "union")
 	Nullable bool // pointers (plus slice/map if "nullable" option was specified)
+	IsChan   bool // field must be/return a channel for subscription fields (only)
 
 	Directives []string // directives to apply to the field (eg "@deprecated")
 
@@ -181,6 +182,16 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 		}
 	}
 
+	// If field is (or returns) a chan (used for subscriptions) we need to get the channel type
+	if t.Kind() == reflect.Chan {
+		if t.ChanDir() != reflect.RecvDir {
+			return nil, errors.New("subscription resolver " + f.Name + " must return a receive channel")
+		}
+		fieldInfo.IsChan = true
+		t = t.Elem()
+	}
+
+	// TODO allow for "nullable" option on strings too?
 	// Check that "nullable" flag was only used on slice/map
 	if fieldInfo.Nullable && t.Kind() != reflect.Slice && t.Kind() != reflect.Map {
 		return nil, errors.New("cannot use nullable option since field " + f.Name + " is not a slice, or map (try using a pointer)")
