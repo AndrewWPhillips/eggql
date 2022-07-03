@@ -468,7 +468,7 @@ func (isd introspectionDirective) getArgs() []gqlInputValue {
 			Name:         arg.Name,
 			Description:  arg.Description,
 			Type:         isda.getType,
-			DefaultValue: raw,
+			DefaultValue: raw, // TODO check if we need to put quotes around a string type
 		})
 	}
 	return r

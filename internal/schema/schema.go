@@ -184,10 +184,17 @@ func (s schema) build(rawEnums map[string][]string, entry [3]string) (string, er
 		builder.WriteString(gqlUnionKeyword)
 		builder.WriteRune(' ')
 		builder.WriteString(unionName)
+		// Get sorted list of union names so the order is consistent
+		unionNames := make([]string, 0, len(s.unions[unionName].objects))
+		for n := range s.unions[unionName].objects {
+			unionNames = append(unionNames, n)
+		}
+		sort.Strings(unionNames)
+
 		sep := " = "
-		for v := range s.unions[unionName].objects {
+		for _, n := range unionNames {
 			builder.WriteString(sep)
-			builder.WriteString(v)
+			builder.WriteString(n)
 			sep = " | "
 		}
 		builder.WriteString("\n\n")
