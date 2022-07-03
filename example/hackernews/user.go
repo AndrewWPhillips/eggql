@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"math/rand"
+	"strconv"
 
 	"github.com/andrewwphillips/eggql"
 	"golang.org/x/crypto/bcrypt"
@@ -25,7 +27,7 @@ var users = map[eggql.ID]User{}
 
 // Signup creates a new user.
 func Signup(email, password, name string) (AuthPayload, error) {
-	ID := UniqueID(users, "U") // get a new ID for a new user
+	ID := UniqueUserID(users) // get a new ID for a new user
 	tokenString, err := GetToken(ID)
 	if err != nil {
 		return AuthPayload{}, err
@@ -59,4 +61,16 @@ func Login(email, password string) (AuthPayload, error) {
 		}
 	}
 	return AuthPayload{}, errors.New("invalid email or password")
+}
+
+// UniqueUserID returns a unique user ID (with a "U" prefix) for the given map.
+func UniqueUserID(m map[eggql.ID]User) eggql.ID {
+	var ID eggql.ID
+
+	for {
+		ID = eggql.ID("U" + strconv.Itoa(rand.Int()))
+		if _, ok := m[ID]; !ok {
+			return ID
+		}
+	}
 }

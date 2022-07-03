@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"log"
-	"math/rand"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/andrewwphillips/eggql"
@@ -44,11 +42,12 @@ func main() {
 	handler = &authHandler{inner: handler}
 	http.Handle(path, handler)
 
-	log.Println("starting server on:", address+path)
+	log.Println("starting server on: http://", address+path)
 	http.ListenAndServe(address, nil)
 	log.Println("stopping server")
 }
 
+/*
 // UniqueID returns a unique ID (with a fixed prefix) for the given map.
 func UniqueID[T any](m map[eggql.ID]T, prefix string) eggql.ID {
 	var ID eggql.ID
@@ -60,3 +59,4 @@ func UniqueID[T any](m map[eggql.ID]T, prefix string) eggql.ID {
 		}
 	}
 }
+*/

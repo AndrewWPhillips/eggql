@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"math/rand"
+	"strconv"
 
 	"github.com/andrewwphillips/eggql"
 )
@@ -29,7 +31,7 @@ func Post(ctx context.Context, url, description string) (Link, error) {
 		return Link{}, errors.New("unknown user:" + userID)
 	}
 
-	ID := UniqueID(links, "") // generate a new link ID
+	ID := UniqueLinkID(links, "") // generate a new link ID
 	links[ID] = Link{
 		ID:          ID,
 		Description: description,
@@ -37,4 +39,16 @@ func Post(ctx context.Context, url, description string) (Link, error) {
 		PostedBy:    user,
 	}
 	return links[ID], nil
+}
+
+// UniqueID returns a unique ID (with a fixed prefix) for the given map.
+func UniqueLinkID(m map[eggql.ID]Link, prefix string) eggql.ID {
+	var ID eggql.ID
+
+	for {
+		ID = eggql.ID(prefix + strconv.Itoa(rand.Int()))
+		if _, ok := m[ID]; !ok {
+			return ID
+		}
+	}
 }
