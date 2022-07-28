@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gorilla/websocket"
 	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
 )
@@ -23,7 +24,9 @@ type (
 		enumsReverse map[string]map[string]int // allows reverse lookup - int value given enum value (string)
 		qData        interface{}
 		mData        interface{}
-		//subscriptionData interface{}
+
+		conn             *websocket.Conn
+		subscriptionData interface{}
 	}
 )
 
@@ -80,25 +83,54 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
 		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Header.Get("Upgrade") == "websocket" {
+		// Call websocket handler
+		h.serveWS(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", "application/graphql+json")
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		http.Error(w, "GraphQL queries must use GET or POST", http.StatusMethodNotAllowed)
 		return
 	}
 
 	// Decode the request (JSON)
 	g := gqlRequest{h: h}
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields() // quickly find if a field name has been misspelt
-	decoder.UseNumber()             // allows us to distinguish ints from floats (see FixNumberVariables() below)
-	if err := decoder.Decode(&g); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"data": null,"errors": [{"message": "Error decoding JSON request:` + err.Error() + `"}]}`))
-		return
+	if r.Method == http.MethodGet {
+		values := r.URL.Query()
+		// find the query parameter with name "query" which contains the GraphQL query (or mutation or subscription)
+		if len(values["query"]) != 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"data": null,"errors": [{"message": "Error: query parameter is required"}]}`))
+			return
+		}
+		g.Query = values["query"][0]
+		if len(values["variables"]) > 0 {
+			vars := values["variables"][0]
+			if len(vars) > 1 && vars[0] == '"' && vars[len(vars)-1] == '"' {
+				vars = vars[1 : len(vars)-1] // remove quotes if present
+			}
+			decoder := json.NewDecoder(strings.NewReader(vars))
+			decoder.UseNumber() // allows us to distinguish ints from floats (see FixNumberVariables() below)
+			if err := decoder.Decode(&g.Variables); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(`{"data": null,"errors": [{"message": "Error decoding JSON variables:` + err.Error() + `"}]}`))
+				return
+			}
+		}
+	} else {
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields() // quickly find if a field name has been misspelt
+		decoder.UseNumber()             // allows us to distinguish ints from floats (see FixNumberVariables() below)
+		if err := decoder.Decode(&g); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"data": null,"errors": [{"message": "Error decoding JSON request:` + err.Error() + `"}]}`))
+			return
+		}
 	}
 
 	// Since variables are sent as JSON (which does not distinguish int/float) we need to decide
