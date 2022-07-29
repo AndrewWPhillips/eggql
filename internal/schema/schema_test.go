@@ -206,11 +206,21 @@ func (pi *Cust1) UnmarshalEGGQL(s string) error {
 	return nil // nothing needed here as we are just testing schema generation
 }
 
-func TestBuildSchema(t *testing.T) {
+func TestBuildQuery(t *testing.T) {
 	testData := map[string]struct {
 		data     interface{}
 		expected string
 	}{
+		"Empty":     {QueryEmpty{}, "schema{ query:QueryEmpty } type QueryEmpty{}"},
+		"String":    {QueryString{}, "schema{ query:QueryString } type QueryString{ m:String! }"},
+		"Int":       {QueryInt{}, "schema{ query:QueryInt } type QueryInt{ i:Int! }"},
+		"IntString": {QueryIntString{}, "schema{ query:QueryIntString } type QueryIntString{ i:Int! s:String! }"},
+		"Bool":      {QueryBool{}, "schema{ query:QueryBool } type QueryBool{ b:Boolean! }"},
+		"Float":     {QueryFloat{}, "schema{ query:QueryFloat } type QueryFloat{ f:Float! }"},
+		"Nested": {
+			QueryNested{}, "schema{ query:QueryNested }" +
+				"type QueryNested{ str:QueryString! } type QueryString{ m:String! }",
+		},
 		"List1": {struct{ List []int }{}, "type Query{list:[Int!]!}"},
 		"List2": {
 			QueryList2{},
@@ -221,16 +231,6 @@ func TestBuildSchema(t *testing.T) {
 				List []*int `egg:",nullable"`
 			}{nil},
 			"type Query{list:[Int]}",
-		},
-		"Empty":     {QueryEmpty{}, "schema{ query:QueryEmpty } type QueryEmpty{}"},
-		"String":    {QueryString{}, "schema{ query:QueryString } type QueryString{ m:String! }"},
-		"Int":       {QueryInt{}, "schema{ query:QueryInt } type QueryInt{ i:Int! }"},
-		"IntString": {QueryIntString{}, "schema{ query:QueryIntString } type QueryIntString{ i:Int! s:String! }"},
-		"Bool":      {QueryBool{}, "schema{ query:QueryBool } type QueryBool{ b:Boolean! }"},
-		"Float":     {QueryFloat{}, "schema{ query:QueryFloat } type QueryFloat{ f:Float! }"},
-		"Nested": {
-			QueryNested{}, "schema{ query:QueryNested }" +
-				"type QueryNested{ str:QueryString! } type QueryString{ m:String! }",
 		},
 		"TypeReuse": {
 			QueryTypeReuse{}, "schema{ query:QueryTypeReuse }" +
@@ -436,7 +436,7 @@ func TestBuildSchema(t *testing.T) {
 				}
 			}
 
-			Assertf(t, same, "TestBuildSchema: %12s: make schema expected %q got %q%s", name, exp, out, where)
+			Assertf(t, same, "TestBuildQuery: %12s: make schema expected %q got %q%s", name, exp, out, where)
 		})
 	}
 }

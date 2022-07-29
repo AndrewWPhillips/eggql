@@ -32,11 +32,11 @@ func TestSplitNested(t *testing.T) {
 		"String3":       {` a("{]}"), b[1,2,3] `, []string{`a("{]}")`, `b[1,2,3]`}, ""},
 		"ArgsOption":    {`, args(list=[1,3,6],obj={a:""}) `, []string{``, `args(list=[1,3,6],obj={a:""})`}, ""},
 
-		"Desc0": {`# abc`, []string{""}, " abc"},
-		"Desc1": {`,# abc`, []string{"", ""}, " abc"},
-		"Desc2": {`,z# abc`, []string{"", "z"}, " abc"},
-		"Desc3": {`#"# abc`, []string{``}, `"# abc`},
-		"DescString": {`	"#"# abc`, []string{`"#"`}, " abc"}, // # in string
+		"Desc0":        {`# abc`, []string{""}, " abc"},
+		"Desc1":        {`,# abc`, []string{"", ""}, " abc"},
+		"Desc2":        {`,z# abc`, []string{"", "z"}, " abc"},
+		"Desc3":        {`#"# abc`, []string{``}, `"# abc`},
+		"DescString":   {`"#"# abc`, []string{`"#"`}, " abc"}, // first # is in quotes, so 2nd # starts desc.
 		"DescBrackets": {`(#)# abc`, []string{`(#)`}, " abc"}, // # in brackets
 		"NoDescString": {`"a#b"`, []string{`"a#b"`}, ""},      // # in string but none at end
 		"DescWithArg":  {`, args(list=[1,3,6]#arg1)# abc`, []string{``, `args(list=[1,3,6]#arg1)`}, " abc"},

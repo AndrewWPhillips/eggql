@@ -36,7 +36,7 @@ type (
 	}
 )
 
-// Execute parses and runs the request and returns the result
+// Execute parses and runs the request (Query field) and returns the result
 func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 	// First analyse and validate the query string
 	query, pgqlError := parser.ParseQuery(&ast.Source{

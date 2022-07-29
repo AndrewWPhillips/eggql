@@ -12,7 +12,7 @@ import (
 	"unicode/utf8"
 )
 
-// TagKey is tag string "key" for our app - used to find optiond in the field metadata (tag string)
+// TagKey is tag string "key" for our app - used to find options in the field metadata (tag string)
 const TagKey = "egg"
 
 type (
