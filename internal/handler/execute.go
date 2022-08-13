@@ -8,9 +8,9 @@ import (
 	"reflect"
 
 	"github.com/dolmen-go/jsonmap"
+	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/vektah/gqlparser/v2/gqlerror"
-	"github.com/vektah/gqlparser/v2/parser"
 	"github.com/vektah/gqlparser/v2/validator"
 )
 
@@ -38,18 +38,10 @@ type (
 
 // Execute parses and runs the request (Query field) and returns the result
 func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
-	// First analyse and validate the query string
-	query, pgqlError := parser.ParseQuery(&ast.Source{
-		Name:  "query",
-		Input: g.Query,
-	})
-	if pgqlError != nil {
-		r.Errors = append(r.Errors, pgqlError)
-		return
-	}
-
-	r.Errors = validator.Validate(g.h.schema, query)
-	if r.Errors != nil {
+	// Get the analysed and validated query from the query text
+	query, errors := gqlparser.LoadQuery(g.h.schema, g.Query)
+	if errors != nil {
+		r.Errors = errors
 		return
 	}
 
