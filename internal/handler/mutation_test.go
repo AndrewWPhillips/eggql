@@ -81,7 +81,15 @@ func TestMutation(t *testing.T) {
 
 	for name, testData := range mutationData {
 		t.Run(name, func(t *testing.T) {
-			h := handler.New(testData.schema, nil, testData.data)
+			h := handler.New(
+				[]string{testData.schema},
+				nil,
+				[3][]interface{}{
+					nil,
+					{testData.data},
+					nil,
+				},
+			)
 
 			// Make the request body and the HTTP request that uses it
 			body := strings.Builder{}

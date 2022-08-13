@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/andrewwphillips/eggql/internal/field"
 	"github.com/dolmen-go/jsonmap"
@@ -54,18 +53,12 @@ type (
 //   ctx = a Go context that could expire at any time
 //   set = list of selections from a GraphQL query to be resolved
 //   v = value of Go struct whose (exported) fields are the resolvers
-//   vIntro = Go struct with values for introspection (only supplied at root level)
-//   introOp = gqlOperation struct to be used with vIntro (contains some required enums)
 //   idField = name/type of fabricated "id" field (see "field_id" option for lists of objects)
-func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, v reflect.Value, vIntro reflect.Value,
-	introOp *gqlOperation, id *idField,
+func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, v reflect.Value, id *idField,
 ) (jsonmap.Ordered, error) {
 	// Get the struct that contains the resolvers that we can use
 	for v.Type().Kind() == reflect.Ptr {
 		v = v.Elem() // follow indirection
-	}
-	for vIntro.IsValid() && vIntro.Type().Kind() == reflect.Ptr {
-		vIntro = vIntro.Elem() // follow indirection
 	}
 
 	resultChans := make([]<-chan gqlValue, 0, len(set)) // TODO: allow extra cap. for fragment sets > 1 in length
@@ -80,8 +73,6 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 				ch <- gqlValue{name: id.name, value: id.value.Interface()}
 				close(ch)
 				resultChans = append(resultChans, ch)
-			} else if vIntro.IsValid() && strings.HasPrefix(astType.Name, "__") {
-				resultChans = append(resultChans, introOp.FindSelection(ctx, astType, vIntro))
 			} else {
 				resultChans = append(resultChans, op.FindSelection(ctx, astType, v))
 			}
@@ -217,7 +208,7 @@ func (op *gqlOperation) wrapResolve(
 }
 
 func (op *gqlOperation) FindFragments(ctx context.Context, set ast.SelectionSet, v reflect.Value) <-chan gqlValue {
-	result, err := op.GetSelections(ctx, set, v, reflect.Value{}, nil, nil)
+	result, err := op.GetSelections(ctx, set, v, nil)
 
 	var ch chan gqlValue
 	if err != nil {
@@ -346,7 +337,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 			}
 		}
 		// Look up all sub-queries in this object
-		if result, err := op.GetSelections(ctx, astField.SelectionSet, v, reflect.Value{}, nil, id); err != nil {
+		if result, err := op.GetSelections(ctx, astField.SelectionSet, v, id); err != nil {
 			return &gqlValue{err: err}
 		} else {
 			return &gqlValue{name: astField.Alias, value: result}

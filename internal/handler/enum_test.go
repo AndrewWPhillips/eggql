@@ -27,7 +27,7 @@ type (
 func TestEnumQuery(t *testing.T) {
 	enumData := map[string]struct {
 		schema string      // GraphQL schema
-		data   interface{} // corresponding struct
+		data   interface{} // corresponding struct for query
 		query  string      // GraphQL query to send to the handler (query syntax)
 		enums  map[string][]string
 
@@ -128,7 +128,7 @@ func TestEnumQuery(t *testing.T) {
 
 	for name, testData := range enumData {
 		t.Run(name, func(t *testing.T) {
-			h := handler.New(testData.schema, testData.enums, testData.data)
+			h := handler.New([]string{testData.schema}, testData.enums, [3][]interface{}{{testData.data}, nil, nil})
 
 			// Make the request body and the HTTP request that uses it
 			body := strings.Builder{}

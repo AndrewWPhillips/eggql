@@ -427,7 +427,14 @@ func TestQuery(t *testing.T) {
 
 	for name, testData := range happyData {
 		t.Run(name, func(t *testing.T) {
-			h := handler.New(testData.schema, testData.data)
+			h := handler.New([]string{testData.schema},
+				nil,
+				[3][]interface{}{
+					{testData.data},
+					nil,
+					nil,
+				},
+			)
 
 			// Make the request body and the HTTP request that uses it
 			body := strings.Builder{}

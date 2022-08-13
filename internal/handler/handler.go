@@ -8,12 +8,15 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
 type (
@@ -22,58 +25,71 @@ type (
 		schema       *ast.Schema
 		enums        map[string][]string       // each enum is a slice of strings
 		enumsReverse map[string]map[string]int // allows reverse lookup - int value given enum value (string)
-		qData        interface{}
-		mData        interface{}
+		qData        []interface{}
+		mData        []interface{}
 
 		conn             *websocket.Conn
-		subscriptionData interface{}
+		subscriptionData []interface{}
 	}
 )
 
-// New is the main handler function that returns an HTTP handler given a schema (and enums(s)) PLUS
-// corresponding instances of query and optionally mutation and subscription structs.
-func New(schemaString string, qms ...interface{}) http.Handler {
-	schema, pgqlError := gqlparser.LoadSchema(&ast.Source{
-		Name:  "schema",
-		Input: schemaString,
-	})
-	if pgqlError != nil {
-		panic("eggql.handler.New - error making schema: " + pgqlError.Message)
+// New creates a new handler with the given schema(s) and query/mutation/subscription struct(s)
+// Parameters:
+//   schemaStrings - a slice of strings containing the GraphQL schemas (typically only 1)
+//   enums - a map of enum names to a slice of strings containing the enum values for all the schemas
+//   qms - a slice of query/mutation/subscription structs where:
+//     qms[0] - query struct(s)
+//     qms[1] - mutation struct(s)
+//     qms[2] - subscription struct(s)
+func New(schemaStrings []string, enums map[string][]string, qms [3][]interface{}) http.Handler {
+	var sources []*ast.Source
+
+	for i, str := range schemaStrings {
+		sources = append(sources, &ast.Source{Name: "schema " + strconv.Itoa(i+1), Input: str})
 	}
 
-	r := &Handler{
-		schema: schema,
+	r := &Handler{}
+	var pgqlError *gqlerror.Error
+	r.schema, pgqlError = gqlparser.LoadSchema(sources...)
+	if pgqlError != nil {
+		log.Fatalf("eggql.handler.New - error making schema error %s\n", error(pgqlError))
 	}
-	if rawEnums, ok := qms[0].(map[string][]string); ok {
-		r.enums = make(map[string][]string, len(rawEnums))
-		r.enumsReverse = make(map[string]map[string]int, len(rawEnums))
-		for enumName, list := range rawEnums {
+
+	r.enums = make(map[string][]string, len(enums))
+	r.enumsReverse = make(map[string]map[string]int, len(enums))
+	for enumName, list := range enums {
+		enum := make([]string, 0, len(list))
+		enumInt := make(map[string]int, len(list))
+		for i, v := range list {
+			v = strings.SplitN(v, "#", 2)[0] // remove description
+			v = strings.SplitN(v, "@", 2)[0] // remove directive(s)
+			v = strings.TrimRight(v, " ")    // remove trailing spaces
+			enum = append(enum, v)
+			enumInt[v] = i
+		}
+		name := strings.TrimRight(strings.SplitN(enumName, "#", 2)[0], " ")
+		r.enums[name] = enum
+		r.enumsReverse[name] = enumInt
+	}
+
+	r.qData = qms[0]
+	r.mData = qms[1]
+	r.subscriptionData = qms[2]
+
+	if AllowIntrospection {
+		// Add data for introspection
+		r.qData = append(r.qData, NewIntrospectionData(r.schema))
+		for enumName, list := range IntroEnums {
 			enum := make([]string, 0, len(list))
 			enumInt := make(map[string]int, len(list))
 			for i, v := range list {
-				v = strings.SplitN(v, "#", 2)[0] // remove description
-				v = strings.SplitN(v, "@", 2)[0] // remove directive(s)
-				v = strings.TrimRight(v, " ")    // remove trailing spaces
 				enum = append(enum, v)
 				enumInt[v] = i
 			}
-			name := strings.TrimRight(strings.SplitN(enumName, "#", 2)[0], " ")
-			r.enums[name] = enum
-			r.enumsReverse[name] = enumInt
+			r.enums[enumName] = enum
+			r.enumsReverse[enumName] = enumInt
 		}
-
-		// Skip the enums, to get the query, mutation, subscription
-		qms = qms[1:]
 	}
-	r.qData = qms[0]
-	if len(qms) > 1 {
-		r.mData = qms[1]
-	}
-	// TODO: implement subscriptions
-	//if len(qms) > 2 {
-	//	r.subscriptionData = qms[2]
-	//}
-
 	return r
 }
 
@@ -137,7 +153,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	FixNumberVariables(g.Variables)
 
 	// Execute it and write the result or error
-	// TODO work out how to let caller provide their own context or at least a timeout option
 	if buf, err := json.Marshal(g.Execute(r.Context())); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"data": null,"errors": [{"message": "Error encoding JSON response:` + err.Error() + `"}]}`))

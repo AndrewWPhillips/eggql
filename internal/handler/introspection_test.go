@@ -108,11 +108,18 @@ func TestIntrospection(t *testing.T) {
 
 	for name, testData := range introspectionData {
 		t.Run(name, func(t *testing.T) {
-			h := handler.New(schema, map[string][]string{
-				"E#Description E": {
-					"E0", "E1", "E2",
+			h := handler.New([]string{schema},
+				map[string][]string{
+					"E#Description E": {
+						"E0", "E1", "E2",
+					},
 				},
-			}, Query{A: Nested{V: 1}}, Mutation{})
+				[3][]interface{}{
+					{Query{A: Nested{V: 1}}},
+					{Mutation{}},
+					nil,
+				},
+			)
 
 			// Make the request body and the HTTP request that uses it
 			body := strings.Builder{}

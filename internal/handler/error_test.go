@@ -66,7 +66,7 @@ func TestErrors(t *testing.T) {
 
 	for name, testData := range errorData {
 		t.Run(name, func(t *testing.T) {
-			h := handler.New(testData.schema, testData.data)
+			h := handler.New([]string{testData.schema}, nil, [3][]interface{}{{testData.data}, nil, nil})
 
 			// Make the request body and the HTTP request that uses it
 			body := strings.Builder{}
@@ -115,7 +115,13 @@ func TestErrors(t *testing.T) {
 }
 
 func TestQueryTimeout(t *testing.T) {
-	h := handler.New("type Query{v:Int!}", struct{ V func() int }{func() int { time.Sleep(5 * time.Second); return 0 }})
+	h := handler.New([]string{"type Query{v:Int!}"},
+		nil,
+		[3][]interface{}{
+			{struct{ V func() int }{func() int { time.Sleep(5 * time.Second); return 0 }}},
+			nil,
+			nil,
+		})
 
 	request := httptest.NewRequest("POST", "/", strings.NewReader(`{"query":"{v}"}`))
 	request.Header.Add("Content-Type", "application/json")
@@ -140,19 +146,29 @@ func TestQueryTimeout(t *testing.T) {
 }
 
 func TestMutationTimeout(t *testing.T) {
-	h := handler.New("type Mutation{m:Int!}", nil, struct {
-		M func(context.Context) (int, error)
-	}{
-		func(ctx context.Context) (int, error) {
-			for i := 0; i < 100; i++ {
-				if ctx.Err() != nil {
-					return -1, ctx.Err()
-				}
-				time.Sleep(100 * time.Millisecond)
-			}
-			return 0, nil
+	h := handler.New(
+		[]string{"type Mutation{m:Int!}"},
+		nil,
+		[3][]interface{}{
+			{
+				struct {
+					M func(context.Context) (int, error)
+				}{
+					func(ctx context.Context) (int, error) {
+						for i := 0; i < 100; i++ {
+							if ctx.Err() != nil {
+								return -1, ctx.Err()
+							}
+							time.Sleep(100 * time.Millisecond)
+						}
+						return 0, nil
+					},
+				},
+			},
+			nil,
+			nil,
 		},
-	})
+	)
 
 	request := httptest.NewRequest("POST", "/", strings.NewReader(`{"query":"mutation{m}"}`))
 	request.Header.Add("Content-Type", "application/json")

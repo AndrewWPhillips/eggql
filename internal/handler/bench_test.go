@@ -31,11 +31,19 @@ func BenchmarkQuery(b *testing.B) {
 	//h := handler.New("type Query { value: Int! }", struct{ Value int }{42})
 
 	// ~111microsec, 284 allocs => cf above (1 field vs 27 fields) 40 microsec slower due to linear search @ 2022/04/20
-	h := handler.New("type Query { value: Int! }",
-		struct {
-			A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z string
-			Value                                                                        int
-		}{Value: 42})
+	h := handler.New([]string{"type Query { value: Int! }"},
+		nil,
+		[3][]interface{}{
+			{
+				struct {
+					A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z string
+					Value                                                                        int
+				}{Value: 42},
+				nil,
+				nil,
+			},
+		},
+	)
 
 	body := strings.NewReader(query)
 	request := httptest.NewRequest("POST", "/", body)

@@ -52,31 +52,35 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 
 		// Get variables associated with this operation if any
 		if len(operation.VariableDefinitions) > 0 {
+			var pgqlError *gqlerror.Error
 			if op.variables, pgqlError = validator.VariableValues(g.h.schema, operation, g.Variables); pgqlError != nil {
 				r.Errors = append(r.Errors, pgqlError)
 				continue // skip this op if we can't get the vars
 			}
 		}
 
-		var v, vIntro reflect.Value // value of the root query or mutation
-		var introOp *gqlOperation
+		var data []interface{}
+		var isSubscription bool
 		switch operation.Operation {
 		case ast.Query:
-			v = reflect.ValueOf(g.h.qData)
-			if AllowIntrospection {
-				introOp = &gqlOperation{enums: IntroEnums, enumsReverse: IntroEnumsReverse}
-				vIntro = reflect.ValueOf(NewIntrospectionData(g.h.schema))
-			}
+			data = g.h.qData
 		case ast.Mutation:
 			op.isMutation = true
-			v = reflect.ValueOf(g.h.mData)
+			data = g.h.mData
 		case ast.Subscription:
-			r.Errors = append(r.Errors, &gqlerror.Error{Message: "TODO: subscriptions not yet implemented"})
-			return
+			isSubscription = true
+			data = g.h.subscriptionData
 		default:
 			panic("unexpected")
 		}
-		result, err := op.GetSelections(ctx, operation.SelectionSet, v, vIntro, introOp, nil)
+		var result jsonmap.Ordered
+		var err error
+		for _, d := range data {
+			result, err = op.GetSelections(ctx, operation.SelectionSet, reflect.ValueOf(d), nil)
+			if err != nil || len(result.Order) > 0 {
+				break
+			}
+		}
 
 		// TODO: don't stop on 1st error but record all errors to save the client debug time
 		if err != nil {
