@@ -152,8 +152,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Since variables are sent as JSON (which does not distinguish int/float) we need to decide
 	FixNumberVariables(g.Variables)
 
-	// Execute it and write the result or error
-	if buf, err := json.Marshal(g.Execute(r.Context())); err != nil {
+	// Execute it and write the result or error to the HTTP response
+	if buf, err := json.Marshal(g.ExecuteHTTP(r.Context())); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"data": null,"errors": [{"message": "Error encoding JSON response:` + err.Error() + `"}]}`))
 	} else {

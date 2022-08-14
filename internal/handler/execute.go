@@ -36,8 +36,8 @@ type (
 	}
 )
 
-// Execute parses and runs the request (Query field) and returns the result
-func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
+// ExecuteHTTP parses and runs the request (Query field) and returns the result
+func (g *gqlRequest) ExecuteHTTP(ctx context.Context) (r gqlResult) {
 	// Get the analysed and validated query from the query text
 	query, errors := gqlparser.LoadQuery(g.h.schema, g.Query)
 	if errors != nil {
@@ -60,7 +60,6 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 		}
 
 		var data []interface{}
-		var isSubscription bool
 		switch operation.Operation {
 		case ast.Query:
 			data = g.h.qData
@@ -68,8 +67,12 @@ func (g *gqlRequest) Execute(ctx context.Context) (r gqlResult) {
 			op.isMutation = true
 			data = g.h.mData
 		case ast.Subscription:
-			isSubscription = true
-			data = g.h.subscriptionData
+			// Subscriptions cannot be handled here (needs websocket handler)
+			r.Errors = append(r.Errors, &gqlerror.Error{
+				Message:    fmt.Sprintf("subscription %s requires websocket protocol", operation.Name),
+				Extensions: map[string]interface{}{"operation": operation.Name},
+			})
+			return
 		default:
 			panic("unexpected")
 		}

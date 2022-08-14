@@ -17,5 +17,18 @@ import (
 // to generate a GraphQL schema , whereas the actual value of these parameters are the
 // GraphQL "resolvers" used to obtain query results.
 func MustRun(q ...interface{}) http.Handler {
-	return handler.New(schema.MustBuild(q...), q...)
+	//return handler.New(schema.MustBuild(q...), q...)
+	var enums map[string][]string
+	var qms [3][]interface{}
+
+	if len(q) > 0 {
+		if e, ok := q[0].(map[string][]string); ok {
+			enums = e
+			q = q[1:]
+		}
+	}
+	for i, v := range q {
+		qms[i] = []interface{}{v}
+	}
+	return handler.New([]string{schema.MustBuild(q...)}, enums, qms)
 }

@@ -53,6 +53,11 @@ func (h *gql) SetMutation(mutation interface{}) {
 	h.qms[1] = mutation
 }
 
+// SetSubscription adds or replaces the struct representing the subscription type
+func (h *gql) SetSubscription(subscription interface{}) {
+	h.qms[2] = subscription
+}
+
 // GetSchema builds and returns the GraphQL schema
 func (h *gql) GetSchema() (string, error) {
 	s, err := schema.Build(h.enums, h.qms[:]...)
@@ -68,10 +73,5 @@ func (h *gql) GetHandler() (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	var all []interface{}
-	if h.enums != nil {
-		all = append(all, h.enums)
-	}
-	all = append(all, h.qms[:]...)
-	return handler.New(s, all...), nil
+	return handler.New([]string{s}, h.enums, [3][]interface{}{{h.qms[0]}, {h.qms[1]}, {h.qms[2]}}), nil
 }

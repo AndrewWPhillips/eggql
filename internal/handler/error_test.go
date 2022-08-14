@@ -114,7 +114,7 @@ func TestErrors(t *testing.T) {
 	}
 }
 
-func TestQueryTimeout(t *testing.T) {
+func TestQueryCancel(t *testing.T) {
 	h := handler.New([]string{"type Query{v:Int!}"},
 		nil,
 		[3][]interface{}{
@@ -145,11 +145,12 @@ func TestQueryTimeout(t *testing.T) {
 	}
 }
 
-func TestMutationTimeout(t *testing.T) {
+func TestMutationCancel(t *testing.T) {
 	h := handler.New(
 		[]string{"type Mutation{m:Int!}"},
 		nil,
 		[3][]interface{}{
+			nil,
 			{
 				struct {
 					M func(context.Context) (int, error)
@@ -165,7 +166,6 @@ func TestMutationTimeout(t *testing.T) {
 					},
 				},
 			},
-			nil,
 			nil,
 		},
 	)
