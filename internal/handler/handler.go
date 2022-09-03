@@ -7,13 +7,13 @@ package handler
 // handler.go implements handler.New() to create a new handler, and it's ServeHTTP method
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"github.com/gorilla/websocket"
 	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -22,14 +22,15 @@ import (
 type (
 	// Handler stores the invariants (schema and structs) used in the GraphQL requests
 	Handler struct {
-		schema       *ast.Schema
-		enums        map[string][]string       // each enum is a slice of strings
-		enumsReverse map[string]map[string]int // allows reverse lookup - int value given enum value (string)
-		qData        []interface{}
-		mData        []interface{}
-
-		conn             *websocket.Conn
+		schema           *ast.Schema
+		enums            map[string][]string       // each enum is a slice of strings
+		enumsReverse     map[string]map[string]int // allows reverse lookup - int value given enum value (string)
+		qData            []interface{}
+		mData            []interface{}
 		subscriptionData []interface{}
+
+		// The following are for websockets
+		subscriptionCancel map[string]context.CancelFunc // allows cancel of subscription(s) when connection is closed
 	}
 )
 

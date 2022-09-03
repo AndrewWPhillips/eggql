@@ -67,6 +67,7 @@ func (g *gqlRequest) ExecuteHTTP(ctx context.Context) (r gqlResult) {
 			op.isMutation = true
 			data = g.h.mData
 		case ast.Subscription:
+			op.isSubscription = true
 			// Subscriptions cannot be handled here (needs websocket handler)
 			r.Errors = append(r.Errors, &gqlerror.Error{
 				Message:    fmt.Sprintf("subscription %s requires websocket protocol", operation.Name),

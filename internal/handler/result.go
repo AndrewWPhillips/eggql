@@ -23,10 +23,10 @@ const (
 type (
 	// gqlOperation controls an operation (query/mutation) of a GraphQL request
 	gqlOperation struct {
-		isMutation   bool
-		variables    map[string]interface{}
-		enums        map[string][]string       // forward lookup enum value (string) from int (slice index)
-		enumsReverse map[string]map[string]int // allows reverse lookup int from enum value (map key = string)
+		isMutation, isSubscription bool
+		variables                  map[string]interface{}
+		enums                      map[string][]string       // forward lookup enum value (string) from int (slice index)
+		enumsReverse               map[string]map[string]int // allows reverse lookup int from enum value (map key = string)
 	}
 
 	// gqlValue contains the result of a query or queries, or an error, plus the name
