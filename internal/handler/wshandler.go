@@ -114,6 +114,7 @@ func (h *Handler) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// start extracts subscription(s) from a JSON message and start the processing of them
 func (c wsConnection) start(ctx context.Context, message *wsMessage) {
 	// Add to our map of operations active in this ws (first checking that the ID is not in use)
 	if _, ok := c.cancelSubscription[message.ID]; ok {
@@ -157,54 +158,73 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) {
 		}
 
 		for _, d := range data {
-			go func(value reflect.Value) {
-				messageType := "next"
-				if !c.newProtocol {
-					messageType = "data"
+			result, err := op.GetSelections(ctx, operation.SelectionSet, reflect.ValueOf(d), nil)
+			if err != nil {
+				// TODO
+				break
+			}
+			if len(result.Order) > 0 {
+				// start processing for each subscription
+				for _, k := range result.Order {
+					go c.process(ctx, message.ID, k, result.Data[k])
 				}
-
-				resultChans := op.GetSelectionChannels(ctx, operation.SelectionSet, value, nil)
-				// assert(cap(resultChans) == 1)
-				for _, ch := range resultChans {
-				inner:
-					for {
-						select {
-						case v, ok := <-ch:
-							if !ok {
-								break inner
-							}
-							if v.err != nil {
-								// TODO: send v.err
-								return
-							}
-							out := wsMessage{Type: messageType, ID: message.ID}
-							out.Payload.Data = v.value
-							log.Println("qqq", v.value)
-							if err := c.WriteJSON(out); err != nil {
-								log.Println("wsConnection write error:", err)
-								return
-							}
-						case <-ctx.Done():
-							return
-						}
-					}
-				}
-			}(reflect.ValueOf(d))
+				break // don't look for the same selection(s) in the next data
+			}
 		}
 	}
+}
+
+func (c wsConnection) process(ctx context.Context, ID string, k string, i interface{}) {
+	messageType := "next"
+	if !c.newProtocol {
+		messageType = "data"
+	}
+
+	ch := getConvertedChannel(i)
+	for ok := true; ok; {
+		var v interface{} // value returned from the channel
+		select {
+		case v, ok = <-ch:
+			if !ok {
+				break
+			}
+			out := wsMessage{Type: messageType, ID: ID}
+			out.Payload.Data = map[string]interface{}{k: v}
+			if err := c.WriteJSON(out); err != nil {
+				log.Println("wsConnection write error:", err)
+				return
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func getConvertedChannel(i interface{}) <-chan interface{} {
+	v := reflect.ValueOf(i)
+	ch := make(chan interface{})
+	go func() {
+		x, ok := v.Recv()
+		if !ok {
+			close(ch)
+			return
+		}
+		ch <- x.Interface()
+	}()
+	return ch
 }
 
 // stop kills processing of one operation (eg subscription) by calling the cancel function of the operation's context
 func (c wsConnection) stop(ID string) {
 	if c.cancelSubscription[ID] == nil {
-		log.Println("wsConnection ID already cancelled:", ID)
+		log.Println("wsConnection ID not found or already cancelled:", ID)
 		return
 	}
 	c.cancelSubscription[ID]()     // call context cancel func to stop the subscription
 	c.cancelSubscription[ID] = nil // remember that it's been cancelled
 }
 
-// stopAll kills processing of all operations before closing the websocket
+// stopAll kills processing of all operations (eg before closing the websocket)
 func (c wsConnection) stopAll() {
 	for ID, cancel := range c.cancelSubscription {
 		if cancel != nil {
@@ -214,8 +234,9 @@ func (c wsConnection) stopAll() {
 	}
 }
 
+// init handles the initial (high level) handshake by receiving an "init" message and sending an "ack"
 func (c wsConnection) init() bool {
-	c.newProtocol = c.Subprotocol() == "graphql-transport-ws"
+	c.newProtocol = c.Subprotocol() == "graphql-transport-ws" // else assume it's the "old" (graphql-ws) WS sub-protocol
 
 	// Get connection_init and send connection_ack or error
 	message := c.read()
@@ -224,14 +245,18 @@ func (c wsConnection) init() bool {
 		_ = c.WriteMessage(1, []byte("connection_error"))
 		return false
 	}
-	_ = c.WriteMessage(1, []byte("connection_ack"))
+	if err := c.WriteMessage(1, []byte("connection_ack")); err != nil {
+		log.Println("wsConnection error sending ack:", err)
+		_ = c.WriteMessage(1, []byte("connection_error"))
+		return false
+	}
 	return true
 }
 
 func (c wsConnection) read() *wsMessage {
 	_, reader, err := c.NextReader()
 	if err != nil {
-		log.Println("wsConnection read error")
+		log.Println("wsConnection read error:", err)
 		return nil
 	}
 
@@ -240,7 +265,7 @@ func (c wsConnection) read() *wsMessage {
 	decoder.UseNumber() // allows us to distinguish ints from floats in Variables map (see also FixNumberVariables())
 	err = decoder.Decode(&message)
 	if err != nil {
-		log.Println("wsConnection decode error")
+		log.Println("wsConnection decode error:", err)
 		return nil
 	}
 

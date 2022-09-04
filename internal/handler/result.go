@@ -172,7 +172,7 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 			// end of chan (no match found) so continue below
 		}
 		if fieldInfo.Name == astField.Name {
-			// resolver found so run it (concurrently)
+			// resolver found
 			if op.isMutation || !AllowConcurrentQueries { // Mutations are run sequentially
 				ch := make(chan gqlValue, 1)
 				op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, ch)
@@ -381,6 +381,9 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 			}
 		}
 		return &gqlValue{name: astField.Alias, value: results}
+
+	case reflect.Chan:
+		return &gqlValue{name: astField.Alias, value: v.Interface()}
 	}
 	if fieldInfo.GQLTypeName == "ID" {
 		return &gqlValue{name: astField.Alias, value: v.Interface()}
