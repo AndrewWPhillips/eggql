@@ -22,9 +22,14 @@ import (
 type (
 	// Handler stores the invariants (schema and structs) used in the GraphQL requests
 	Handler struct {
-		schema           *ast.Schema
-		enums            map[string][]string       // each enum is a slice of strings
-		enumsReverse     map[string]map[string]int // allows reverse lookup - int value given enum value (string)
+		schema       *ast.Schema
+		enums        map[string][]string       // each enum is a slice of strings
+		enumsReverse map[string]map[string]int // allows reverse lookup - int value given enum value (string)
+
+		// qData, mData and subscriptionData provide the resolvers for queries, mutations and subscriptions
+		// respectively.  Note that each typically has only one element except that qData may also have
+		// introspection data (as returned by NewIntrospectionData) but they could have more elements if
+		// multiple schemas are combined (stitched).
 		qData            []interface{}
 		mData            []interface{}
 		subscriptionData []interface{}

@@ -70,7 +70,7 @@ func (g *gqlRequest) ExecuteHTTP(ctx context.Context) (r gqlResult) {
 			op.isSubscription = true
 			// Subscriptions cannot be handled here (needs websocket handler)
 			r.Errors = append(r.Errors, &gqlerror.Error{
-				Message:    fmt.Sprintf("subscription %s requires websocket protocol", operation.Name),
+				Message:    fmt.Sprintf("subscription %s requires websocket", operation.Name),
 				Extensions: map[string]interface{}{"operation": operation.Name},
 			})
 			return

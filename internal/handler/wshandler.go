@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/vektah/gqlparser/v2"
@@ -18,11 +19,16 @@ import (
 	"github.com/vektah/gqlparser/v2/validator"
 )
 
+const (
+	initTimeout   = 2 * time.Second
+	pingFrequency = 10 * time.Second
+	pongTimeout   = 2 * time.Second
+)
+
 type (
 	wsConnection struct {
-		*websocket.Conn // handle for WS communications
-
-		h *Handler // we need this for the schema etc
+		h               *Handler // we need this for the schema etc
+		*websocket.Conn          // handle for WS communications
 
 		// cancelSubscription keeps track of the cancel function(s) associated with each operation.
 		// Typically, there is just one entry in the map which is the ID associated with the subscription operation.
@@ -57,7 +63,6 @@ var upgrader = websocket.Upgrader{
 }
 
 // serverWS is called in response to a GraphQL HTTP request wanting to upgrade to a WS.
-// It only handles subscription request(s) and sends a stream of responses.
 func (h *Handler) serveWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -70,51 +75,113 @@ func (h *Handler) serveWS(w http.ResponseWriter, r *http.Request) {
 		h:                  h,
 		cancelSubscription: make(map[string]context.CancelFunc, 1),
 	}
+
+	if !c.init() {
+		c.Close()
+		return
+	}
+
+	if !c.newProtocol {
+		if err := c.WriteJSON(wsMessage{Type: "ka"}); err != nil {
+			log.Println("wsConnection: ka error:", err)
+		}
+	}
+
+	// timer ensures the connection is kept alive by sending a "ka" or "ping" message even if there is no other traffic
+	var timer *time.Timer
+
+	// Create a channel that returns the messages read from the web socket
+	ch := make(chan *wsMessage)
+	go func() {
+		message := c.read()
+		if message == nil {
+			close(ch)
+			return
+		}
+		ch <- message
+	}()
+
 	defer func() {
 		c.stopAll()
 		err := c.Close()
 		if err != nil {
 			log.Println("wsConnection close error:", err)
 		}
+		for range ch {
+			// nothing needed here - just draining ch
+		}
 	}()
-	// TODO call conn.SetReadDeadline() ??
 
-	if !c.init() {
-		return
-	}
-
-	if !c.newProtocol {
-		_ = c.WriteMessage(1, []byte("ka"))
-	}
-
+loop:
 	for {
-		message := c.read()
-		if message == nil {
-			_ = c.WriteMessage(1, []byte("complete")) // TODO check this is correct message format
-			return
+		timer = time.NewTimer(pingFrequency)
+		select {
+		case message, ok := <-ch:
+			if !ok {
+				// TODO: check if we send "complete" in this case (read error)
+				if err := c.WriteJSON(wsMessage{Type: "complete"}); err != nil {
+					log.Println("wsConnection complete error:", err)
+				}
+				return
+			}
+
+			switch message.Type {
+			case "subscribe", "start":
+				c.start(r.Context(), message)
+
+			case "complete", "stop":
+				c.stop(message.ID)
+
+			case "ping":
+				if err := c.WriteJSON(wsMessage{Type: "pong"}); err != nil {
+					log.Println("wsConnection pong error:", err)
+					return
+				}
+
+			case "pong":
+				// sent in response to our ping but nothing is required here
+
+			case "connection_terminate":
+				return // TODO: drain ch?
+
+			default:
+				log.Println("wsConnection unexpected message type:", message.Type)
+				return
+			}
+
+		case <-r.Context().Done():
+			break loop // TODO: drain ch?
+
+		case <-timer.C:
+			if c.newProtocol {
+				// Send a "ping" expecting a reply ("pong" or other message) within a certain time
+				c.setTimeout(pongTimeout)
+				if err := c.WriteJSON(wsMessage{Type: "ping"}); err != nil {
+					log.Println("wsConnection: ping error:", err)
+				}
+			} else {
+				// Old protocol just has the server send a "keep alive" message
+				if err := c.WriteJSON(wsMessage{Type: "ka"}); err != nil {
+					log.Println("wsConnection: ka error:", err)
+				}
+			}
+
 		}
-
-		switch message.Type {
-		case "subscribe", "start":
-			c.start(r.Context(), message)
-
-		case "complete", "stop":
-			c.stop(message.ID)
-
-		case "ping":
-			_ = c.WriteMessage(1, []byte("pong")) // TODO check this is correct message format
-
-		case "connection_terminate":
-			return
-
-		default:
-			log.Println("wsConnection unexpected message type:", message.Type)
-			return
-		}
+		_ = timer.Stop() // don't try to drain the chan - no need and it could be empty
 	}
 }
 
-// start extracts subscription(s) from a JSON message and start the processing of them
+// setTimeout sets the maximum allowed time before a response is expected. If no response is forthcoming then the websocket
+// enters an error state whence the WS can no longer be used. For example, this may be used to check that a connection is
+// alive by sending a "ping" and expecting a "pong" reply within the timeout period.  (Of course, a different message
+// type may be received before the "pong" but that's OK as long as it is received before the timeout ends.)
+func (c wsConnection) setTimeout(timeout time.Duration) {
+	if err := c.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+		log.Println("wsConnection set deadline error:", err)
+	}
+}
+
+// start extracts subscription(s) from a JSON message and begins the processing of them
 func (c wsConnection) start(ctx context.Context, message *wsMessage) {
 	// Add to our map of operations active in this ws (first checking that the ID is not in use)
 	if _, ok := c.cancelSubscription[message.ID]; ok {
@@ -186,7 +253,10 @@ func (c wsConnection) process(ctx context.Context, ID string, k string, i interf
 		select {
 		case v, ok = <-ch:
 			if !ok {
-				break
+				if err := c.WriteJSON(wsMessage{Type: "complete", ID: ID}); err != nil {
+					log.Println("wsConnection complete error:", err)
+				}
+				return
 			}
 			out := wsMessage{Type: messageType, ID: ID}
 			out.Payload.Data = map[string]interface{}{k: v}
@@ -204,12 +274,14 @@ func getConvertedChannel(i interface{}) <-chan interface{} {
 	v := reflect.ValueOf(i)
 	ch := make(chan interface{})
 	go func() {
-		x, ok := v.Recv()
-		if !ok {
-			close(ch)
-			return
+		for {
+			x, ok := v.Recv()
+			if !ok {
+				close(ch)
+				return
+			}
+			ch <- x.Interface()
 		}
-		ch <- x.Interface()
 	}()
 	return ch
 }
@@ -239,6 +311,7 @@ func (c wsConnection) init() bool {
 	c.newProtocol = c.Subprotocol() == "graphql-transport-ws" // else assume it's the "old" (graphql-ws) WS sub-protocol
 
 	// Get connection_init and send connection_ack or error
+	c.setTimeout(initTimeout)
 	message := c.read()
 	if message == nil || message.Type != "connection_init" {
 		log.Println("wsConnection init error")
@@ -259,15 +332,19 @@ func (c wsConnection) read() *wsMessage {
 		log.Println("wsConnection read error:", err)
 		return nil
 	}
+	// clear deadline - as we may not care how long before the next read arrives
+	if err := c.SetReadDeadline(time.Time{}); err != nil {
+		log.Println("wsConnection clear deadline error:", err)
+	}
 
-	var message wsMessage
+	r := &wsMessage{}
 	decoder := json.NewDecoder(reader)
 	decoder.UseNumber() // allows us to distinguish ints from floats in Variables map (see also FixNumberVariables())
-	err = decoder.Decode(&message)
+	err = decoder.Decode(r)
 	if err != nil {
 		log.Println("wsConnection decode error:", err)
 		return nil
 	}
 
-	return &message
+	return r
 }
