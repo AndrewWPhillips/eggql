@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -27,8 +28,10 @@ const (
 
 type (
 	wsConnection struct {
-		h               *Handler // we need this for the schema etc
-		*websocket.Conn          // handle for WS communications
+		h *Handler // we need this for the schema etc
+
+		writeMu         *sync.Mutex // protect concurrent writes to the websocket
+		*websocket.Conn             // handle for WS communications
 
 		// cancelSubscription keeps track of the cancel function(s) associated with each operation.
 		// Typically, there is just one entry in the map which is the ID associated with the subscription operation.
@@ -36,7 +39,7 @@ type (
 		//  map value = context.CancelFunc that will terminate the operation (ie kill all subscription processing)
 		cancelSubscription map[string]context.CancelFunc
 
-		newProtocol bool // default to old
+		newProtocol bool // defaults to old protocol
 	}
 
 	wsMessage struct {
@@ -71,8 +74,9 @@ func (h *Handler) serveWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := wsConnection{
-		Conn:               conn,
 		h:                  h,
+		writeMu:            &sync.Mutex{},
+		Conn:               conn,
 		cancelSubscription: make(map[string]context.CancelFunc, 1),
 	}
 
@@ -82,7 +86,7 @@ func (h *Handler) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !c.newProtocol {
-		if err := c.WriteJSON(wsMessage{Type: "ka"}); err != nil {
+		if err := c.write(wsMessage{Type: "ka"}); err != nil {
 			log.Println("wsConnection: ka error:", err)
 		}
 	}
@@ -119,7 +123,7 @@ loop:
 		case message, ok := <-ch:
 			if !ok {
 				// TODO: check if we send "complete" in this case (read error)
-				if err := c.WriteJSON(wsMessage{Type: "complete"}); err != nil {
+				if err := c.write(wsMessage{Type: "complete"}); err != nil {
 					log.Println("wsConnection complete error:", err)
 				}
 				return
@@ -133,7 +137,7 @@ loop:
 				c.stop(message.ID)
 
 			case "ping":
-				if err := c.WriteJSON(wsMessage{Type: "pong"}); err != nil {
+				if err := c.write(wsMessage{Type: "pong"}); err != nil {
 					log.Println("wsConnection pong error:", err)
 					return
 				}
@@ -156,12 +160,12 @@ loop:
 			if c.newProtocol {
 				// Send a "ping" expecting a reply ("pong" or other message) within a certain time
 				c.setTimeout(pongTimeout)
-				if err := c.WriteJSON(wsMessage{Type: "ping"}); err != nil {
+				if err := c.write(wsMessage{Type: "ping"}); err != nil {
 					log.Println("wsConnection: ping error:", err)
 				}
 			} else {
 				// Old protocol just has the server send a "keep alive" message
-				if err := c.WriteJSON(wsMessage{Type: "ka"}); err != nil {
+				if err := c.write(wsMessage{Type: "ka"}); err != nil {
 					log.Println("wsConnection: ka error:", err)
 				}
 			}
@@ -241,49 +245,43 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) {
 	}
 }
 
-func (c wsConnection) process(ctx context.Context, ID string, k string, i interface{}) {
+// process is called as a go routine to send the operation data to the websocket
+// Parameters
+// ctx = context that can be used to terminate the processing
+// ID = client identifier for the operation from the subscribe (or start in old sub-protocol) message
+// k = name or alias of the subscription query
+// in = channel which outputs the data of the subscription
+func (c wsConnection) process(ctx context.Context, ID string, k string, in interface{}) {
 	messageType := "next"
 	if !c.newProtocol {
 		messageType = "data"
 	}
 
-	ch := getConvertedChannel(i)
-	for ok := true; ok; {
-		var v interface{} // value returned from the channel
-		select {
-		case v, ok = <-ch:
+	for {
+		// We use reflect.Select instead of a select statement because we don't know the type returned by the 'in' chan
+		chosen, v, ok := reflect.Select([]reflect.SelectCase{
+			{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(in)},
+			{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())},
+		})
+		switch chosen {
+		case 0:
 			if !ok {
-				if err := c.WriteJSON(wsMessage{Type: "complete", ID: ID}); err != nil {
+				if err := c.write(wsMessage{Type: "complete", ID: ID}); err != nil {
 					log.Println("wsConnection complete error:", err)
 				}
 				return
 			}
 			out := wsMessage{Type: messageType, ID: ID}
-			out.Payload.Data = map[string]interface{}{k: v}
-			if err := c.WriteJSON(out); err != nil {
+			out.Payload.Data = map[string]interface{}{k: v.Interface()}
+			if err := c.write(out); err != nil {
 				log.Println("wsConnection write error:", err)
 				return
 			}
-		case <-ctx.Done():
+		case 1:
+			// TODO: write something to the WS?
 			return
 		}
 	}
-}
-
-func getConvertedChannel(i interface{}) <-chan interface{} {
-	v := reflect.ValueOf(i)
-	ch := make(chan interface{})
-	go func() {
-		for {
-			x, ok := v.Recv()
-			if !ok {
-				close(ch)
-				return
-			}
-			ch <- x.Interface()
-		}
-	}()
-	return ch
 }
 
 // stop kills processing of one operation (eg subscription) by calling the cancel function of the operation's context
@@ -306,7 +304,7 @@ func (c wsConnection) stopAll() {
 	}
 }
 
-// init handles the initial (high level) handshake by receiving an "init" message and sending an "ack"
+// init performs the high-level (sub-protocol) handshake by receiving an "init" message and sending an "ack"
 func (c wsConnection) init() bool {
 	c.newProtocol = c.Subprotocol() == "graphql-transport-ws" // else assume it's the "old" (graphql-ws) WS sub-protocol
 
@@ -315,18 +313,30 @@ func (c wsConnection) init() bool {
 	message := c.read()
 	if message == nil || message.Type != "connection_init" {
 		log.Println("wsConnection init error")
-		_ = c.WriteMessage(1, []byte("connection_error"))
+		if c.newProtocol {
+			// TODO: send 4408: Connection initialisation timeout
+		} else {
+			if err := c.write(wsMessage{Type: "connection_error"}); err != nil {
+				log.Println("wsConnection: connection_error error:", err)
+			}
+		}
 		return false
 	}
-	if err := c.WriteMessage(1, []byte("connection_ack")); err != nil {
-		log.Println("wsConnection error sending ack:", err)
-		_ = c.WriteMessage(1, []byte("connection_error"))
+	if err := c.write(wsMessage{Type: "connection_ack"}); err != nil {
+		log.Println("wsConnection: connection_ack error:", err)
+		if !c.newProtocol {
+			_ = c.write(wsMessage{Type: "connection_error"})
+		}
 		return false
 	}
 	return true
 }
 
+// read gets a message from the websocket, decodes the JSON, and returns a pointer to the message
+// Note that concurrent reads are not needed so there is noe read mutex.
 func (c wsConnection) read() *wsMessage {
+	//c.readMu.Lock()
+	//defer c.readMu.Unlock()
 	_, reader, err := c.NextReader()
 	if err != nil {
 		log.Println("wsConnection read error:", err)
@@ -347,4 +357,11 @@ func (c wsConnection) read() *wsMessage {
 	}
 
 	return r
+}
+
+// write wraps the Gorilla WriteJSON method to allow concurrent writes
+func (c wsConnection) write(v interface{}) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	return c.WriteJSON(v)
 }
