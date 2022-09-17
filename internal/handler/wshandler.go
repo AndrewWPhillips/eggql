@@ -1,6 +1,7 @@
 package handler
 
-// wshandler is code for handling websockets for subscriptions.  It supports both commonly used WS protocols
+// wshandler is code for handling websockets for subscriptions (maybe also queries/mutations in the future).
+// It supports both commonly used WS protocols
 // * subscriptions-transport-ws: early protocol from Apollo for subscriptions (sub-protocol name:graphql-ws)
 // * graphql-ws is newer (official?) ws transport which can handle query/mutation/subscription (sub-protocol name:graphql-transport-ws).
 
@@ -33,6 +34,7 @@ const (
 )
 
 type (
+	// wsConnection handles one websocket connection
 	wsConnection struct {
 		h *Handler // we need this for the schema etc
 
@@ -113,6 +115,8 @@ func (h *Handler) serveWS(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		for {
 			var message *wsMessage
+			// Although the following WS read happens in separate go-routine we do not need to protect the read
+			// with a mutex as the other read (in init() method above) happens before this go-routine is started
 			if !c.newProtocol {
 				message = c.read("start", "stop", "connection_terminate")
 			} else {
@@ -236,7 +240,7 @@ func (c wsConnection) init() bool {
 //  - if the query is invalid
 func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 	if message.ID == "" {
-		c.closeMessage(websocket.CloseProtocolError, "no ID provided for subscriber")
+		c.closeMessage(websocket.CloseProtocolError, "no ID provided for subscribe")
 	}
 	// Add to our map of operations active in this ws (first checking that the ID is not in use)
 	if _, ok := c.cancelSubscription[message.ID]; ok {
@@ -259,56 +263,91 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 		return false
 	}
 
+	var r gqlResult // used to return query/mutation result(s), not used for subscriptions (results from chan written directly to ws)
+
 	for _, operation := range query.Operations {
 		op := gqlOperation{enums: c.h.enums, enumsReverse: c.h.enumsReverse}
 
 		if len(operation.VariableDefinitions) > 0 {
 			var pgqlError *gqlerror.Error
 			if op.variables, pgqlError = validator.VariableValues(c.h.schema, operation, message.Payload.Variables); pgqlError != nil {
-				// TODO
+				r.Errors = append(r.Errors, pgqlError)
 				continue // skip this op if we can't get the vars
 			}
 		}
 
-		var data []interface{}
+		var data []interface{} // one (or more) structs containing resolver(s)
 		switch operation.Operation {
 		case ast.Query:
-			// TODO
+			data = c.h.qData // TODO: test this once we can send query on WS - no tools support it AFAIK! (GraphIQL, Postman etc)
 		case ast.Mutation:
 			op.isMutation = true
-			// TODO
+			data = c.h.mData
 		case ast.Subscription:
 			op.isSubscription = true
 			data = c.h.subscriptionData
 		default:
-			// TODO
+			panic("unknown operation: " + string(operation.Operation))
 		}
 
 		for _, d := range data {
 			result, err := op.GetSelections(ctx, operation.SelectionSet, reflect.ValueOf(d), nil)
 			if err != nil {
-				// TODO
-				break
+				r.Errors = append(r.Errors, &gqlerror.Error{
+					Message:    err.Error(),
+					Extensions: map[string]interface{}{"operation": operation.Name},
+				})
+				continue
 			}
 			if len(result.Order) > 0 {
 				// start processing for each subscription
 				for _, k := range result.Order {
-					go c.process(ctx, message.ID, k, result.Data[k])
+					if reflect.TypeOf(result.Data[k]).Kind() == reflect.Chan {
+						go c.process(ctx, message.ID, k, result.Data[k], !op.isSubscription)
+						continue
+					}
+					if op.isSubscription {
+						out := wsMessage{
+							Type: "error", ID: message.ID,
+							Payload: &payload{
+								Data: "internal error: subscription resolver \"" + k + "\"did not return a channel",
+							},
+						}
+						c.write(out)
+						return false
+					}
+					r.Data.Data[k] = result.Data[k]
+					r.Data.Order = append(r.Data.Order, k)
 				}
 				break // don't look for the same selection(s) in the next data
 			}
 		}
+	}
+	// If we got result data (not channels) then write the data to the WS
+	if len(r.Data.Order) > 0 || len(r.Errors) > 0 {
+		messageType := "next"
+		if !c.newProtocol {
+			messageType = "data"
+		}
+		out := wsMessage{
+			Type: messageType, ID: message.ID,
+			Payload: &payload{
+				Data: r,
+			},
+		}
+		c.write(out)
 	}
 	return true
 }
 
 // process is called as a go routine to send the operation data to the websocket
 // Parameters
-// ctx = context that can be used to terminate the processing
-// ID = client identifier for the operation from the "subscribe" (or start in old sub-protocol) message
-// k = name or alias of the subscription query
-// in = channel which outputs the data for the subscription
-func (c wsConnection) process(ctx context.Context, ID string, k string, in interface{}) {
+//  ctx = context that can be used to terminate the processing
+//  ID = client identifier for the operation from the "subscribe" (or start in old sub-protocol) message
+//  k = name or alias of the subscription query
+//  in = channel which outputs the data for the subscription
+//  onceOnly = true if the channel will only send one value (eg query not subscription)
+func (c wsConnection) process(ctx context.Context, ID string, k string, in interface{}, onceOnly bool) {
 	messageType := "next"
 	if !c.newProtocol {
 		messageType = "data"
@@ -341,18 +380,12 @@ func (c wsConnection) process(ctx context.Context, ID string, k string, in inter
 					Data: map[string]interface{}{k: v.Interface()},
 				},
 			}
-			c.write(out) // TODO check if write fails?
-		case 1:
-			c.write(wsMessage{Type: "complete", ID: ID})
-			// drain the channel in case it was written to just before the ctx cancel was received
-			for ok = true; ok; {
-				var qqq reflect.Value
-				_, qqq, ok = reflect.Select([]reflect.SelectCase{
-					{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(in)},
-				})
-				log.Println(qqq.Interface())
+			c.write(out)
+			if onceOnly {
+				return // only one result sent
 			}
-			return
+		case 1:
+			return // context canceled
 		}
 	}
 }
@@ -360,7 +393,7 @@ func (c wsConnection) process(ctx context.Context, ID string, k string, in inter
 // stop kills processing of one operation (eg subscription) by calling the cancel function of the operation's context
 func (c wsConnection) stop(ID string) {
 	if c.cancelSubscription[ID] == nil {
-		log.Println("wsConnection ID not found or already cancelled:", ID)
+		// Not an error - may occur if client and server send "complete" messages at the same time
 		return
 	}
 	c.cancelSubscription[ID]()     // call context cancel func to stop the subscription
@@ -398,7 +431,7 @@ func (c wsConnection) closeMessage(closeCode int, text string) {
 
 // read gets a message from the websocket, decodes the JSON, and returns a pointer to the message
 // If there is any sort of error it sends an appropriate response on the websocket and returns nil
-// Note that concurrent reads are not needed so there is no mutex for WS reads.
+// Note that concurrent reads are not supported or needed so there is no mutex reads (unlike writes).
 // Parameter(s): all message types that are expected TODO: use a map[string] instead of a []string for faster lookup
 func (c wsConnection) read(expected ...string) *wsMessage {
 	// Get the message from the websocket
@@ -412,6 +445,7 @@ func (c wsConnection) read(expected ...string) *wsMessage {
 			}
 			// TODO: we should only send this for a timeout
 			c.closeMessage(4408, "Connection initialisation timeout")
+			return nil
 		}
 		c.closeMessage(websocket.CloseAbnormalClosure, "read error:"+err.Error())
 		return nil

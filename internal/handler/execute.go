@@ -75,7 +75,7 @@ func (g *gqlRequest) ExecuteHTTP(ctx context.Context) (r gqlResult) {
 			})
 			return
 		default:
-			panic("unexpected")
+			panic("unknown operation: " + string(operation.Operation))
 		}
 		var result jsonmap.Ordered
 		var err error
