@@ -4,6 +4,7 @@ package eggql
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/andrewwphillips/eggql/internal/handler"
 	"github.com/andrewwphillips/eggql/internal/schema"
@@ -11,8 +12,9 @@ import (
 
 type (
 	gql struct {
-		enums map[string][]string
-		qms   [3]interface{}
+		enums   map[string][]string
+		qms     [3]interface{}
+		options []func(*handler.Handler)
 	}
 )
 
@@ -20,47 +22,47 @@ type (
 // query, mutation, and subscription types (though these may also be added or replaced
 // later using the SetQuery, SetMutation, and SetSubscription methods).
 func New(q ...interface{}) gql {
-	r := gql{}
+	g := gql{}
 	for i := 0; i < 3; i++ {
 		if len(q) > i {
-			r.qms[i] = q[i]
+			g.qms[i] = q[i]
 		}
 	}
-	return r
+	return g
 }
 
 // SetEnums adds or replaces enums used in generating the schema
-func (h *gql) SetEnums(enums map[string][]string) {
-	h.enums = enums
+func (g *gql) SetEnums(enums map[string][]string) {
+	g.enums = enums
 }
 
 // AddEnum adds one enum to the map of enums used in generating the schema.
 // You can call AddEnum repeatedly instead of using SetEnums.
-func (h *gql) AddEnum(name string, values []string) {
-	if h.enums == nil {
-		h.enums = make(map[string][]string)
+func (g *gql) AddEnum(name string, values []string) {
+	if g.enums == nil {
+		g.enums = make(map[string][]string)
 	}
-	h.enums[name] = values
+	g.enums[name] = values
 }
 
 // SetQuery adds or replaces the struct representing the root query type
-func (h *gql) SetQuery(query interface{}) {
-	h.qms[0] = query
+func (g *gql) SetQuery(query interface{}) {
+	g.qms[0] = query
 }
 
 // SetMutation adds or replaces the struct representing the root mutation type
-func (h *gql) SetMutation(mutation interface{}) {
-	h.qms[1] = mutation
+func (g *gql) SetMutation(mutation interface{}) {
+	g.qms[1] = mutation
 }
 
 // SetSubscription adds or replaces the struct representing the subscription type
-func (h *gql) SetSubscription(subscription interface{}) {
-	h.qms[2] = subscription
+func (g *gql) SetSubscription(subscription interface{}) {
+	g.qms[2] = subscription
 }
 
 // GetSchema builds and returns the GraphQL schema
-func (h *gql) GetSchema() (string, error) {
-	s, err := schema.Build(h.enums, h.qms[:]...)
+func (g *gql) GetSchema() (string, error) {
+	s, err := schema.Build(g.enums, g.qms[:]...)
 	if err != nil {
 		return "", err
 	}
@@ -68,10 +70,22 @@ func (h *gql) GetSchema() (string, error) {
 }
 
 // GetHandler builds the schema and returns the HTTP handler that handles GraphQL queries
-func (h *gql) GetHandler() (http.Handler, error) {
-	s, err := schema.Build(h.enums, h.qms[:]...)
+func (g *gql) GetHandler() (http.Handler, error) {
+	s, err := schema.Build(g.enums, g.qms[:]...)
 	if err != nil {
 		return nil, err
 	}
-	return handler.New([]string{s}, h.enums, [3][]interface{}{{h.qms[0]}, {h.qms[1]}, {h.qms[2]}}), nil
+	return handler.New([]string{s}, g.enums, [3][]interface{}{{g.qms[0]}, {g.qms[1]}, {g.qms[2]}}, g.options...), nil
+}
+
+func (g *gql) SetInitialTimeout(timeout time.Duration) {
+	g.options = append(g.options, handler.InitialTimeout(timeout))
+}
+
+func (g *gql) SetPingFrequency(freq time.Duration) {
+	g.options = append(g.options, handler.PingFrequency(freq))
+}
+
+func (g *gql) SetPongTimeout(timeout time.Duration) {
+	g.options = append(g.options, handler.PongTimeout(timeout))
 }

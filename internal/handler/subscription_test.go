@@ -32,13 +32,35 @@ type (
 // TestSubscriptions has a table of tests each of which tests a subscriptions scenario
 func TestSubscriptions(t *testing.T) {
 	subscriptionData := map[string]struct {
-		delay    time.Duration // time between "hello" messages from the server (0 for no delay)
-		protocol string        // which WS subprotocol to use == "graphql-transport-ws" (new) or "graphql-ws" (old)
-		actions  []wsAction    // list of actions to take
+		delay                                      time.Duration // time between "hello" messages from the server (0 for no delay)
+		protocol                                   string        // which WS subprotocol to use == "graphql-transport-ws" (new) or "graphql-ws" (old)
+		initialTimeout, pingFrequency, pongTimeout time.Duration
+		actions                                    []wsAction // list of actions to take
 	}{
-		"empty": {0, "", []wsAction{}},
+		"empty": {actions: []wsAction{}},
+		"init_bad": {
+			actions: []wsAction{
+				{actionSend, `bad`},
+				//{actionRecv, `"connection_error"`}, // TODO check this
+				{actionError, websocket.CloseUnsupportedData},
+				{actionPause, 20}, // this is needed to detect possible residual websocket close problems
+			},
+		},
+		"init_term": {
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_terminate"}`},
+				{actionError, websocket.CloseNormalClosure},
+			},
+		},
+		"init_start": {
+			actions: []wsAction{
+				{actionSend, `{"type": "start"}`},
+				{actionRecv, `"connection_error"`},
+			},
+		},
 		"basic_old": {
-			time.Second, "", []wsAction{
+			delay: time.Second,
+			actions: []wsAction{
 				{actionSend, `{"type": "connection_init"}`},
 				{actionRecv, `"connection_ack"`},
 				{actionRecv, `"ka"`},
@@ -46,19 +68,47 @@ func TestSubscriptions(t *testing.T) {
 				{actionRecv, `{"type":"data","id":"ID-1","payload":{"data":{"message":"hello"}}}`},
 				{actionSend, `{"type":"stop","id":"ID-1"}`},
 				{actionRecv, `"type":"complete","id":"ID-1"`},
-				{actionPause, 20}, // this is needed to detect residual websocket close problems
 			},
 		},
-		// Using new sub-protocol
+		"2nd_ka": {
+			pingFrequency: 5 * time.Millisecond,
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_init"}`},
+				{actionRecv, `"connection_ack"`},
+				{actionRecv, `"ka"`},
+				{actionRecv, `"ka"`},
+			},
+		},
+		// Using new sub-protocol -----------------
 		"basic_new": {
-			time.Second, "graphql-transport-ws", []wsAction{
+			delay: time.Second, protocol: "graphql-transport-ws",
+			actions: []wsAction{
 				{actionSend, `{"type": "connection_init"}`},
 				{actionRecv, `"connection_ack"`},
 				{actionSend, `{"type":"subscribe","id":"ID-3","payload":{"query":"subscription {message}"}}`},
 				{actionRecv, `{"type":"next","id":"ID-3","payload":{"data":{"message":"hello"}}}`},
 				{actionSend, `{"type":"complete","id":"ID-3"}`},
 				{actionRecv, `"type":"complete","id":"ID-3"`},
+			},
+		},
+		"send_ping": {
+			protocol: "graphql-transport-ws",
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_init"}`},
+				{actionRecv, `"connection_ack"`},
+				{actionSend, `{"type":"ping"}`},
+				{actionRecv, `"type":"pong"`},
 				{actionPause, 20}, // this is needed to detect residual websocket close problems
+			},
+		},
+		"reply_pong": {
+			protocol:      "graphql-transport-ws",
+			pingFrequency: 5 * time.Millisecond,
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_init"}`},
+				{actionRecv, `"connection_ack"`},
+				{actionRecv, `"type":"ping"`},
+				{actionSend, `{"type":"pong"}`},
 			},
 		},
 	}
@@ -67,7 +117,7 @@ func TestSubscriptions(t *testing.T) {
 		n, d := name, data // retain loop value for capture in the closure below
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
-			server := getServer(d.delay)
+			server := getServer(d.delay, d.initialTimeout, d.pingFrequency, d.pongTimeout)
 			defer server.Close()
 
 			header := make(http.Header)
@@ -119,7 +169,7 @@ func TestSubscriptions(t *testing.T) {
 }
 
 // getServer creates a simples GraphQL server that keeps sending "hello" messages for a "message" subscription
-func getServer(delay time.Duration) *httptest.Server {
+func getServer(delay, initialTimeout, pingFrequency, pongTimeout time.Duration) *httptest.Server {
 	// Create handler that has a single subscription that keeps sending "hello"
 	h := handler.New(
 		[]string{"type Subscription{ message: String! }"},
@@ -149,6 +199,9 @@ func getServer(delay time.Duration) *httptest.Server {
 				},
 			},
 		},
+		handler.InitialTimeout(initialTimeout),
+		handler.PingFrequency(pingFrequency),
+		handler.PongTimeout(pongTimeout),
 	)
 
 	return httptest.NewServer(h)

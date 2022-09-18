@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
@@ -32,6 +33,11 @@ type (
 		qData            []interface{}
 		mData            []interface{}
 		subscriptionData []interface{}
+
+		// websocket options
+		initialTimeout time.Duration // how long to wait for connection_init after the WS is opened
+		pingFrequency  time.Duration // how often to send a ping (ka in old protocol) message to the client
+		pongTimeout    time.Duration // how long to wait for a pong after sending a ping
 	}
 )
 
@@ -43,22 +49,27 @@ type (
 //     qms[0] - query struct(s)
 //     qms[1] - mutation struct(s)
 //     qms[2] - subscription struct(s)
-func New(schemaStrings []string, enums map[string][]string, qms [3][]interface{}) http.Handler {
+//   options - zero or more options returned by calls to:
+//     handler.InitialTimeout
+//     handler.PingFrequency
+//     handler.PongTimeout
+func New(schemaStrings []string, enums map[string][]string, qms [3][]interface{}, options ...func(*Handler),
+) http.Handler {
 	var sources []*ast.Source
 
 	for i, str := range schemaStrings {
 		sources = append(sources, &ast.Source{Name: "schema " + strconv.Itoa(i+1), Input: str})
 	}
 
-	r := &Handler{}
+	h := &Handler{}
 	var pgqlError *gqlerror.Error
-	r.schema, pgqlError = gqlparser.LoadSchema(sources...)
+	h.schema, pgqlError = gqlparser.LoadSchema(sources...)
 	if pgqlError != nil {
 		log.Fatalf("eggql.handler.New - error making schema error %s\n", error(pgqlError))
 	}
 
-	r.enums = make(map[string][]string, len(enums))
-	r.enumsReverse = make(map[string]map[string]int, len(enums))
+	h.enums = make(map[string][]string, len(enums))
+	h.enumsReverse = make(map[string]map[string]int, len(enums))
 	for enumName, list := range enums {
 		enum := make([]string, 0, len(list))
 		enumInt := make(map[string]int, len(list))
@@ -70,17 +81,17 @@ func New(schemaStrings []string, enums map[string][]string, qms [3][]interface{}
 			enumInt[v] = i
 		}
 		name := strings.TrimRight(strings.SplitN(enumName, "#", 2)[0], " ")
-		r.enums[name] = enum
-		r.enumsReverse[name] = enumInt
+		h.enums[name] = enum
+		h.enumsReverse[name] = enumInt
 	}
 
-	r.qData = qms[0]
-	r.mData = qms[1]
-	r.subscriptionData = qms[2]
+	h.qData = qms[0]
+	h.mData = qms[1]
+	h.subscriptionData = qms[2]
 
 	if AllowIntrospection {
 		// Add data for introspection
-		r.qData = append(r.qData, NewIntrospectionData(r.schema))
+		h.qData = append(h.qData, NewIntrospectionData(h.schema))
 		for enumName, list := range IntroEnums {
 			enum := make([]string, 0, len(list))
 			enumInt := make(map[string]int, len(list))
@@ -88,11 +99,14 @@ func New(schemaStrings []string, enums map[string][]string, qms [3][]interface{}
 				enum = append(enum, v)
 				enumInt[v] = i
 			}
-			r.enums[enumName] = enum
-			r.enumsReverse[enumName] = enumInt
+			h.enums[enumName] = enum
+			h.enumsReverse[enumName] = enumInt
 		}
 	}
-	return r
+
+	h.SetOptions(options...)
+
+	return h
 }
 
 // ServerHTTP receives a GraphQL query as an HTTP request, executes the

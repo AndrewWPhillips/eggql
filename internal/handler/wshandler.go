@@ -27,12 +27,6 @@ import (
 	"github.com/vektah/gqlparser/v2/validator"
 )
 
-const (
-	initTimeout   = 2 * time.Second  // how long to wait for connection_init after the WS is opened
-	pingFrequency = 10 * time.Second // how often to send a ping (ka in old protocol) message to the client
-	pongTimeout   = 2 * time.Second  // how long to wait for a pong after sending a ping
-)
-
 type (
 	// wsConnection handles one websocket connection
 	wsConnection struct {
@@ -53,7 +47,6 @@ type (
 
 		// newProtocol is set to true if we are using the new WS sub-protocol (graphql-transport-ws)
 		newProtocol bool // defaults to old protocol
-
 	}
 
 	// wsMessage is used to encode (or decode) the messages sent to (received from) the websocket as JSON
@@ -145,7 +138,7 @@ func (h *Handler) serveWS(w http.ResponseWriter, r *http.Request) {
 	doneCh := r.Context().Done()
 loop:
 	for {
-		timer = time.NewTimer(pingFrequency)
+		timer = time.NewTimer(h.pingFrequency)
 		select {
 		case <-doneCh:
 			break loop
@@ -189,7 +182,7 @@ loop:
 				c.write(wsMessage{Type: "ka"})
 			} else {
 				// Send a "ping" expecting a reply ("pong") within a certain time
-				c.setTimeout(pongTimeout)
+				c.setTimeout(h.pongTimeout)
 				c.write(wsMessage{Type: "ping"})
 			}
 
@@ -201,7 +194,7 @@ loop:
 // init performs the high-level (sub-protocol) handshake by receiving an "init" message and sending an "ack"
 func (c wsConnection) init() bool {
 	// Get connection_init and send connection_ack or error
-	c.setTimeout(initTimeout)
+	c.setTimeout(c.h.initialTimeout)
 	var message *wsMessage
 	if !c.newProtocol {
 		message = c.read("connection_init", "connection_terminate", "start")
