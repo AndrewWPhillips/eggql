@@ -38,26 +38,6 @@ func TestSubscriptions(t *testing.T) {
 		actions                                    []wsAction // list of actions to take
 	}{
 		"empty": {actions: []wsAction{}},
-		"init_bad": {
-			actions: []wsAction{
-				{actionSend, `bad`},
-				//{actionRecv, `"connection_error"`}, // TODO check this
-				{actionError, websocket.CloseUnsupportedData},
-				{actionPause, 20}, // this is needed to detect possible residual websocket close problems
-			},
-		},
-		"init_term": {
-			actions: []wsAction{
-				{actionSend, `{"type": "connection_terminate"}`},
-				{actionError, websocket.CloseNormalClosure},
-			},
-		},
-		"init_start": {
-			actions: []wsAction{
-				{actionSend, `{"type": "start"}`},
-				{actionRecv, `"connection_error"`},
-			},
-		},
 		"basic_old": {
 			delay: time.Second,
 			actions: []wsAction{
@@ -70,6 +50,38 @@ func TestSubscriptions(t *testing.T) {
 				{actionRecv, `"type":"complete","id":"ID-1"`},
 			},
 		},
+		"init_bad": {
+			actions: []wsAction{
+				{actionSend, `bad`},
+				//{actionRecv, `"connection_error"`}, // TODO check this
+				{actionError, websocket.CloseUnsupportedData},
+				{actionPause, 10}, // this is needed to detect possible residual websocket close problems
+			},
+		},
+		"init_term": {
+			// can send connection_terminate instead of connection_init
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_terminate"}`},
+				{actionError, websocket.CloseNormalClosure},
+			},
+		},
+		"start_term": {
+			// send connection_terminate at very start (after handshake finished)
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_init"}`},
+				{actionRecv, `"connection_ack"`},
+				{actionRecv, `"ka"`},
+				{actionSend, `{"type": "connection_terminate"}`},
+				{actionError, websocket.CloseNormalClosure},
+				{actionPause, 20},
+			},
+		},
+		"init_start": {
+			actions: []wsAction{
+				{actionSend, `{"type": "start"}`},
+				{actionRecv, `"connection_error"`},
+			},
+		},
 		"2nd_ka": {
 			pingFrequency: 5 * time.Millisecond,
 			actions: []wsAction{
@@ -77,6 +89,20 @@ func TestSubscriptions(t *testing.T) {
 				{actionRecv, `"connection_ack"`},
 				{actionRecv, `"ka"`},
 				{actionRecv, `"ka"`},
+				{actionPause, 20},
+			},
+		},
+		"dupe_ID": {
+			delay: 500 * time.Millisecond,
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_init"}`},
+				{actionRecv, `"connection_ack"`},
+				{actionRecv, `"ka"`},
+				{actionSend, `{"type":"start","id":"x","payload":{"query":"subscription {message}"}}`},
+				{actionRecv, `{"type":"data","id":"x","payload":{"data":{"message":"hello"}}}`},
+				{actionSend, `{"type":"start","id":"x","payload":{"query":"xxx"}}`},
+				{actionError, 4409}, // Subscriber for x already exists
+				{actionPause, 20},
 			},
 		},
 		// Using new sub-protocol -----------------
@@ -91,6 +117,69 @@ func TestSubscriptions(t *testing.T) {
 				{actionRecv, `"type":"complete","id":"ID-3"`},
 			},
 		},
+		"start_not_subscribe": {
+			delay: time.Second, protocol: "graphql-transport-ws",
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_init"}`},
+				{actionRecv, `"connection_ack"`},
+				{actionSend, `{"type":"start","id":"ID-4","payload":{"query":"subscription {message}"}}`},
+				{actionError, 4400}, // unexpected message type
+			},
+		},
+		"double_init": {
+			protocol: "graphql-transport-ws",
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_init"}`},
+				{actionRecv, `"connection_ack"`},
+				{actionSend, `{"type": "connection_init"}`},
+				{actionError, 4429}, // too many init requests
+				{actionPause, 20},
+			},
+		},
+		"no_payload": {
+			protocol: "graphql-transport-ws",
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_init"}`},
+				{actionRecv, `"connection_ack"`},
+				{actionSend, `{"type":"subscribe","id":"ID-5"}`},
+				{actionError, websocket.CloseInvalidFramePayloadData},
+				{actionPause, 20},
+			},
+		},
+		"bad_query": {
+			protocol: "graphql-transport-ws",
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_init"}`},
+				{actionRecv, `"connection_ack"`},
+				{actionSend, `{"type":"subscribe","id":"ID-6","payload":{"query":"bad"}}`},
+				{actionRecv, `"error"`}, // Unexpected name "bad"
+				{actionError, websocket.CloseAbnormalClosure},
+				{actionPause, 20},
+			},
+		},
+		"bad_vars": {
+			protocol: "graphql-transport-ws",
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_init"}`},
+				{actionRecv, `"connection_ack"`},
+				{
+					actionSend,
+					`{"type":"subscribe","id":"ID-8","payload":{"query":"subscription {message}", "variables":"bad"}}`,
+				},
+				{actionError, 4400}, // JSON error unmarshall struct
+			},
+		},
+		"dupe_id_new": {
+			protocol: "graphql-transport-ws",
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_init"}`},
+				{actionRecv, `"connection_ack"`},
+				{actionSend, `{"type":"subscribe","id":"dupe","payload":{"query":"subscription {message}"}}`},
+				{actionSend, `{"type":"subscribe","id":"dupe","payload":{"query":"subscription {message}"}}`},
+				{actionError, 4409}, // Subscriber for dupe already exists
+				{actionPause, 20},
+			},
+		},
 		"send_ping": {
 			protocol: "graphql-transport-ws",
 			actions: []wsAction{
@@ -98,7 +187,6 @@ func TestSubscriptions(t *testing.T) {
 				{actionRecv, `"connection_ack"`},
 				{actionSend, `{"type":"ping"}`},
 				{actionRecv, `"type":"pong"`},
-				{actionPause, 20}, // this is needed to detect residual websocket close problems
 			},
 		},
 		"reply_pong": {
@@ -109,6 +197,17 @@ func TestSubscriptions(t *testing.T) {
 				{actionRecv, `"connection_ack"`},
 				{actionRecv, `"type":"ping"`},
 				{actionSend, `{"type":"pong"}`},
+			},
+		},
+		"no_pong": {
+			pingFrequency: 100 * time.Millisecond, // bigger than pongTimeout to ensure we get the error before 2nd ping
+			pongTimeout:   2 * time.Millisecond,
+			protocol:      "graphql-transport-ws",
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_init"}`},
+				{actionRecv, `"connection_ack"`},
+				{actionRecv, `"type":"ping"`},
+				{actionError, "websocket: bad close code 1006"},
 			},
 		},
 	}
@@ -147,9 +246,9 @@ func TestSubscriptions(t *testing.T) {
 					Assertf(t, strings.Contains(string(p), toFind), "%12s: read (%d) expected message containing <%s>, got <%s>", n, i, toFind, string(p))
 					Assertf(t, err2 == nil, "%12s: read (%d) expected no error, got %v", n, i, err2)
 				case actionError:
-					_, _, err2 := conn.ReadMessage()
+					_, _, err2 := conn.ReadMessage() // expecting an error so ignore the message
 					if err2 == nil {
-						Assertf(t, false, "%12s: read (%d) an error, got nil", n, i)
+						Assertf(t, false, "%12s: read (%d) expected an error, got nil", n, i)
 					} else if got, ok := err2.(*websocket.CloseError); ok {
 						// websocket error - check the close code is correct
 						Assertf(t, got.Code == a.data.(int), "%12s: read (%d) expected close code %d, got %d (error %v)", n, i, a.data.(int), got.Code, err2)

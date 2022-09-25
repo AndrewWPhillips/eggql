@@ -62,8 +62,9 @@ type (
 		Query         string                 `json:"query,omitempty"` // required for request
 		Variables     map[string]interface{} `json:"variables,omitempty"`
 		Extensions    map[string]interface{} `json:"extensions,omitempty"`
-		// Used for encoding replies (next/data message)
-		Data interface{} `json:"data,omitempty"`
+		// Used for encoding replies (next/data message) or errors
+		Data   interface{}       `json:"data,omitempty"`
+		Errors []*gqlerror.Error `json:"errors,omitempty"`
 	}
 )
 
@@ -100,28 +101,16 @@ func (h *Handler) serveWS(w http.ResponseWriter, r *http.Request) {
 		c.write(wsMessage{Type: "ka"})
 	}
 
-	// timer ensures the connection is kept alive by sending a "ka" or "ping" message even if there is no other traffic
-	var timer *time.Timer
+	var timer *time.Timer      // used to keep the connection alive by sending a "ka"/"ping" even if there is no other traffic
+	var ch <-chan *wsMessage   // receives messages from the client (via websocket)
+	var doneCh <-chan struct{} // closed when communications is to stop (eg client closes WS, timeout, etc)
 
-	// Create a channel that returns the messages read from the web socket
-	ch := make(chan *wsMessage)
-	go func() {
-		for {
-			var message *wsMessage
-			// Although the following WS read happens in separate go-routine we do not need to protect the read
-			// with a mutex as the other read (in init() method above) happens before this go-routine is started
-			if !c.newProtocol {
-				message = c.read("start", "stop", "connection_terminate")
-			} else {
-				message = c.read("ping", "pong", "subscribe", "complete", "connection_init")
-			}
-			if message == nil {
-				close(ch)
-				return
-			}
-			ch <- message
-		}
-	}()
+	if !c.newProtocol {
+		ch = c.GetWebsocketInputChannel("start", "stop", "connection_terminate")
+	} else {
+		ch = c.GetWebsocketInputChannel("ping", "pong", "subscribe", "complete", "connection_init")
+	}
+	doneCh = r.Context().Done()
 
 	defer func() {
 		c.stopAll()
@@ -129,13 +118,11 @@ func (h *Handler) serveWS(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Println("wsConnection close error:", err)
 		}
-		for qqq := range ch {
+		for range ch {
 			// nothing needed here - just draining ch
-			log.Println("QQQ", qqq)
 		}
 	}()
 
-	doneCh := r.Context().Done()
 loop:
 	for {
 		timer = time.NewTimer(h.pingFrequency)
@@ -154,6 +141,7 @@ loop:
 				return
 
 			case "connection_terminate":
+				c.closeMessage(websocket.CloseNormalClosure, "terminated by client")
 				return
 
 			case "subscribe", "start":
@@ -227,6 +215,25 @@ func (c wsConnection) init() bool {
 	return true
 }
 
+// GetWebsocketInputChannel returns a channel that sends the messages read from the web socket
+// If a message is received not of any expected type then an error is sent back and the chan closed
+func (c wsConnection) GetWebsocketInputChannel(expected ...string) <-chan *wsMessage {
+	ch := make(chan *wsMessage)
+	go func() {
+		for {
+			// Although the following WS read happens in a separate go-routine we do not need to protect the read
+			// with a mutex as the other read (in init() method) happens before this go-routine is started
+			message := c.read(expected...)
+			if message == nil {
+				close(ch)
+				return
+			}
+			ch <- message
+		}
+	}()
+	return ch
+}
+
 // start extract subscription from WS message payload (Query field) and starts its processing
 // It returns false on error
 //  - if the operation ID in the subscribe/start message is already in use
@@ -240,7 +247,10 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 		c.closeMessage(4409, "Subscriber for "+message.ID+" already exists")
 		return false
 	}
-	ctx, c.cancelSubscription[message.ID] = context.WithCancel(ctx)
+	if message.Payload == nil {
+		c.closeMessage(websocket.CloseInvalidFramePayloadData, "No payload for subscriber "+message.ID)
+		return false
+	}
 
 	FixNumberVariables(message.Payload.Variables)
 
@@ -249,13 +259,14 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 		out := wsMessage{
 			Type: "error", ID: message.ID,
 			Payload: &payload{
-				Data: errors,
+				Errors: errors,
 			},
 		}
 		c.write(out)
 		return false
 	}
 
+	ctx, c.cancelSubscription[message.ID] = context.WithCancel(ctx)
 	var r gqlResult // used to return query/mutation result(s), not used for subscriptions (results from chan written directly to ws)
 
 	for _, operation := range query.Operations {
@@ -303,7 +314,11 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 						out := wsMessage{
 							Type: "error", ID: message.ID,
 							Payload: &payload{
-								Data: "internal error: subscription resolver \"" + k + "\"did not return a channel",
+								Errors: []*gqlerror.Error{
+									&gqlerror.Error{
+										Message: "internal error: subscription resolver \"" + k + "\"did not return a channel",
+									},
+								},
 							},
 						}
 						c.write(out)
@@ -347,9 +362,12 @@ func (c wsConnection) process(ctx context.Context, ID string, k string, in inter
 	}
 
 	defer func() {
+		c.write(wsMessage{Type: "complete", ID: ID})
+		// drain the channel in case it was written to just before the cancel was received
 		ch := reflect.ValueOf(in)
 		for {
-			if _, ok := ch.Recv(); !ok {
+			_, ok := ch.Recv()
+			if !ok {
 				break
 			}
 		}
@@ -408,7 +426,6 @@ func (c wsConnection) write(v interface{}) {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	if err := c.WriteJSON(v); err != nil {
-		log.Println("QQQ", v)
 		log.Println("wsConnection: write error:", err)
 	}
 }
@@ -449,7 +466,7 @@ func (c wsConnection) read(expected ...string) *wsMessage {
 		return nil
 	}
 
-	// Decode the websocket text - must be JSON
+	// Decode the websocket text (JSON) into a new wsMessage
 	r := &wsMessage{}
 	decoder := json.NewDecoder(reader)
 	decoder.UseNumber() // allows us to distinguish ints from floats in Variables map (see also FixNumberVariables())
