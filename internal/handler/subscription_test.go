@@ -170,11 +170,13 @@ func TestSubscriptions(t *testing.T) {
 			},
 		},
 		"dupe_id_new": {
+			delay:    500 * time.Millisecond,
 			protocol: "graphql-transport-ws",
 			actions: []wsAction{
 				{actionSend, `{"type": "connection_init"}`},
 				{actionRecv, `"connection_ack"`},
 				{actionSend, `{"type":"subscribe","id":"dupe","payload":{"query":"subscription {message}"}}`},
+				{actionRecv, `{"type":"next","id":"dupe","payload":{"data":{"message":"hello"}}}`},
 				{actionSend, `{"type":"subscribe","id":"dupe","payload":{"query":"subscription {message}"}}`},
 				{actionError, 4409}, // Subscriber for dupe already exists
 				{actionPause, 20},

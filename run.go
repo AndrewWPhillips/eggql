@@ -9,18 +9,25 @@ import (
 	"github.com/andrewwphillips/eggql/internal/schema"
 )
 
-// MustRun creates an http handler that handles GraphQL requests.  It takes up to 4
-// parameters. The 1st (optional) parameter is a map of string slices that contains
-// all the GraphQL enums that are used with the queries. The next 3 (opt.) parameters are
-// Go structs that are used to generate the GraphQL query, mutation, and subscription.
-// The types of these parameters (as well as metadata from field tag strings) are used
-// to generate a GraphQL schema , whereas the actual value of these parameters are the
-// GraphQL "resolvers" used to obtain query results.
-func MustRun(q ...interface{}) http.Handler {
-	//return handler.New(schema.MustBuild(q...), q...)
+// MustRun creates an http handler that handles GraphQL requests.
+// It is a variadic function so can take any number of parameters but to be useful
+// you need to supply at least one parameter - a struct used as the root query resolver.
+// The parameters are optional but should be supplied in this order:
+//  map[string][]string = all the enums that are used in the resolvers
+//  *struct = pointer to struct used to generate the GraphQL query (may be nil)
+//  *struct = pointer to struct used to generate the GraphQL mutation (may be nil)
+//  *struct = pointer to struct used to generate the GraphQL subscription
+// Note that for the 3 (query/mutation/subscription) struct pointers you must provide the
+// previous value(s) even if nil - eg if you just want to provide a mutation struct then
+// the parameter preceding it (ie the query) must be nil.
+// (The types of the structs, including metadata from field tag strings, are used
+// to generate a GraphQL schema, whereas the actual value of these parameters are the
+// GraphQL "resolvers" used to obtain query results.)
+func MustRun(params ...interface{}) http.Handler {
 	var enums map[string][]string
 	var qms [3][]interface{}
 
+	q := params
 	if len(q) > 0 {
 		if e, ok := q[0].(map[string][]string); ok {
 			enums = e
@@ -30,5 +37,5 @@ func MustRun(q ...interface{}) http.Handler {
 	for i, v := range q {
 		qms[i] = []interface{}{v}
 	}
-	return handler.New([]string{schema.MustBuild(q...)}, enums, qms)
+	return handler.New([]string{schema.MustBuild(params...)}, enums, qms)
 }
