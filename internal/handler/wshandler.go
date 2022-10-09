@@ -97,86 +97,7 @@ func (h *Handler) serveWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !c.newProtocol {
-		c.write(wsMessage{Type: "ka"})
-	}
-
-	var timer *time.Timer      // used to keep the connection alive by sending a "ka"/"ping" even if there is no other traffic
-	var ch <-chan *wsMessage   // receives messages from the client (via websocket)
-	var doneCh <-chan struct{} // closed when communications is to stop (eg client closes WS, timeout, etc)
-
-	if !c.newProtocol {
-		ch = c.GetWebsocketInputChannel("start", "stop", "connection_terminate")
-	} else {
-		ch = c.GetWebsocketInputChannel("ping", "pong", "subscribe", "complete", "connection_init")
-	}
-	doneCh = r.Context().Done()
-
-	defer func() {
-		c.stopAll()
-		err := c.Close()
-		if err != nil {
-			log.Println("wsConnection close error:", err)
-		}
-		for range ch {
-			// nothing needed here - just draining ch
-		}
-	}()
-
-loop:
-	for {
-		timer = time.NewTimer(h.pingFrequency)
-		select {
-		case <-doneCh:
-			break loop
-
-		case message, ok := <-ch:
-			if !ok {
-				return
-			}
-
-			switch message.Type {
-			case "connection_init":
-				c.closeMessage(4429, "Too many initialisation requests")
-				return
-
-			case "connection_terminate":
-				c.closeMessage(websocket.CloseNormalClosure, "terminated by client")
-				return
-
-			case "subscribe", "start":
-				if !c.start(r.Context(), message) {
-					return
-				}
-
-			case "complete", "stop":
-				c.stop(message.ID)
-
-			case "ping":
-				c.write(wsMessage{Type: "pong"})
-
-			case "pong":
-				// received in response to our ping (see write of ping in <-timer.C case below) - this code was suggested at:
-				// https://stackoverflow.com/questions/37696527/go-gorilla-websockets-on-ping-pong-fail-user-disconnct-call-function
-				c.setTimeout(0)
-
-			default:
-				panic("Unexpected WS message type")
-			}
-
-		case <-timer.C:
-			if !c.newProtocol {
-				// Old protocol just has the server send a "keep alive" message
-				c.write(wsMessage{Type: "ka"})
-			} else {
-				// Send a "ping" expecting a reply ("pong") within a certain time
-				c.setTimeout(h.pongTimeout)
-				c.write(wsMessage{Type: "ping"})
-			}
-
-		}
-		_ = timer.Stop() // don't drain the timer.C chan - no need and probably empty
-	}
+	c.run(r.Context())
 }
 
 // init performs the high-level (sub-protocol) handshake by receiving an "init" message and sending an "ack"
@@ -212,7 +133,88 @@ func (c wsConnection) init() bool {
 	// at this point we're OK to continue (got a "connection_init")
 	c.setTimeout(0) // clear timeout since we got the response before the deadline
 	c.write(wsMessage{Type: "connection_ack"})
+	if !c.newProtocol {
+		c.write(wsMessage{Type: "ka"}) // initial keep alive message required for graphql-ws sub-protocol
+	}
 	return true
+}
+
+// run handles sending and receiving WS messages according to the sub-protocol
+func (c wsConnection) run(ctx context.Context) {
+	var ch <-chan *wsMessage // receives messages from the client (via websocket)
+	if !c.newProtocol {
+		ch = c.GetWebsocketInputChannel("start", "stop", "connection_terminate")
+	} else {
+		ch = c.GetWebsocketInputChannel("ping", "pong", "subscribe", "complete", "connection_init")
+	}
+	timer := time.NewTimer(c.h.pingFrequency) // used to keep the connection alive by sending a "ka"/"ping"
+	doneCh := ctx.Done()                      // used to check if we should close
+
+	defer func() {
+		c.stopAll()
+		err := c.Close()
+		if err != nil {
+			log.Println("wsConnection close error:", err)
+		}
+		for range ch {
+			// nothing needed here - just draining ch
+		}
+	}()
+
+	for {
+		// Process incoming messages (ch), check for done (doneCh), and regularly send a ping (timer.C)
+		select {
+		case message, ok := <-ch:
+			if !ok {
+				return
+			}
+
+			switch message.Type {
+			case "connection_init":
+				c.closeMessage(4429, "Too many initialisation requests")
+				return
+
+			case "connection_terminate":
+				c.closeMessage(websocket.CloseNormalClosure, "terminated by client")
+				return
+
+			case "subscribe", "start":
+				if !c.start(ctx, message) {
+					return
+				}
+
+			case "complete", "stop":
+				c.stop(message.ID)
+
+			case "ping":
+				c.write(wsMessage{Type: "pong"}) // reply if client pings us
+
+			case "pong":
+				// received in response to our ping (see write of ping in <-timer.C case below) - this code was suggested at:
+				// https://stackoverflow.com/questions/37696527/go-gorilla-websockets-on-ping-pong-fail-user-disconnct-call-function
+				c.setTimeout(0)
+
+			default:
+				panic("Unexpected WS message type")
+			}
+
+		case <-timer.C:
+			if !c.newProtocol {
+				// Old protocol just has the server send a "keep alive" message
+				c.write(wsMessage{Type: "ka"})
+			} else {
+				// Send a "ping" expecting a reply ("pong") within a certain time
+				c.setTimeout(c.h.pongTimeout)
+				c.write(wsMessage{Type: "ping"})
+			}
+
+		case <-doneCh:
+			_ = timer.Stop()
+			return
+		}
+		_ = timer.Stop()
+		timer = time.NewTimer(c.h.pingFrequency) // start next timer
+	}
 }
 
 // GetWebsocketInputChannel returns a channel that sends the messages read from the web socket
@@ -265,12 +267,16 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 		c.write(out)
 		return false
 	}
+	subscriptionCount := 0
 
+	// TODO: qqq check that map entry is set to nil on all error returns
 	ctx, c.cancelSubscription[message.ID] = context.WithCancel(ctx)
 	var r gqlResult // used to return query/mutation result(s), not used for subscriptions (results from chan written directly to ws)
 
 	for _, operation := range query.Operations {
-		op := gqlOperation{enums: c.h.enums, enumsReverse: c.h.enumsReverse}
+		op := gqlOperation{
+			enums: c.h.enums, enumsReverse: c.h.enumsReverse,
+		}
 
 		if len(operation.VariableDefinitions) > 0 {
 			var pgqlError *gqlerror.Error
@@ -308,6 +314,7 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 				for _, k := range result.Order {
 					if reflect.TypeOf(result.Data[k]).Kind() == reflect.Chan {
 						go c.process(ctx, message.ID, k, result.Data[k], !op.isSubscription)
+						subscriptionCount++
 						continue
 					}
 					if op.isSubscription {
@@ -331,7 +338,14 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 			}
 		}
 	}
-	// If we got result data (not channels) then write the data to the WS
+	// Check that we either started a subscription or got a result/error (query/mutation)
+	if subscriptionCount == 0 {
+		r.Errors = append(r.Errors, &gqlerror.Error{
+			Message: "Internal error: no result generated for " + message.Payload.Query,
+		})
+	}
+
+	// If we got result or error send it now
 	if len(r.Data.Order) > 0 || len(r.Errors) > 0 {
 		messageType := "next"
 		if !c.newProtocol {
