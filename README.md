@@ -1,6 +1,6 @@
 # EGGQL
 
-The **eggql** package allows you to very easily create a GraphQL service using Go.  It supports all standard GraphQL features except subscriptions (in progress). 
+The **eggql** package allows you to very easily create a GraphQL service using Go.  It supports all standard GraphQL features, including subscriptions.
 
 To use it you _don't_ need to create a GraphQL **schema**.  Simply declare Go structs with fields that act as the GraphQL **resolvers**.  For some things, like resolver arguments, you need to use a tag string (metadata attached to a field of a struct type), like the tags used to control JSON encoding.
 
@@ -237,7 +237,7 @@ I particularly like **gqlgen** of **99 Designs** as it uses "go generate" to avo
 
 I recently discovered **thunder** which is based on the same premise as **eggql** (using reflection etc), but it implements resolvers using Go interfaces rather than closures).  I wish I had found it earlier as I may have just used/modified it instead of writing my own package.
 
-The "pros" for **eggql** are, I believe, that it is simple to use (though I may be biased due to my familiarity with it :) and complete (except for subscriptions), and allows you to write robust GraphQL services due to support for `context.Context` parameters and `error` return values, handling panics, etc.  It also has special capabilities for working with in-memory slices and maps that the others don't.  It's probably fast enough unless you have a high-volume service (but there are areas where it can be improved).
+The "pros" for **eggql** are, I believe, that it is simple to use (though I may be biased due to my familiarity with it :) and complete, and allows you to write robust GraphQL services due to support for `context.Context` parameters and `error` return values, handling panics, etc.  It also has special capabilities for working with in-memory slices and maps that the others don't.  It's probably fast enough unless you have a high-volume service (but there are areas where it can be improved).
 
 The "cons" for **eggql** are that it *may not* be as performant as other packages [Ed: tests using jMeter seem to show that **eggql** is resolves simple queries as fast or faster than the other packages mentioned above]. such as **gqlgen** as it uses reflection and does not have performance options such as caching and data-loader (database).  Also, resolver lookups currently use linear searches.  Custom scalars and a **date** type are not supported [Ed: now done].
 
@@ -259,7 +259,7 @@ Here are some important things not mentioned above.
 
 ### Tutorial
 
-As already mentioned **eggql** is a complete GraphQL implementation, apart from subscriptions (in progress).  To see how easy it is to use there is a [Star Wars Tutorial](https://github.com/AndrewWPhillips/eggql/blob/main/TUTORIAL.md).  This explains how to implement a service for the **Star Wars** demo which almost all packages (in Go and other languages) have as an example.  It nicely shows how to use all features of GraphQL using **eggql** (except subscriptions).
+As already mentioned **eggql** is a complete GraphQL implementation.  To see how easy it is to use there is a [Star Wars Tutorial](https://github.com/AndrewWPhillips/eggql/blob/main/TUTORIAL.md).  This explains how to implement a service for the **Star Wars** demo which almost all packages (in Go and other languages) have as an example.  It nicely shows how to use all features of GraphQL using **eggql**, including subscriptions.
 
 ### Code-first GraphQL
 
@@ -350,7 +350,7 @@ There are two stages of error-handling when creating a GraphQL service:
 
 #### Viewing "startup" errors and the Schema
 
-The 1st case is common when starting out -- you make lots of coding mistakes when creating structs, their fields, field tags (egg: key), enums, etc.  I'm not sure about you but my heart skips when I see "panic" in the log, even when testing, so there is an alternative.  Instead of calling `MustRun()`, just call `eggql.New()`, then add things like enums etc, and call the `GetHandler()` method which returns an error instead of panicking if there is a problem.  This makes testing and debugging more pleasant.
+The 1st case is common when starting out -- you make lots of coding mistakes when creating structs, their fields, field tags (egg: key), enums, etc.  I'm not sure about you but I always have to try to stay calm when I see "panic" on the screen or in the log.  Luckily, there is an alternative to using `MustRun()`.  Just call `eggql.New()`, then add things like enums etc, and call the `GetHandler()` method which returns an error instead of panicking if there is a problem.  This makes testing and debugging more pleasant.
 
 Another advantage is that you can also call `GetSchema()` to view the GraphQL schema that **eggql*** has generated.
 
@@ -368,8 +368,7 @@ import (
 const value = 3.14
 
 func main() {
-	gql := eggql.New()
-	gql.SetQuery(struct {
+	gql := eggql.New(struct {
 		Len func(int) float64 `egg:"(unit:Unit=METER)"`    // *** 1 ***
 	}{
 		Len: func(unit int) float64 {
@@ -394,7 +393,7 @@ func main() {
 	}
 }
 ```
-As an explanation of the code - it provides a `len` query with an optional `unit` argument which can have values `METER` (default) or `FOOT` (see *** 1 *** comment).  It also writes the generated schema to the log (*** 2 ***).  Finally, it gets the handler (*** 3 ***) and either logs the error or starts the server (*** 4 ***)
+As an explanation of the code - it provides a `len` query with an optional `unit` argument which can have values `METER` (default) or `FOOT` (see *** 1 *** ).  It also writes the generated schema to the log (*** 2 *** ).  Finally, it gets the handler (*** 3 *** ) and either logs the error or starts the server (*** 4 *** )
 
 #### Handling "runtime" errors
 
