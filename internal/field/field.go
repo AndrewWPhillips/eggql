@@ -48,7 +48,7 @@ var UnmarshalerType = reflect.TypeOf((*Unmarshaler)(nil)).Elem()
 type Info struct {
 	Name        string       // field name for use in GraphQL queries - based on metadata (tag) or Go struct field name
 	GQLTypeName string       // GraphQL type name - usually empty but required if can't be deduced (eg enums)
-	ResultType  reflect.Type // Type (Go) used to generate the resolver (GraphQL) type = field type, func return type, or element type for array/slice
+	ResultType  reflect.Type // Type (Go) used to generate the resolver (GraphQL) type = field type, or element type for a list
 
 	// The following are for function resolvers only
 	Args            []string // name(s) of args to resolver function obtained from metadata

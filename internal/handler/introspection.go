@@ -7,10 +7,10 @@ import (
 )
 
 type (
-	// introspectionSchema just embeds the gqlparser schema so that we can add methods to it
+	// introspectionSchema just embeds the gqlparser ast.Schema so that we can add methods to it
 	introspectionSchema struct{ *ast.Schema }
 
-	// introspectionObject represents a type definition
+	// introspectionObject represents a type definition (object)
 	introspectionObject struct {
 		*ast.Definition
 		parent introspectionSchema
@@ -50,7 +50,7 @@ type (
 	// introspectionQuery represents the GraphQL root query object used for introspection queries
 	// It only has "__schema" and the "__type(name)" fields.  Note that the other introspection
 	// query (__typename) can be included at any level of a query and is not handled here.
-	// (Of course, there is no root mutation/subscription as the schema cannot change.)
+	// (There is no root mutation/subscription for introspection as the schema does not change.)
 	introspectionQuery struct {
 		iss       introspectionSchema
 		GetSchema func() gqlSchema      `egg:"__schema"`

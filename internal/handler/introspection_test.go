@@ -149,21 +149,21 @@ func TestIntrospection(t *testing.T) {
 			}
 			decoder := json.NewDecoder(writer.Body)
 			if err := decoder.Decode(&result); err != nil {
-				t.Logf("Error decoding JSON response: %v", err)
+				t.Logf("%12s: Error decoding JSON response: %v", name, err)
 				t.Fail()
 				return
 			}
 			var expected interface{}
 			decoder = json.NewDecoder(strings.NewReader(testData.expected))
 			if err := decoder.Decode(&expected); err != nil {
-				t.Logf("Error decoding expected JSON: %v", err)
+				t.Logf("%12s: Error decoding expected JSON: %v", name, err)
 				t.Fail()
 				return
 			}
 
 			// Check that the resulting GraphQL result (error and data)
-			Assertf(t, result.Errors == nil, "Expected no error and got %v", result.Errors)
-			Assertf(t, reflect.DeepEqual(result.Data, expected), "Expected %s, got %s", testData.expected, got)
+			Assertf(t, result.Errors == nil, "%12s: Expected no error and got %v", name, result.Errors)
+			Assertf(t, reflect.DeepEqual(result.Data, expected), "%12s: Expected %s, got %s", name, testData.expected, got)
 		})
 	}
 }

@@ -369,7 +369,7 @@ func main() {
 			},
 		},
 	)
-	handler = http.TimeoutHandler(handler, 15*time.Hour, `{"errors":[{"message":"timeout"}]}`)
+	handler = http.TimeoutHandler(handler, 15*time.Second, `{"errors":[{"message":"timeout"}]}`)
 	http.Handle("/graphql", handler)
 
 	log.Println("starting server")
