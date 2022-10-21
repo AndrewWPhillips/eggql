@@ -220,12 +220,12 @@ enum Episode {
 ```
 (Don't worry if you are not familiar with schemas as **eggql** hides the details.)
 
-The three allowed values for an `Episode` (NEWHOPE, EMPIRE, and JEDI) are internally represented by the integers 0, 1, and 2.  Because Go does not have a native enum type to support GraphQL enums we just use an integer type *and* also tell **eggql** about the corresponding enum name (eg `Episode`) and the names of its values (eg `NEWHOPE`).  To do this you pass a map of string slices as the 1st (optional) parameter to `MustRun()` where the map key is the enum name and the slice has the enum values.  For example, here is the map for two enums: `Episode` and `Unit`.
+The three allowed values for an `Episode` (NEWHOPE, EMPIRE, and JEDI) are internally represented by the integers 0, 1, and 2.  Because Go does not have a native enum type to support GraphQL enums we just use an integer type *and* also tell **eggql** about the corresponding enum name (eg `Episode`) and the names of its values (eg `NEWHOPE`).  To do this you pass a map of string slices as the 1st (optional) parameter to `MustRun()` where the map key is the enum name and the slice has the enum values.  For example, here is the map for two enums: `Episode` and `LengthUnit`.  (We will use `LengthUnit` a bit later.)
 
 ```Go
 var gqlEnums = map[string][]string{
-	"Episode": {"NEWHOPE", "EMPIRE", "JEDI"},
-	"Unit":    {"METER", "FOOT"},
+	"Episode":    {"NEWHOPE", "EMPIRE", "JEDI"},
+	"LengthUnit": {"METER", "FOOT"},
 }
 ```
 
@@ -272,8 +272,8 @@ type (
 
 var (
 	gqlEnums = map[string][]string{
-		"Episode": {"NEWHOPE", "EMPIRE", "JEDI"},
-		"Unit":    {"METER", "FOOT"},
+		"Episode":    {"NEWHOPE", "EMPIRE", "JEDI"},
+		"LengthUnit": {"METER", "FOOT"},
 	}
 	characters = []Character{
 		{Name: "Luke Skywalker"},
@@ -408,8 +408,8 @@ type (
 
 var (
 	gqlEnums = map[string][]string{
-		"Episode": {"NEWHOPE", "EMPIRE", "JEDI"},
-		"Unit":    {"METER", "FOOT"},
+		"Episode":    {"NEWHOPE", "EMPIRE", "JEDI"},
+		"LengthUnit": {"METER", "FOOT"},
 	}
 	humans = []Human{
 		{Character{Name: "Luke Skywalker"}, 1.67},
@@ -562,7 +562,7 @@ Are mutations necessary? A _query_ could in fact modify data on the backend but 
 1. It's confusing to clients (and to backend code maintainers).
 2. Mutations are guaranteed to be executed in sequence (whereas a query may resolve in parallel).  If modifications are made using queries the behaviour is undefined and the results unpredictable.
 
-To demonstrate mutations, let's add a `CreateReview` mutation that allows clients to submit movie ratings and reviews.  We add two slices to the existing `EpisodeDetails` struct to store the ratings and reviews.  The root mutation has a `CreateReview` resolver that takes two arguments, an `Episode` (enum) and a `ReviewInput`.  Th new `ReviewInput` is used as an **input type** argument to `CreateReview` as explained below.
+To demonstrate mutations, let's add a `CreateReview` mutation that allows clients to submit movie ratings and reviews.  We add two slices to the existing `EpisodeDetails` struct to store the ratings and reviews.  The root mutation has a `CreateReview` resolver that takes two arguments, an `Episode` (enum) and a `ReviewInput`.  The new `ReviewInput` is used as an **input type** argument to `CreateReview` as explained below.
 
 ```Go
 type (
@@ -586,13 +586,13 @@ You may also have noticed we have added a `sync.Mutex` to `EpisodeDetails`.  Thi
 
 #### Avoiding Data Races
 
-Up until now all the data structures in our example do not change once the server has been started.  Hence, concurrent access from different go-routines does not cause contention.  But now that we have added a mutation this completely changes things.  We have to ensure that multiple mutations running at the same time are not modifying the same data.  We even have to be careful that a query is not reading something while it's being modified.
+Up until now all the data structures in our example do not change once the server has been started.  Hence, concurrent access from different goroutines does not cause contention.  But now that we have added a mutation this completely changes things.  We have to ensure that multiple mutations running at the same time are not modifying the same data. Even a query reading something while it's being modified can lead to a **data race** condition.
 
-An important thing to remember GraphQL requests may run in parallel. A GraphQL server would not be of much use if it only processed one client request at a time.  The way this works is the Go standard library HTTP handler starts a new Go-routine to process every new request.
+An important thing to remember is that **GraphQL requests may run in parallel**. A GraphQL server would not be of much use if it only processed one client request at a time.  This is not immediately obvious as you don't need to create goroutines because the Go standard library **HTTP handler starts a new goroutine to process every new request**.
 
-Since the `Stars` and `Commentary` slices are modified by the `CreateView` mutation we need to protect them with a **mutex**.  There are many ways to do this.  We could just use a single mutex, so if a review is being added for any episode then any other query or mutation of _any_ episode is blocked.  This seems inefficient, and not scaleable, so we have used a separate `sync.Mutex` for each episode.  If we were expecting a large number of queries (and few mutations) a `sync.RWMutex` would be an even better option, but I'll leave that for you to explore as an exercise.
+Since the `Stars` and `Commentary` slices are modified by the `CreateReview` mutation we need to protect them with a **mutex**.  There are many ways to do this.  We could just use a single mutex, so if a review is being added for any episode then any other query or mutation of _any_ episode is blocked.  This is inefficient, and not very scaleable, so we have used a separate `sync.Mutex` for each episode.  If we were expecting a large number of queries (and few calls to `CreateReview`) a `sync.RWMutex` would be an even better option, but I'll leave that for you to explore as an exercise.
 
-For now we only use the new mutex in `CreateView` s      ince that is the only place that `Stars` and `Commentary` slices are used.
+We only need use the new mutex in `CreateReview` since that is the only place that `Stars` and `Commentary` slices are used, at the moment.
 
 ```Go
 		CreateReview: func(episode int, review ReviewInput) int {
@@ -609,9 +609,9 @@ For now we only use the new mutex in `CreateView` s      ince that is the only p
 
 #### Input Types
 
-Another new thing here is a struct (`ReviewInput`) used as a resolver argument.  This creates a GraphQL **input** type.  An input type is similar to a GraphQL object type except that it can only be used as an argument to a mutation or query.  Unlike an object (or interface) type the fields of an input type (like `Stars` and `Commentary` above) cannot have arguments.
+Another new thing here is a struct (`ReviewInput`) used as a resolver argument.  (This creates an **input** type in the GraphQL schema.)  An input type is similar to a GraphQL object type except that it can only be used as an argument to a mutation (or query).  Unlike an object (or interface) type the fields of an input type (like `Stars` and `Commentary` above) cannot have arguments, but they can have any type including a nested input type.
 
-Note that if you try to use the same Go struct as an input type _and_ an object (or interface) type then **eggql** will panic with an error like: "can't use FuncName for different GraphQL types (input and object)".
+Note that if you try to use the same Go struct as an input type _and_ an object (or interface) type then **eggql** will panic with an error like: "can't use Xxx for different GraphQL types (input and object)".
 
 Here is the complete program including the `CreateReview` mutation.
 
@@ -662,8 +662,8 @@ type (
 
 var (
 	gqlEnums = map[string][]string{
-		"Episode": {"NEWHOPE", "EMPIRE", "JEDI"},
-		"Unit":    {"METER", "FOOT"},
+		"Episode":    {"NEWHOPE", "EMPIRE", "JEDI"},
+		"LengthUnit": {"METER", "FOOT"},
 	}
 	humans = []Human{
 		{Character: Character{Name: "Luke Skywalker"}, Height: 1.67},
@@ -778,7 +778,7 @@ Imagine we need to change the `height` resolver so that it takes an argument spe
 ```Go
 	Human struct {
 		Character
-		Height       func(int) float64 `egg:"(unit:Unit=METER)"`
+		Height       func(int) float64 `egg:"(unit:LengthUnit=METER)"`
 		height       float64            // stored as meters
 	}
 ```
@@ -978,7 +978,7 @@ type (
 	Human struct {
 		Character
 		SearchResult
-		Height func(int) float64 `egg:"(unit:Unit=METER)"`
+		Height func(int) float64 `egg:"(unit:LengthUnit=METER)"`
 		height float64           // stored as meters
 	}
 	Droid struct {
@@ -1005,8 +1005,8 @@ type (
 
 var (
 	gqlEnums = map[string][]string{
-		"Episode": {"NEWHOPE", "EMPIRE", "JEDI"},
-		"Unit":    {"METER", "FOOT"},
+		"Episode":    {"NEWHOPE", "EMPIRE", "JEDI"},
+		"LengthUnit": {"METER", "FOOT"},
 	}
 	humans = []Human{
 		{Character: Character{Name: "Luke Skywalker"}, height: 1.67},
@@ -1271,7 +1271,7 @@ type (
 	Human        struct {
 		Character
 		SearchResult
-		Height func(int) float64 `egg:"(unit:Unit=METER)"`
+		Height func(int) float64 `egg:"(unit:LengthUnit=METER)"`
 		height float64           // stored as meters
 	}
 	Droid struct {
@@ -1298,8 +1298,8 @@ type (
 
 var (
 	gqlEnums = map[string][]string{
-		"Episode": {"NEWHOPE", "EMPIRE", "JEDI"},
-		"Unit":    {"METER", "FOOT"},
+		"Episode":    {"NEWHOPE", "EMPIRE", "JEDI"},
+		"LengthUnit": {"METER", "FOOT"},
 	}
 	humans = []Human{
 		{Character: Character{Name: "Luke Skywalker"}, height: 1.67},
@@ -1593,7 +1593,7 @@ type (
 	Human        struct {
 		Character
 		SearchResult
-		Height func(int) float64 `egg:"(unit:Unit=METER)"`
+		Height func(int) float64 `egg:"(unit:LengthUnit=METER)"`
 		height float64           // stored as meters
 	}
 	Droid struct {
@@ -1632,8 +1632,8 @@ type (
 
 var (
 	gqlEnums = map[string][]string{
-		"Episode": {"NEWHOPE", "EMPIRE", "JEDI"},
-		"Unit":    {"METER", "FOOT"},
+		"Episode":    {"NEWHOPE", "EMPIRE", "JEDI"},
+		"LengthUnit": {"METER", "FOOT"},
 	}
 	humans = []Human{
 		{Character: Character{Name: "Luke Skywalker"}, height: 1.67},
@@ -1760,7 +1760,7 @@ func main() {
 			},
 		},
 	)
-	handler = http.TimeoutHandler(handler, 5*time.Second, `{"errors":[{"message":"timeout"}]}`)
+	//handler = http.TimeoutHandler(handler, 5*time.Second, `{"errors":[{"message":"timeout"}]}`)
 	http.Handle("/graphql", handler)
 	http.ListenAndServe(":8080", nil)
 }

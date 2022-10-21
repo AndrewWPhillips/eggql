@@ -38,7 +38,7 @@ func TestSubscriptions(t *testing.T) {
 		actions                                    []wsAction // list of actions to take
 	}{
 		"empty": {actions: []wsAction{}},
-		"basic_old": {
+		"subscription_old": {
 			delay: time.Second,
 			actions: []wsAction{
 				{actionSend, `{"type": "connection_init"}`},
@@ -83,7 +83,7 @@ func TestSubscriptions(t *testing.T) {
 			},
 		},
 		"2nd_ka": {
-			pingFrequency: 5 * time.Millisecond,
+			pingFrequency: 5 * time.Millisecond, // get 2nd ka quickly
 			actions: []wsAction{
 				{actionSend, `{"type": "connection_init"}`},
 				{actionRecv, `"connection_ack"`},
@@ -103,6 +103,18 @@ func TestSubscriptions(t *testing.T) {
 				{actionSend, `{"type":"start","id":"x","payload":{"query":"xxx"}}`},
 				{actionError, 4409}, // Subscriber for x already exists
 				{actionPause, 20},
+			},
+		},
+		"query_old": {
+			delay: time.Second,
+			actions: []wsAction{
+				{actionSend, `{"type": "connection_init"}`},
+				{actionRecv, `"connection_ack"`},
+				{actionRecv, `"ka"`},
+				{actionSend, `{"type":"start","id":"ID-1","payload":{"query":"query {message}"}}`},
+				{actionRecv, `{"type":"data","id":"ID-1","payload":{"data":{"message":"hello"}}}`},
+				{actionSend, `{"type":"stop","id":"ID-1"}`},
+				{actionRecv, `"type":"complete","id":"ID-1"`},
 			},
 		},
 		// Using new sub-protocol -----------------
