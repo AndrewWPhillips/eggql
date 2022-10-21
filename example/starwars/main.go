@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/andrewwphillips/eggql"
@@ -69,7 +70,7 @@ type (
 		// Droids returns a list of all droids: "Droids: [Droid!]"
 		Droids []Droid `egg:",field_id,base=2000,nullable"` // base = FirstDroidID
 
-		// Starship resolves a starship given it's id: "starship(id: Int!): Starship"
+		// Starship resolves a starship given its id: "starship(id: Int!): Starship"
 		Starship []Starship `egg:",subscript,base=3000"`
 
 		// Starships returns a list of all ships: "starships: [Starship!]"
@@ -85,9 +86,6 @@ type (
 		// Search implements the resolver: "search(text: String!): [SearchResult]"
 		Search func(context.Context, string) ([]interface{}, error) `egg:"(text):[SearchResult]"`
 	}
-	SearchResult struct { // SearchResult has no exported fields so represents a Union of all types in which it is embedded
-		_ eggql.TagHolder `egg:"# Union that defines which object types are searchable"`
-	}
 	Character struct {
 		_                 eggql.TagHolder `egg:"# Represents a character (human or droid) in the Star Wars trilogy"`
 		Name              string          `egg:"# Name of the character"`
@@ -96,10 +94,13 @@ type (
 		Appears           []int                                           `egg:"appearsIn:[Episode]"`
 		SecretBackstory   func() (string, error)
 	}
+	SearchResult struct { // SearchResult has no exported fields so represents a Union of all types in which it is embedded
+		_ eggql.TagHolder `egg:"# Union that defines which object types are searchable"`
+	}
 	Human struct {
 		_            eggql.TagHolder            `egg:"# An intelligent humanoid creature from Star Wars"`
-		SearchResult                            // Human is part of the SearchResult union so can be returned from a search query
 		Character                               // Human implements the Character interface
+		SearchResult                            // Human is part of the SearchResult union so can be returned from a search query
 		Height       func(int) (float64, error) `egg:"(unit:LengthUnit=METER)"`
 		height       float64                    // meters
 		HomePlanet   string
@@ -107,24 +108,9 @@ type (
 	}
 	Droid struct {
 		_               eggql.TagHolder `egg:"# A mobile, semi-autonomous machine from Star Wars"`
-		SearchResult                    // Droid is part of the SearchResult union so can be returned from a search query
 		Character                       // Droid implements the Character interface
+		SearchResult                    // Droid is part of the SearchResult union so can be returned from a search query
 		PrimaryFunction string
-	}
-	EpisodeDetails struct {
-		_      eggql.TagHolder `egg:"# Stores info and reviews of each of the movies"`
-		Name   string
-		HeroId int
-		// The following are submitted reviews (with stars and time)
-		Stars      []int
-		Commentary []string
-		Time       []ReviewTime
-	}
-	Review struct {
-		_          eggql.TagHolder `egg:"# One person's rating and review for a movie"`
-		Stars      int
-		Commentary string
-		Time       ReviewTime
 	}
 	Starship struct {
 		_            eggql.TagHolder `egg:"# Machines for inter-planetary and inter-stellar travel"`
@@ -133,8 +119,24 @@ type (
 		Length       func(int) (float64, error) `egg:"(unit:LengthUnit=METER)"`
 		length       float64                    // meters
 	}
+	EpisodeDetails struct {
+		_      eggql.TagHolder `egg:"# Stores info and reviews of each of the movies"`
+		Name   string
+		HeroId int
 
-	// Movie reviews
+		reviewMu        sync.Mutex
+		Stars           []int
+		Commentary      []string
+		Time            []ReviewTime
+		reviewReceivers map[chan<- Review]context.Context
+	}
+	Review struct {
+		_          eggql.TagHolder `egg:"# One person's rating and review for a movie"`
+		Stars      int
+		Commentary string
+		Time       ReviewTime
+	}
+
 	Mutation struct {
 		_            eggql.TagHolder                                 `egg:"# Represents all the updates that can be made to the data"`
 		CreateReview func(int, ReviewInput) (*EpisodeDetails, error) `egg:"(episode:Episode,review)"`
@@ -146,7 +148,12 @@ type (
 		Time       *ReviewTime `egg:"# time the review was written - current time is used if NULL"`
 	}
 
+	Subscription struct {
+		NewReviews func(ctx context.Context, episode int) <-chan Review
+	}
+
 	// The following are for pagination of a list of friends
+
 	FriendsConnection struct {
 		_          eggql.TagHolder `egg:"# A connection object for a character's friends"`
 		TotalCount int             `egg:"# The total number of friends"`
@@ -177,7 +184,7 @@ var (
 			"ROGUE   @deprecated(reason: \"not an episode in the series\") # Rogue One (2016)",
 		},
 		"LengthUnit # Units for spatial measurements": {
-			// order of strings in the slice should match METER, etc consts below
+			// order of strings in the slice should match METER, etc. consts below
 			"METER # Standard metric spatial unit",
 			"FOOT # Imperial spatial unit used mainly in the US",
 		},
@@ -199,13 +206,13 @@ var (
 		{Character: Character{Name: "Chewbacca"}, height: 2.3, HomePlanet: "Kashyyyk"},
 	}
 	droids = []Droid{
-		{Character: Character{Name: "C-3PO"}, PrimaryFunction: "Protocol"},
 		{Character: Character{Name: "R2-D2"}, PrimaryFunction: "Astromech"},
+		{Character: Character{Name: "C-3PO"}, PrimaryFunction: "Protocol"},
 	}
 	episodes = []EpisodeDetails{
 		{Name: "A New Hope", HeroId: FirstHumanID},
 		{Name: "The Empire Strikes Back", HeroId: FirstHumanID},
-		{Name: "Return of the Jedi", HeroId: FirstDroidID + 1},
+		{Name: "Return of the Jedi", HeroId: FirstDroidID},
 	}
 	starships = []Starship{
 		{Name: "Millenium Falcon", length: 34.37},
@@ -357,19 +364,48 @@ func main() {
 				if review.Stars < 0 || review.Stars > 5 {
 					return nil, fmt.Errorf("review stars %d out of range", review.Stars)
 				}
+				episodes[episode].reviewMu.Lock()
+				defer episodes[episode].reviewMu.Unlock()
 				episodes[episode].Stars = append(episodes[episode].Stars, review.Stars)
 				episodes[episode].Commentary = append(episodes[episode].Commentary, review.Commentary)
-				if review.Time == nil {
-					episodes[episode].Time = append(episodes[episode].Time, ReviewTime{time.Now()})
-					//episodes[episode].Time = append(episodes[episode].Time, ReviewTime(time.Now()))
-				} else {
-					episodes[episode].Time = append(episodes[episode].Time, *review.Time)
+				reviewTime := ReviewTime{time.Now()}
+				// If given time is not null and not in the future use it as the review time
+				if review.Time != nil && review.Time.Time.Before(reviewTime.Time) {
+					reviewTime = *review.Time
+				}
+				episodes[episode].Time = append(episodes[episode].Time, reviewTime)
+				// Send the new review to all subscribers
+				if len(episodes[episode].reviewReceivers) > 0 {
+					out := Review{
+						Stars:      review.Stars,
+						Commentary: review.Commentary,
+						Time:       reviewTime,
+					}
+					for ch, ctx := range episodes[episode].reviewReceivers {
+						if ctx.Err() != nil {
+							delete(episodes[episode].reviewReceivers, ch)
+							continue
+						}
+						ch <- out
+					}
 				}
 				return &episodes[episode], nil
 			},
 		},
+		Subscription{
+			NewReviews: func(ctx context.Context, episode int) <-chan Review {
+				ch := make(chan Review)
+				episodes[episode].reviewMu.Lock()
+				defer episodes[episode].reviewMu.Unlock()
+				if episodes[episode].reviewReceivers == nil {
+					episodes[episode].reviewReceivers = make(map[chan<- Review]context.Context)
+				}
+				episodes[episode].reviewReceivers[ch] = ctx
+				return ch
+			},
+		},
 	)
-	handler = http.TimeoutHandler(handler, 15*time.Second, `{"errors":[{"message":"timeout"}]}`)
+	//handler = http.TimeoutHandler(handler, 15*time.Second, `{"errors":[{"message":"timeout"}]}`)
 	http.Handle("/graphql", handler)
 
 	log.Println("starting server")
@@ -377,7 +413,7 @@ func main() {
 	log.Println("stopping server")
 }
 
-func getSecretBackstory() (string, error) { return "", errors.New("secretBackstory is secret.") }
+func getSecretBackstory() (string, error) { return "", errors.New("secretBackstory is secret") }
 
 const feetPerMeter = 3.28084
 
@@ -392,7 +428,7 @@ func (h *Human) getHeight(unit int) (float64, error) {
 	case FOOT:
 		return h.height * feetPerMeter, nil
 	default:
-		return 0, fmt.Errorf("Human.height: unknown LengthUnit value: %d", unit)
+		return 0, fmt.Errorf("human.height: unknown LengthUnit value: %d", unit)
 	}
 }
 
@@ -407,7 +443,7 @@ func (ss *Starship) getLength(unit int) (float64, error) {
 	case FOOT:
 		return ss.length * feetPerMeter, nil
 	default:
-		return 0, fmt.Errorf("Starship.length: unknown LengthUnit value: %d", unit)
+		return 0, fmt.Errorf("starship.length: unknown LengthUnit value: %d", unit)
 	}
 }
 
