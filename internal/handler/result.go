@@ -27,6 +27,7 @@ type (
 		variables                  map[string]interface{}
 		enums                      map[string][]string       // forward lookup enum value (string) from int (slice index)
 		enumsReverse               map[string]map[string]int // allows reverse lookup int from enum value (map key = string)
+		resolverLookup             ResolverLookupTables
 	}
 
 	// gqlValue contains the result of a query or queries, or an error, plus the name
@@ -136,59 +137,55 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 		return r
 	}
 
-	var i int
-	// Check all the (exported) fields of the struct for a match to astField.Name
-	// TODO: use map lookup O(1) [instead of O(n) linear search] to help perf. eg. for a large # of root query fields
-	for i = 0; i < v.Type().NumField(); i++ {
-		tField := v.Type().Field(i)
-		vField := v.Field(i)
-		fieldInfo, err := field.Get(&tField)
-		if err != nil {
-			// This condition should never occur - should have been caught during schema building
-			panic(err)
-		}
-		if tField.Name == "_" || fieldInfo == nil {
-			continue // unexported field
-		}
-		if fieldInfo.Embedded && fieldInfo.Empty {
-			continue // union (no point scanning unexported fields)
-		}
-		// Recursively check fields of embedded struct
-		if fieldInfo.Embedded {
-			// if a field in the embedded struct matches a value is sent on the chan returned from FindSelection
-			for v := range op.FindSelection(ctx, astField, vField) {
-				// just send the 1st value from chan
-				r := make(chan gqlValue, 1)
-				// TODO: check if we should run this in a separate Go routine
-				select {
-				case r <- v:
-					// nothing else needed here
-				case <-ctx.Done():
-					r <- gqlValue{err: ctx.Err()}
-				}
-				close(r)
-				return r
-			}
-			// end of chan (no match found) so continue below
-		}
-		if fieldInfo.Name == astField.Name {
-			// resolver found
-			if op.isMutation || !AllowConcurrentQueries { // Mutations are run sequentially
-				ch := make(chan gqlValue, 1)
-				op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, ch)
-				return ch
-			} else {
-				ch := make(chan gqlValue)
-				// Calling wrapResolve as a go routine allows resolvers to run in parallel
-				go op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, ch)
-				return ch
-			}
-		}
+	// get the index of the field that is the resolver we need
+	//	log.Println("QQQ getting", v.Type().Name(), v.Type().Kind().String())
+	i, ok := op.resolverLookup[v.Type()][astField.Name]
+	if !ok {
+		// No matching field so close chan without writing
+		r := make(chan gqlValue)
+		close(r)
+		return r
 	}
-	// No matching field so close chan without writing
-	r := make(chan gqlValue)
-	close(r)
-	return r
+	tField := v.Type().Field(i)
+	vField := v.Field(i)
+
+	fieldInfo, _ := field.Get(&tField)
+	// Recursively check fields of embedded struct
+	if fieldInfo.Embedded {
+		// if a field in the embedded struct matches a value is sent on the chan returned from FindSelection
+		for v := range op.FindSelection(ctx, astField, vField) {
+			// just send the 1st value from chan
+			r := make(chan gqlValue, 1)
+			// TODO: check if we should run this in a separate Go routine
+			select {
+			case r <- v:
+				// nothing else needed here
+			case <-ctx.Done():
+				r <- gqlValue{err: ctx.Err()}
+			}
+			close(r)
+			return r
+		}
+		// end of chan (no match found) so continue below
+	}
+
+	if op.isMutation || !AllowConcurrentQueries { // Mutations are run sequentially
+		ch := make(chan gqlValue, 1)
+		op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, ch)
+		return ch
+	} else {
+		ch := make(chan gqlValue)
+		// Calling wrapResolve as a go routine allows resolvers to run in parallel
+		go op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, ch)
+		return ch
+	}
+	/*
+		// No matching field so close chan without writing
+		r := make(chan gqlValue)
+		close(r)
+		return r
+
+	*/
 }
 
 // wrapResolve calls resolve putting the return value on a chan and converting any panic to an error

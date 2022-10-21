@@ -13,7 +13,7 @@ import (
 func BenchmarkQuery(b *testing.B) {
 	const query = `{ "Query": "{ value }" }`
 
-	// ~71 microsec, 154 allocs @ 2022/04/20
+	// ~71 microsec, 154 allocs (Intel 16-core)
 	//h := handler.New("type Query { value: String! }", struct{ Value string }{"hello"})
 
 	// ~90microsec, 180 allocs @ 2022/04/20
@@ -28,9 +28,8 @@ func BenchmarkQuery(b *testing.B) {
 	//)
 
 	// ~71 microsec 154 allocs @ 2022/04/20
-	//h := handler.New("type Query { value: Int! }", struct{ Value int }{42})
-
-	// ~111microsec, 284 allocs => cf above (1 field vs 27 fields) 40 microsec slower due to linear search @ 2022/04/20
+	// ~111 microsec, 150 allocs  (AMD Ryzen 5 6-core)
+	// ~107 microsec, 150 allocs  (AMD Ryzen 5 6-core) *after* lookup opt. (little increase for single resolver as expected)
 	h := handler.New([]string{"type Query { value: Int! }"},
 		nil,
 		[3][]interface{}{
@@ -44,6 +43,23 @@ func BenchmarkQuery(b *testing.B) {
 			},
 		},
 	)
+
+	// ~111microsec (Intel 16-core) => [27 fields] vs 90microsec above [1 field] before lookup optimisation
+	// ~150microsec (AMD Ryzen 5 6-core) [27 fields] vs 111microsec above [1 field] before lookup opt.
+	// ~110microsec (AMD Ryzen 5 6-core) [27 fields] vs 107microsec above [1 field] *after* lookup opt.
+	// --- RESULTS ----
+	//  * using a lookup table (map) instead of linear search for resolvers > 25% faster for a struct with a lot resolvers
+	//h := handler.New([]string{"type Query { value: Int! }"},
+	//	nil,
+	//	[3][]interface{}{
+	//		{
+	//			struct {
+	//				A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z string
+	//				Value                                                                        int
+	//			}{Value: 42},
+	//		},
+	//	},
+	//)
 
 	body := strings.NewReader(query)
 	request := httptest.NewRequest("POST", "/", body)

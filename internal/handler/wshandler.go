@@ -276,6 +276,7 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 	for _, operation := range query.Operations {
 		op := gqlOperation{
 			enums: c.h.enums, enumsReverse: c.h.enumsReverse,
+			resolverLookup: c.h.resolverLookup,
 		}
 
 		if len(operation.VariableDefinitions) > 0 {

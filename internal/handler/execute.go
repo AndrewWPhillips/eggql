@@ -28,7 +28,7 @@ type (
 	// gqlResult contains the result (or errors) of the request to be encoded in JSON
 	gqlResult struct {
 		// Data stores the results of the query or queries
-		// We use a jsonmap.Ordered rather than a map[string]interface{} so as to remember the order since
+		// We use a jsonmap.Ordered rather than a map[string]interface{} to remember the order since
 		// the query result should have the same order as the query.  A nested query result is stored
 		// as a jsonmap.Ordered (as interface{}) within the Data whereas a list is stored as a slice.
 		Data   jsonmap.Ordered `json:"data,omitempty"`
@@ -48,7 +48,10 @@ func (g *gqlRequest) ExecuteHTTP(ctx context.Context) (r gqlResult) {
 	// Now process the operation(s)
 	r.Data.Data = make(map[string]interface{})
 	for _, operation := range query.Operations {
-		op := gqlOperation{enums: g.h.enums, enumsReverse: g.h.enumsReverse}
+		op := gqlOperation{
+			enums: g.h.enums, enumsReverse: g.h.enumsReverse,
+			resolverLookup: g.h.resolverLookup,
+		}
 
 		// Get variables associated with this operation if any
 		if len(operation.VariableDefinitions) > 0 {

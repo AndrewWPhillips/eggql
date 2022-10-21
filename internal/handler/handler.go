@@ -1,15 +1,17 @@
 // Package handler implements an HTTP handler to process GraphQL queries (and
 // mutations/subscriptions) given an instance of a query struct (and optionally
 // mutation and subscription structs) and a corresponding GraphQL schema.
-// The schema is typically generated (by the schema package) from the same struct(s).
+// The schema is typically generated (by the schema package) using the same struct(s).
 package handler
 
-// handler.go implements handler.New() to create a new handler, and it's ServeHTTP method
+// handler.go implements handler.New() (to create a new handler) and implements the
+// returned handler's ServeHTTP method (hence implements http.Handler interface)
 
 import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -20,11 +22,20 @@ import (
 )
 
 type (
+	// ResolverLookupTables allows us to quickly find the index of a resolver in a struct  type (reflect.Type) based on its name (string).
+	// Without this we would have to do a linear search by iterating all the fields of the object (struct).
+	ResolverLookupTables map[reflect.Type]map[string]int
+
 	// Handler stores the invariants (schema and structs) used in the GraphQL requests
 	Handler struct {
 		schema       *ast.Schema
 		enums        map[string][]string       // each enum is a slice of strings
 		enumsReverse map[string]map[string]int // allows reverse lookup - int value given enum value (string)
+
+		// resolverLookup provides a lookup map for every struct used in a query/mutation/subscription.
+		// At the top level we have a map where each key is the type os such a struct and the value is the lookup map
+		// For each lookup map the key is the resolver name (string) and the value is the field index into the struct (int)
+		resolverLookup ResolverLookupTables
 
 		// qData, mData and subscriptionData provide the resolvers for queries, mutations and subscriptions
 		// respectively.  Note that each typically has only one element except that qData may also have
@@ -43,7 +54,7 @@ type (
 
 // New creates a new handler with the given schema(s) and query/mutation/subscription struct(s)
 // Parameters:
-//   schemaStrings - a slice of strings containing the GraphQL schemas (typically only 1)
+//   schemaStrings - a slice of strings containing the GraphQL schema(s) - typically only 1
 //   enums - a map of enum names to a slice of strings containing the enum values for all the schemas
 //   qms - a slice of query/mutation/subscription structs where:
 //     qms[0] - query struct(s)
@@ -68,22 +79,7 @@ func New(schemaStrings []string, enums map[string][]string, qms [3][]interface{}
 		log.Fatalf("eggql.handler.New - error making schema error %s\n", error(pgqlError))
 	}
 
-	h.enums = make(map[string][]string, len(enums))
-	h.enumsReverse = make(map[string]map[string]int, len(enums))
-	for enumName, list := range enums {
-		enum := make([]string, 0, len(list))
-		enumInt := make(map[string]int, len(list))
-		for i, v := range list {
-			v = strings.SplitN(v, "#", 2)[0] // remove description
-			v = strings.SplitN(v, "@", 2)[0] // remove directive(s)
-			v = strings.TrimRight(v, " ")    // remove trailing spaces
-			enum = append(enum, v)
-			enumInt[v] = i
-		}
-		name := strings.TrimRight(strings.SplitN(enumName, "#", 2)[0], " ")
-		h.enums[name] = enum
-		h.enumsReverse[name] = enumInt
-	}
+	h.enums, h.enumsReverse = makeEnumTables(enums)
 
 	h.qData = qms[0]
 	h.mData = qms[1]
@@ -103,6 +99,7 @@ func New(schemaStrings []string, enums map[string][]string, qms [3][]interface{}
 			h.enumsReverse[enumName] = enumInt
 		}
 	}
+	h.resolverLookup = makeResolverTables(h.qData, h.mData, h.subscriptionData)
 
 	h.SetOptions(options...)
 
