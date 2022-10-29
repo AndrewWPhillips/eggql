@@ -140,6 +140,7 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 				break
 			}
 		}
+		fieldInfo.ResultType = t
 		return
 	}
 

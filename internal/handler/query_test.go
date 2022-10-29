@@ -128,7 +128,10 @@ var (
 
 	interfaceData  = struct{ A D }{D{X{4}, "fff"}}
 	interfaceFunc  = struct{ A func() D }{func() D { return D{X{5}, "ggg"} }}
-	inlineFragFunc = struct{ A func() interface{} }{func() interface{} { return D{X{1}, "e in D"} }}
+	inlineFragFunc = struct {
+		_ [0]D // we need this as A returns a struct D as an interface
+		A func() interface{}
+	}{A: func() interface{} { return D{X{1}, "e in D"} }}
 
 	contextFunc  = struct{ Value func(context.Context) int }{func(ctx context.Context) int { return 100 }}
 	contextFunc1 = struct {
@@ -348,21 +351,35 @@ func TestQuery(t *testing.T) {
 		},
 		"Union1": {
 			"type Query { a: U! } type U1 { v: Int! } union U = U1",
-			struct{ A interface{} }{U1{V: 87}}, `{ a { ... on U1 { v } } }`, "",
+			struct {
+				_ [0]U1 // we need to declare this so the handler knows U1 type (as A returns it as an interface{})
+				A interface{}
+			}{A: U1{V: 87}}, `{ a { ... on U1 { v } } }`, "",
 			JsonObject{"a": JsonObject{"v": 87.0}},
 		},
 		"Union2": {
 			"type Query { b: U! } type U1 { v: Int! } type U2 { v: Int! w: String!} union U = U1|U2",
-			struct{ B interface{} }{U2{W: "U2 w"}}, `{b{... on U1{v} ... on U2{w}}}`, "",
+			struct {
+				_ [0]U2
+				B interface{}
+			}{B: U2{W: "U2 w"}}, `{b{... on U1{v} ... on U2{w}}}`, "",
 			JsonObject{"b": JsonObject{"w": "U2 w"}},
 		},
 		"Union3": {
-			union3Schema, struct{ C []interface{} }{C: []interface{}{U1{V: 6}, U2{V: 7}}},
+			union3Schema, struct {
+				_ [0]U1
+				_ [0]U2
+				C []interface{}
+			}{C: []interface{}{U1{V: 6}, U2{V: 7}}},
 			`{c{... on U1{v} ... on U2{v}}}`, "",
 			JsonObject{"c": []interface{}{JsonObject{"v": 6.0}, JsonObject{"v": 7.0}}},
 		},
 		"Union4": {
-			union3Schema, struct{ C []interface{} }{C: []interface{}{U1{V: 1}, U2{V: 2, W: "w"}, U1{V: 3}}},
+			union3Schema, struct {
+				_ [0]U1
+				_ [0]U2
+				C []interface{}
+			}{C: []interface{}{U1{V: 1}, U2{V: 2, W: "w"}, U1{V: 3}}},
 			`{c{... on U1{v} ... on U2{v}}}`, "",
 			JsonObject{"c": []interface{}{JsonObject{"v": 1.0}, JsonObject{"v": 2.0}, JsonObject{"v": 3.0}}},
 		},

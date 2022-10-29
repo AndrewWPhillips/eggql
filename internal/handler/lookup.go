@@ -61,13 +61,18 @@ func makeResolverTables(qms ...[]interface{}) ResolverLookupTables {
 
 func (lt ResolverLookupTables) addLookup(t reflect.Type) {
 	// Get "base" type to see if it's a struct
-	for k := t.Kind(); k == reflect.Ptr || k == reflect.Func || k == reflect.Map || k == reflect.Slice || k == reflect.Array; k = t.Kind() {
+	for k := t.Kind(); k == reflect.Ptr; k = t.Kind() {
+		t = t.Elem()
+	}
+	if t.Kind() == reflect.Func {
+		t = t.Out(0)
+	}
+	if k := t.Kind(); k == reflect.Map || k == reflect.Slice || k == reflect.Array || k == reflect.Chan {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
 		return
 	}
-
 	if _, ok := lt[t]; ok {
 		return // already done (or being done if nil)
 	}
@@ -76,28 +81,41 @@ func (lt ResolverLookupTables) addLookup(t reflect.Type) {
 	r := make(map[string]int, t.NumField())
 	// Find all the fields that are resolvers
 	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
-		fieldInfo, err2 := field.Get(&f)
-		if err2 != nil {
+		tField := t.Field(i)
+		fieldInfo, err := field.Get(&tField)
+		if err != nil {
 			continue // TODO: check error
 		}
-		if f.Name == "_" || fieldInfo == nil {
+		if fieldInfo == nil {
 			continue // ignore unexported field
 		}
-		r[fieldInfo.Name] = i
-
-		fieldType := f.Type
-		if fieldInfo.Subscript != "" {
-			fieldType = fieldInfo.ResultType // for list use the element type
-		}
-		if fieldType.Kind() == reflect.Func {
-			fieldType = fieldType.Out(0) // for resolver func use the (1st) return value
-		}
-		if fieldType.Kind() == reflect.Chan {
-			fieldType = fieldType.Elem() // a chan is used for subscriptions
+		if tField.Name == "_" {
+			// ignored field may have been included for the type declaration
+			lt.addLookup(fieldInfo.ResultType)
+			continue
 		}
 
-		lt.addLookup(fieldType)
+		if fieldInfo.Embedded {
+			if fieldInfo.Empty {
+				continue // we don't need to look up anything in a union
+			}
+			// Embedding means all the fields are "promoted" to the parent struct
+			for j := 0; j < fieldInfo.ResultType.NumField(); j++ {
+				tf2 := fieldInfo.ResultType.Field(j)
+				fieldInfo2, err2 := field.Get(&tf2)
+				if err2 != nil {
+					continue // TODO: check error
+				}
+				if tf2.Name == "_" || fieldInfo2 == nil {
+					continue // ignore unexported field
+				}
+				r[fieldInfo2.Name] = i
+				lt.addLookup(fieldInfo2.ResultType)
+			}
+		} else {
+			r[fieldInfo.Name] = i
+		}
+		lt.addLookup(fieldInfo.ResultType)
 	}
 	lt[t] = r
 }
