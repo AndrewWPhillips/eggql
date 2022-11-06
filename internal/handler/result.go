@@ -14,7 +14,7 @@ import (
 
 const (
 	AllowIntrospection       = true
-	AllowConcurrentQueries   = true
+	AllowConcurrentQueries   = true // allow independent queries (but not mutations) to run at the same time
 	ALlowNilResolverFunction = true // return NULL for an unimplemented (nil) resolver function
 
 	TypeNameQuery = "__typename" // Name of "introspection" query that can be performed at any level

@@ -127,9 +127,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decode the request (JSON)
+	// Decode the GET or POST request (JSON)
 	g := gqlRequest{h: h}
 	if r.Method == http.MethodGet {
+		// if it's a GET we assume the GraphQL query is passed as a "query" query parameter
 		values := r.URL.Query()
 		// find the query parameter with name "query" which contains the GraphQL query (or mutation or subscription)
 		if len(values["query"]) != 1 {
@@ -138,6 +139,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		g.Query = values["query"][0]
+		// get GraphQL variables from "variables" query parameter
 		if len(values["variables"]) > 0 {
 			vars := values["variables"][0]
 			if len(vars) > 1 && vars[0] == '"' && vars[len(vars)-1] == '"' {
@@ -152,6 +154,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
+		// for POST requests we assume the GraphQL query (+ optionally variables) are JSON encoded in the request body
 		decoder := json.NewDecoder(r.Body)
 		decoder.DisallowUnknownFields() // quickly find if a field name has been misspelt
 		decoder.UseNumber()             // allows us to distinguish ints from floats (see FixNumberVariables() below)

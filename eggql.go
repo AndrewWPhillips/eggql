@@ -13,22 +13,30 @@ import (
 type (
 	gql struct {
 		enums   map[string][]string
-		qms     [3]interface{}
+		qms     [][3]interface{} // each slice element represents a schema (with a root query, mutation and subscription)
 		options []func(*handler.Handler)
 	}
 )
 
 // New creates a new instance with from zero to 3 parameters representing the
-// query, mutation, and subscription types (though these may also be added or replaced
-// later using the SetQuery, SetMutation, and SetSubscription methods).
+// query, mutation, and subscription types of a schema.  Further schemas can
+// be added (to enable schema stitching) by calling using the Add method.
 func New(q ...interface{}) gql {
 	g := gql{}
-	for i := 0; i < 3; i++ {
-		if len(q) > i {
-			g.qms[i] = q[i]
-		}
+	if len(q) > 0 {
+		g.Add(q...)
 	}
 	return g
+}
+
+func (g *gql) Add(q ...interface{}) {
+	var schemaQMS [3]interface{}
+	for i := 0; i < 3; i++ {
+		if len(q) > i {
+			schemaQMS[i] = q[i]
+		}
+	}
+	g.qms = append(g.qms, schemaQMS)
 }
 
 // SetEnums adds or replaces enums used in generating the schema
@@ -45,37 +53,43 @@ func (g *gql) AddEnum(name string, values []string) {
 	g.enums[name] = values
 }
 
-// SetQuery adds or replaces the struct representing the root query type
-func (g *gql) SetQuery(query interface{}) {
-	g.qms[0] = query
-}
-
-// SetMutation adds or replaces the struct representing the root mutation type
-func (g *gql) SetMutation(mutation interface{}) {
-	g.qms[1] = mutation
-}
-
-// SetSubscription adds or replaces the struct representing the subscription type
-func (g *gql) SetSubscription(subscription interface{}) {
-	g.qms[2] = subscription
-}
-
 // GetSchema builds and returns the GraphQL schema
 func (g *gql) GetSchema() (string, error) {
-	s, err := schema.Build(g.enums, g.qms[:]...)
-	if err != nil {
-		return "", err
+	var schemaString string
+	for _, schemaQMS := range g.qms {
+		s, err := schema.Build(g.enums, schemaQMS[:]...)
+		if err != nil {
+			return "", err
+		}
+		schemaString += s // should we do more than concatenate the schemas?
 	}
-	return s, nil
+	return schemaString, nil
 }
 
-// GetHandler builds the schema and returns the HTTP handler that handles GraphQL queries
 func (g *gql) GetHandler() (http.Handler, error) {
-	s, err := schema.Build(g.enums, g.qms[:]...)
-	if err != nil {
-		return nil, err
+	var schemaStrings []string
+	var schemaQMS [3][]interface{}
+	for _, qms := range g.qms {
+		s, err := schema.Build(g.enums, qms[:]...)
+		if err != nil {
+			return nil, err
+		}
+		if len(schemaStrings) == 0 {
+			schemaStrings = append(schemaStrings, s)
+		} else {
+			schemaStrings = append(schemaStrings, "extend "+s)
+		}
+		if qms[0] != nil {
+			schemaQMS[0] = append(schemaQMS[0], qms[0])
+		}
+		if qms[1] != nil {
+			schemaQMS[1] = append(schemaQMS[1], qms[1])
+		}
+		if qms[2] != nil {
+			schemaQMS[2] = append(schemaQMS[2], qms[2])
+		}
 	}
-	return handler.New([]string{s}, g.enums, [3][]interface{}{{g.qms[0]}, {g.qms[1]}, {g.qms[2]}}, g.options...), nil
+	return handler.New(schemaStrings, g.enums, schemaQMS, g.options...), nil
 }
 
 func (g *gql) SetInitialTimeout(timeout time.Duration) {

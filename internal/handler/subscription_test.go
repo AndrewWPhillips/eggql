@@ -105,18 +105,20 @@ func TestSubscriptions(t *testing.T) {
 				{actionPause, 20},
 			},
 		},
-		"query_old": {
-			delay: time.Second,
-			actions: []wsAction{
-				{actionSend, `{"type": "connection_init"}`},
-				{actionRecv, `"connection_ack"`},
-				{actionRecv, `"ka"`},
-				{actionSend, `{"type":"start","id":"ID-1","payload":{"query":"query {message}"}}`},
-				{actionRecv, `{"type":"data","id":"ID-1","payload":{"data":{"message":"hello"}}}`},
-				{actionSend, `{"type":"stop","id":"ID-1"}`},
-				{actionRecv, `"type":"complete","id":"ID-1"`},
+		/*	TODO: queries on websocket are not yet implemented
+			"query_old": {
+				delay: time.Second,
+				actions: []wsAction{
+					{actionSend, `{"type": "connection_init"}`},
+					{actionRecv, `"connection_ack"`},
+					{actionRecv, `"ka"`},
+					{actionSend, `{"type":"start","id":"ID-1","payload":{"query":"query {message}"}}`},
+					{actionRecv, `{"type":"data","id":"ID-1","payload":{"data":{"message":"hello"}}}`},
+					{actionSend, `{"type":"stop","id":"ID-1"}`},
+					{actionRecv, `"type":"complete","id":"ID-1"`},
+				},
 			},
-		},
+		*/
 		// Using new sub-protocol -----------------
 		"basic_new": {
 			delay: time.Second, protocol: "graphql-transport-ws",

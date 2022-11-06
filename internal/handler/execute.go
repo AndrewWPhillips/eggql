@@ -5,7 +5,6 @@ package handler
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	"github.com/dolmen-go/jsonmap"
 	"github.com/vektah/gqlparser/v2"
