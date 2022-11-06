@@ -243,11 +243,11 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 
 	// First get type info from all dummy fields - those with blank ID (_) as their name
 	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
-		if f.Name == "_" {
-			if f.Type.Name() == "TagHolder" { // name must match the type declared in run.go
+		tf := t.Field(i)
+		if tf.Name == "_" {
+			if tf.Type.Name() == "TagHolder" { // name must match the type declared in run.go
 				// the field (otherwise not used) is just included to allow us to get the description from the field tag
-				fieldInfo, err2 := field.Get(&f)
+				fieldInfo, err2 := field.Get(&tf)
 				if err2 != nil {
 					err = fmt.Errorf("%w getting decription from TagHolder", err2)
 					return
@@ -255,7 +255,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 				desc = fieldInfo.Description
 			} else {
 				// This field is just included for its type so that eggql knows about it (this is used in implementing GraphQL interfaces)
-				if err = s.add("", f.Type, enums, gqlObjectTypeKeyword, nil); err != nil {
+				if err = s.add("", tf.Type, enums, gqlObjectTypeKeyword, nil); err != nil {
 					return
 				}
 				// if GraphQL proposal to allow scalars to implement interfaces goes ahead we may need to call s.getTypeName(f.Type) here
@@ -263,13 +263,13 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 		}
 	}
 	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
-		fieldInfo, err2 := field.Get(&f)
+		tf := t.Field(i)
+		fieldInfo, err2 := field.Get(&tf)
 		if err2 != nil {
-			err = fmt.Errorf("%w getting field %q", err2, f.Name)
+			err = fmt.Errorf("%w getting field %q", err2, tf.Name)
 			return
 		}
-		if f.Name == "_" || fieldInfo == nil {
+		if tf.Name == "_" || fieldInfo == nil {
 			continue // ignore unexported field
 		}
 		if fieldInfo.Name != "" && !validGraphQLName(fieldInfo.Name) {
@@ -278,33 +278,33 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 		}
 		if fieldInfo.Embedded && fieldInfo.Empty {
 			// Add parent type to union f.Name
-			u := s.unions[f.Name]
+			u := s.unions[tf.Name]
 			if u.objects == nil {
 				u.objects = make(map[string]struct{})
 			}
 			u.objects[parentType] = struct{}{} // add to the set of objects in the union
 
 			// Check for any "description" tag field in the union
-			for j := 0; j < f.Type.NumField(); j++ {
-				f2 := f.Type.Field(j)
-				fieldInfo2, err2 := field.Get(&f2) // just call this to get description for union
-				if (u.desc != "" && u.desc != fieldInfo2.Description) || err2 != nil {
+			for j := 0; j < tf.Type.NumField(); j++ {
+				tf2 := tf.Type.Field(j)
+				fieldInfo2, err3 := field.Get(&tf2) // just call this to get description for union
+				if (u.desc != "" && u.desc != fieldInfo2.Description) || err3 != nil {
 					// we should not get here - panic?
-					return nil, nil, "", errors.New("Error in union description for " + f2.Name)
+					return nil, nil, "", errors.New("Error in union description for " + tf2.Name)
 				}
 				u.desc = fieldInfo2.Description
 			}
-			s.unions[f.Name] = u
+			s.unions[tf.Name] = u
 			continue // embedding empty struct just signals a "union" so don't add a resolver for this
 		} else if fieldInfo.Embedded {
 			// Add struct to our collection as an "interface"
-			if err2 = s.add(fieldInfo.GQLTypeName, f.Type, enums, gqlInterfaceKeyword, nil); err2 != nil {
-				err = fmt.Errorf("%w adding embedded (interface) type %q", err2, f.Name)
+			if err2 = s.add(fieldInfo.GQLTypeName, tf.Type, enums, gqlInterfaceKeyword, nil); err2 != nil {
+				err = fmt.Errorf("%w adding embedded (interface) type %q", err2, tf.Name)
 				return
 			}
 
 			// Get the resolvers from the embedded struct (GraphQL "interface")
-			resolvers, interfaces, _, err2 := s.getResolvers(parentType, f.Type, enums, gqlType)
+			resolvers, interfaces, _, err2 := s.getResolvers(parentType, tf.Type, enums, gqlType)
 			if err2 != nil {
 				// We should't ever get to here - getResolvers for this struct has already been called w/o error in above s.add() method call
 				//err = fmt.Errorf("%w adding embedded resolvers for %q", err2, f.Name); return
@@ -319,7 +319,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 				r[k] = v
 			}
 			iface = append(iface, interfaces...)
-			iface = append(iface, f.Name)
+			iface = append(iface, tf.Name)
 			continue // all resolvers for the "interface" have been added
 		}
 
@@ -339,26 +339,26 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 				return
 			}
 			effectiveType = fieldInfo.ResultType
-		} else if f.Type.Kind() == reflect.Func {
+		} else if tf.Type.Kind() == reflect.Func {
 			// Get resolver arguments (if any) from the "args" option - eg "(p1:String!, p2:Int!=42)"
-			params, err2 = s.getParams(f.Type, enums, fieldInfo)
+			params, err2 = s.getParams(tf.Type, enums, fieldInfo)
 			if err2 != nil {
 				err = fmt.Errorf("%w getting args for %q", err2, fieldInfo.Name)
 				return
 			}
-			if f.Type.NumOut() == 0 {
+			if tf.Type.NumOut() == 0 {
 				// should not get to here - panic?
 				err = fmt.Errorf("resolver function %q does not return a value", fieldInfo.Name)
 				return
 			}
-			effectiveType = f.Type.Out(0)
+			effectiveType = tf.Type.Out(0)
 			if fieldInfo.IsChan {
 				effectiveType = effectiveType.Elem() // subscriptions are always channels
 			}
-		} else if f.Type.Kind() == reflect.Chan {
-			effectiveType = f.Type.Elem()
+		} else if tf.Type.Kind() == reflect.Chan {
+			effectiveType = tf.Type.Elem()
 		} else {
-			effectiveType = f.Type
+			effectiveType = tf.Type
 		}
 
 		var idField *objectField
@@ -390,7 +390,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 		}
 
 		if typeName == "" { // TODO: check if this is always correct thing to do
-			typeName = f.Name // use field name for anon structs
+			typeName = tf.Name // use field name for anon structs
 			if !fieldInfo.Nullable {
 				typeName += "!"
 			}

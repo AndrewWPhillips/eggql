@@ -247,12 +247,12 @@ func (op *gqlOperation) getStruct(t reflect.Type, name string, m map[string]inte
 	// Create an instance of the struct and fill in the exported fields using m
 	r := reflect.New(t).Elem()
 	for idx := 0; idx < t.NumField(); idx++ {
-		f := t.Field(idx)
-		fieldInfo, err2 := field.Get(&f)
+		tf := t.Field(idx)
+		fieldInfo, err2 := field.Get(&tf)
 		if err2 != nil {
-			return reflect.Value{}, fmt.Errorf("%w getting field %q", err2, f.Name)
+			return reflect.Value{}, fmt.Errorf("%w getting field %q", err2, tf.Name)
 		}
-		if f.Name == "_" || fieldInfo == nil {
+		if tf.Name == "_" || fieldInfo == nil {
 			continue // ignore unexported field
 		}
 

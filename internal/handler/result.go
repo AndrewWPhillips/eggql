@@ -53,40 +53,51 @@ type (
 // Parameters:
 //   ctx = a Go context that could expire at any time
 //   set = list of selections from a GraphQL query to be resolved
-//   v = value of Go struct whose (exported) fields are the resolvers
+//   data = slice of Go structs with the resolvers (usually has just one struct unless using schema stitching)
 //   idField = name/type of fabricated "id" field (see "field_id" option for lists of objects)
-func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, v reflect.Value, id *idField,
+func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, data []interface{}, id *idField,
 ) (jsonmap.Ordered, error) {
-	// Get the struct that contains the resolvers that we can use
-	for v.Type().Kind() == reflect.Ptr {
-		v = v.Elem() // follow indirection
-	}
-
-	resultChans := make([]<-chan gqlValue, 0, len(set)) // TODO: allow extra cap. for fragment sets > 1 in length
-
-	// resolve each (sub)query
+	resultChans := make([]<-chan gqlValue, 0, len(set))
 	for _, s := range set {
-		switch astType := s.(type) {
-		case *ast.Field:
-			// Find and execute the "resolver" in the struct (or recursively in embedded structs)
-			if id != nil && astType.Name == id.name {
-				ch := make(chan gqlValue, 1)
-				ch <- gqlValue{name: id.name, value: id.value.Interface()}
-				close(ch)
-				resultChans = append(resultChans, ch)
-			} else {
-				resultChans = append(resultChans, op.FindSelection(ctx, astType, v))
+		// For each query we check all the data structs
+	dataLoop:
+		for _, d := range data {
+			// Get the struct that contains the resolvers that we can use
+			v := reflect.ValueOf(d)
+			for v.Type().Kind() == reflect.Ptr {
+				v = v.Elem() // follow indirection
 			}
 
-		case *ast.InlineFragment:
-			if v.Type().Name() != astType.TypeCondition {
-				continue
-			}
-			resultChans = append(resultChans, op.FindFragments(ctx, astType.SelectionSet, v))
+			switch astType := s.(type) {
+			case *ast.Field:
+				if id != nil && astType.Name == id.name {
+					// Requesting generated ID field - return chan with the fabricated ID
+					ch := make(chan gqlValue, 1)
+					ch <- gqlValue{
+						name: id.name, value: id.value.Interface(),
+					}
+					close(ch)
+					resultChans = append(resultChans, ch)
+					break dataLoop
+				} else {
+					// Find and execute the "resolver" in the struct (or recursively in embedded structs)
+					if ch := op.FindSelection(ctx, astType, v); ch != nil {
+						resultChans = append(resultChans, ch)
+						break dataLoop // we got a result so stop looking
+					}
+				}
 
-		case *ast.FragmentSpread:
-			resultChans = append(resultChans, op.FindFragments(ctx, astType.Definition.SelectionSet, v))
+			case *ast.InlineFragment:
+				if v.Type().Name() != astType.TypeCondition {
+					continue dataLoop // TODO: decide whether to continue or break
+				}
+				resultChans = append(resultChans, op.FindFragments(ctx, astType.SelectionSet, v))
+
+			case *ast.FragmentSpread:
+				resultChans = append(resultChans, op.FindFragments(ctx, astType.Definition.SelectionSet, v))
+			}
 		}
+
 	}
 
 	// Now extract the values (will block until all channels have closed)
@@ -118,9 +129,11 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 	return r, nil
 }
 
-// FindSelection scans v for a field that matches astField and resolves the value (if found)
-// It returns a chan that will send (perhaps later) a single value (or error) and is then closed.
-// If no match is found, or the matched field is excluded (by a directive) the chan is closed without any value sent.
+// FindSelection returns resolved value in a chan (if found), or empty chan (if excluded), or nil (not found)
+// Returns:
+//  - if found: closed chan containing a single value or error
+//  - if found but excluded by directive: closed chan with no values
+//  - if not found: nil
 func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, v reflect.Value) <-chan gqlValue {
 	if v.Type().Kind() != reflect.Struct { // struct = 25
 		// param. 'v' validation - note that this is a bug that should have been caught during schema building
@@ -141,10 +154,9 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 	//	log.Println("QQQ getting", v.Type().Name(), v.Type().Kind().String())
 	i, ok := op.resolverLookup[v.Type()][astField.Name]
 	if !ok {
+		// TODO: scan to double-check that we don't have a bug
 		// No matching field so close chan without writing
-		r := make(chan gqlValue)
-		close(r)
-		return r
+		return nil
 	}
 	tField := v.Type().Field(i)
 	vField := v.Field(i)
@@ -153,20 +165,22 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 	// Recursively check fields of embedded struct
 	if fieldInfo.Embedded {
 		// if a field in the embedded struct matches a value is sent on the chan returned from FindSelection
-		for v := range op.FindSelection(ctx, astField, vField) {
-			// just send the 1st value from chan
-			r := make(chan gqlValue, 1)
-			// TODO: check if we should run this in a separate Go routine
-			select {
-			case r <- v:
-				// nothing else needed here
-			case <-ctx.Done():
-				r <- gqlValue{err: ctx.Err()}
+		if ch := op.FindSelection(ctx, astField, vField); ch != nil {
+			for v := range ch {
+				// just send the 1st value from chan
+				r := make(chan gqlValue, 1)
+				// TODO: check if we should run this in a separate Go routine
+				select {
+				case r <- v:
+					// nothing else needed here
+				case <-ctx.Done():
+					r <- gqlValue{err: ctx.Err()}
+				}
+				close(r)
+				return r
 			}
-			close(r)
-			return r
+			// end of chan (no match found) so continue below
 		}
-		// end of chan (no match found) so continue below
 	}
 
 	if op.isMutation || !AllowConcurrentQueries { // Mutations are run sequentially
@@ -179,13 +193,6 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 		go op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, ch)
 		return ch
 	}
-	/*
-		// No matching field so close chan without writing
-		r := make(chan gqlValue)
-		close(r)
-		return r
-
-	*/
 }
 
 // wrapResolve calls resolve putting the return value on a chan and converting any panic to an error
@@ -205,7 +212,7 @@ func (op *gqlOperation) wrapResolve(
 }
 
 func (op *gqlOperation) FindFragments(ctx context.Context, set ast.SelectionSet, v reflect.Value) <-chan gqlValue {
-	result, err := op.GetSelections(ctx, set, v, nil)
+	result, err := op.GetSelections(ctx, set, []interface{}{v.Interface()}, nil)
 
 	var ch chan gqlValue
 	if err != nil {
@@ -334,7 +341,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 			}
 		}
 		// Look up all sub-queries in this object
-		if result, err := op.GetSelections(ctx, astField.SelectionSet, v, id); err != nil {
+		if result, err := op.GetSelections(ctx, astField.SelectionSet, []interface{}{v.Interface()}, id); err != nil {
 			return &gqlValue{err: err}
 		} else {
 			return &gqlValue{name: astField.Alias, value: result}

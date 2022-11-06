@@ -301,44 +301,43 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 			panic("unknown operation: " + string(operation.Operation))
 		}
 
-		for _, d := range data {
-			result, err := op.GetSelections(ctx, operation.SelectionSet, reflect.ValueOf(d), nil)
-			if err != nil {
-				r.Errors = append(r.Errors, &gqlerror.Error{
-					Message:    err.Error(),
-					Extensions: map[string]interface{}{"operation": operation.Name},
-				})
-				continue
-			}
-			if len(result.Order) > 0 {
-				// start processing for each subscription
-				for _, k := range result.Order {
-					if reflect.TypeOf(result.Data[k]).Kind() == reflect.Chan {
-						go c.process(ctx, message.ID, k, result.Data[k], !op.isSubscription)
-						subscriptionCount++
-						continue
-					}
-					if op.isSubscription {
-						out := wsMessage{
-							Type: "error", ID: message.ID,
-							Payload: &payload{
-								Errors: []*gqlerror.Error{
-									&gqlerror.Error{
-										Message: "internal error: subscription resolver \"" + k + "\"did not return a channel",
-									},
+		result, err := op.GetSelections(ctx, operation.SelectionSet, data, nil)
+		if err != nil {
+			r.Errors = append(r.Errors, &gqlerror.Error{
+				Message:    err.Error(),
+				Extensions: map[string]interface{}{"operation": operation.Name},
+			})
+			continue
+		}
+		if len(result.Order) > 0 {
+			// start processing for each subscription
+			for _, k := range result.Order {
+				if reflect.TypeOf(result.Data[k]).Kind() == reflect.Chan {
+					go c.process(ctx, message.ID, k, result.Data[k], !op.isSubscription)
+					subscriptionCount++
+					continue
+				}
+				if op.isSubscription {
+					out := wsMessage{
+						Type: "error", ID: message.ID,
+						Payload: &payload{
+							Errors: []*gqlerror.Error{
+								&gqlerror.Error{
+									Message: "internal error: subscription resolver \"" + k + "\"did not return a channel",
 								},
 							},
-						}
-						c.write(out)
-						return false
+						},
 					}
-					r.Data.Data[k] = result.Data[k]
-					r.Data.Order = append(r.Data.Order, k)
+					c.write(out)
+					return false
 				}
-				break // don't look for the same selection(s) in the next data
+				r.Data.Data[k] = result.Data[k]
+				r.Data.Order = append(r.Data.Order, k)
 			}
+			break // don't look for the same selection(s) in the next data
 		}
 	}
+
 	// Check that we either started a subscription or got a result/error (query/mutation)
 	if subscriptionCount == 0 {
 		r.Errors = append(r.Errors, &gqlerror.Error{

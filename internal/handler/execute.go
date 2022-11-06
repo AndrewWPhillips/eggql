@@ -80,16 +80,7 @@ func (g *gqlRequest) ExecuteHTTP(ctx context.Context) (r gqlResult) {
 		default:
 			panic("unknown operation: " + string(operation.Operation))
 		}
-		var result jsonmap.Ordered
-		var err error
-		for _, d := range data {
-			result, err = op.GetSelections(ctx, operation.SelectionSet, reflect.ValueOf(d), nil)
-			if err != nil || len(result.Order) > 0 {
-				break
-			}
-		}
-
-		// TODO: don't stop on 1st error but record all errors to save the client debug time
+		result, err := op.GetSelections(ctx, operation.SelectionSet, data, nil)
 		if err != nil {
 			r.Errors = append(r.Errors, &gqlerror.Error{
 				Message:    err.Error(),

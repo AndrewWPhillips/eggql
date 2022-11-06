@@ -91,12 +91,12 @@ func (s schema) validLiteral(typeName string, enums map[string][]string, t refle
 			var fieldType reflect.Type
 			var fieldTypeName string
 			for i := 0; i < t.NumField(); i++ {
-				f := t.Field(i)
-				fieldInfo, err := field.Get(&f)
+				tf := t.Field(i)
+				fieldInfo, err := field.Get(&tf)
 				if err != nil {
 					return fmt.Errorf("%w getting default value of field %q in object %q", err, parts[0], typeName)
 				}
-				if f.Name != "_" && f.PkgPath != "" {
+				if tf.Name != "_" && tf.PkgPath != "" {
 					continue // ignore unexported fields
 				}
 				if fieldInfo.Name != "" && !validGraphQLName(fieldInfo.Name) {
@@ -104,7 +104,7 @@ func (s schema) validLiteral(typeName string, enums map[string][]string, t refle
 				}
 				if parts[0] == fieldInfo.Name {
 					fieldTypeName = fieldInfo.GQLTypeName
-					fieldType = f.Type
+					fieldType = tf.Type
 					break
 				}
 			}

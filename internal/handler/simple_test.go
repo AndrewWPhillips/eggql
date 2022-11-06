@@ -61,27 +61,29 @@ func TestSimple(t *testing.T) {
 
 // TestMultSchema tests using different schemas together
 func TestMultSchema(t *testing.T) {
+	type Greeting struct {
+		Hello string
+	}
 	// Create handler that has a single GraphQL query called "hello" which returns a string (world)
 	h := handler.New(
 		[]string{
-			"schema { query: Query } type Query { hi: String! }",
-			"extend schema { query: Query2 } type Query2 { hello: String! }",
+			"extend schema { query: Query } extend type Query { hi: String! }",
+			"extend schema { query: Query } extend type Query { greeting: Greeting! } type Greeting { hello: String! }",
 		},
 		nil,
 		[3][]interface{}{
 			{
 				struct{ Hi string }{"there"},
-				struct{ Hello string }{"world"},
+				struct{ Greeting Greeting }{Greeting{"world"}},
 			},
 			nil,
 			nil,
 		},
 	)
 
-	/// TODO QQQ Also test query from 1st schema (hi)
-	// Create a HTTP request that invokes the GraphQL "hello" query
+	// Create HTTP request that invokes the GraphQL query
 	request := httptest.NewRequest("POST", "/",
-		strings.NewReader(`{ "Query": "{ hello }" }`))
+		strings.NewReader(`{ "Query": "{ hi greeting { hello } }" }`))
 	request.Header.Add("Content-Type", "application/json")
 
 	// Invoke the handler, recording the response
@@ -94,7 +96,10 @@ func TestMultSchema(t *testing.T) {
 	}
 	var rv struct {
 		Data *struct {
-			Hello string
+			Hi       string
+			Greeting struct {
+				Hello string
+			}
 		}
 		Errors []struct {
 			Message    string
@@ -111,7 +116,10 @@ func TestMultSchema(t *testing.T) {
 	if rv.Data == nil {
 		t.Fatalf("No data returned from the query")
 	}
-	if rv.Data.Hello != "world" {
-		t.Fatalf("Got unexpected result %q", rv.Data.Hello)
+	if rv.Data.Hi != "there" {
+		t.Fatalf("Got unexpected result %q", rv.Data.Hi)
+	}
+	if rv.Data.Greeting.Hello != "world" {
+		t.Fatalf("Got unexpected result %q", rv.Data.Greeting.Hello)
 	}
 }
