@@ -18,12 +18,12 @@ You should probably follow this tutorial sequentially as each section builds on 
 8. [Descriptions](#descriptions) - fields, arguments, etc can have a description to be used by query designers
 9. [Viewing Descriptions using Introspection](#using-introspection-to-obtain-descriptions)
 10. [Errors](#resolver-errors) - how to handle errors
-11. [Contexts](#contexts) - contexts are used to cancel GraphQL queries - eg for a timeout if they take too long to run
+11. [Contexts](#contexts) - contexts are used to cancel GraphQL queries - e.g. for a timeout if they take too long to run
 12. [Methods as Resolvers](#using-go-methods-as-resolvers) - how a resolver function can easily access data of its parent object
 13. [Custom Scalars](#custom-scalars) - you can add new types to be used in your queries called custom scalars
 14. [Subscriptions](#subscriptions) - Subscriptions are a powerful way to provide a continuous stream of data
 
-Note: the final code for this tutorial is in the git repo (https://github.com/AndrewWPhillips/eggql/tree/main/example/starwars).  It's less than 250 lines of code (and most of that is just data field initialization since all the data is stored in memory).  This is much smaller (and I think much simpler) than the equivalent Star Wars example using other GraphQL packages (for Go and even other languages).  The complete version is also running *right now* in GCP (Google Cloud Platform), so you can try any Star Wars queries using GraphIQL, Postman, Curl etc, using the address https://aphillips801-eggql-sw.uc.r.appspot.com/graphql.
+Note: the final code for this tutorial is in the git repo (https://github.com/AndrewWPhillips/eggql/tree/main/example/starwars).  It's less than 250 lines of code (and most of that is just data field initialization since all the data is stored in memory).  This is much smaller (and I think much simpler) than the equivalent Star Wars example using other GraphQL packages (for Go and even other languages).  The complete version is also running *right now* in GCP (Google Cloud Platform), so you can try any Star Wars queries using GraphIQL, Postman, Curl etc., using the address https://aphillips801-eggql-sw.uc.r.appspot.com/graphql.
 
 ### Basic Types
 
@@ -123,8 +123,8 @@ Now we'll look at some more advanced types....
 In GraphQL the server code that processes a query is called a **resolver**.  In the above example the "resolver" for the `hero` query was just a `Character` struct.  A more useful and more common thing is for a resolver to be a function (technically a Go **closure**).  Using functions for resolvers has advantages, as it allows:
 
 * efficiency, since the function is not executed unless or until its specific data is required
-* use of values which are initially unknown or dynamic (eg random numbers as in the README example)
-* recursive queries (eg friends of friends of ...), which can't be pre-computed (without infinite recursion :)
+* use of values which are initially unknown or dynamic (e.g. random numbers as in the README example)
+* recursive queries (e.g. friends of friends of ...), which can't be pre-computed (without infinite recursion :)
 * and function resolvers can take arguments that can modify or refine the results returned
 
 It's the last advantage that we look at here - resolver arguments.  As an example we can change the `hero` resolver to be a function that takes a parameter specifying which episode we want the hero for.  So instead of the `Hero` field just being a `Character` object it is now a function that _returns_ a `Character`.
@@ -136,11 +136,11 @@ type Query struct {
 ```
 This also shows our first use of the **egg: key** taken from the `Hero` field's **tag string**.  This sort of metadata in Go can be attached to any field of a struct by adding a string after the field declaration.
 
-You can have several (comma-separated) options in the tag string but the first one is the most important as it allows you to specifiy the resolver name, its type, and it's arguments. Each argument has a name and optionally a type and default value.
+You can have several (comma-separated) options in the tag string but the first one is the most important as it allows you to specify the resolver name, its type, and it's arguments. Each argument has a name and optionally a type and default value.
 
 The first option in the `egg:` metadata is the resolver name - in this case `hero`.  We don't really need to supply the name, in this case, as it defaults to the field name (`Hero`) with the first letter converted to lower-case.
 
-In brackets after the name (eg. `(episode=2)`) are the resolver argument(s). The number of arguments (comma-separated) in the `args` option must match the number of function parameters (except that the function may also include an initial `context.Context` parameter as discussed later).  The names of the argument(s) must be given (in this case there is just one called `episode`).  You can give a GraphQL type but here it is deduced to be `Int!` from the function argument type.  You can also give an optional default value (in this case `2`). [Technical note: you always need to supply a name since we can't obtain the argument name from the `Hero` function parameter name as Go reflection only provides the types of function parameters not their names.]
+In brackets after the name (e.g.. `(episode=2)`) are the resolver argument(s). The number of arguments (comma-separated) in the `args` option must match the number of function parameters (except that the function may also include an initial `context.Context` parameter as discussed later).  The names of the argument(s) must be given (in this case there is just one called `episode`).  You can give a GraphQL type but here it is deduced to be `Int!` from the function argument type.  You can also give an optional default value (in this case `2`). [Technical note: you always need to supply a name since we can't obtain the argument name from the `Hero` function parameter name as Go reflection only provides the types of function parameters not their names.]
 
 Here is a complete program with the `func` resolver. I changed the `Hero()` function to return a pointer to `Character`; this allows us to return a null value when an invalid episode number has been provided as the argument. A better way than returning NULL (as we will see soon) is to have the resolver function return a 2nd `error` value, but the official Star Wars server return NULL to indicate an invalid episode.
 
@@ -590,7 +590,7 @@ Up until now all the data structures in our example do not change once the serve
 
 An important thing to remember is that **GraphQL requests may run in parallel**. A GraphQL server would not be of much use if it only processed one client request at a time.  This is not immediately obvious as you don't need to create goroutines because the Go standard library **HTTP handler starts a new goroutine to process every new request**.
 
-Since the `Stars` and `Commentary` slices are modified by the `CreateReview` mutation we need to protect them with a **mutex**.  There are many ways to do this.  We could just use a single mutex, so if a review is being added for any episode then any other query or mutation of _any_ episode is blocked.  This is inefficient, and not very scaleable, so we have used a separate `sync.Mutex` for each episode.  If we were expecting a large number of queries (and few calls to `CreateReview`) a `sync.RWMutex` would be an even better option, but I'll leave that for you to explore as an exercise.
+Since the `Stars` and `Commentary` slices are modified by the `CreateReview` mutation we need to protect them with a **mutex**.  There are many ways to do this.  We could just use a single mutex, so if a review is being added for any episode then any other query or mutation of _any_ episode is blocked.  This is inefficient, and not very scaleable, so we have used a separate `sync.Mutex` for each episode.  If we were expecting a large number of queries (and few calls to `CreateReview`) a read-write mutex (`sync.RWMutex`) would be the best option, but I'll leave that for you to explore as an exercise.
 
 We only need use the new mutex in `CreateReview` since that is the only place that `Stars` and `Commentary` slices are used, at the moment.
 
@@ -883,7 +883,7 @@ To add the `search` query we need to declare a `Search() func` in the root Query
 
 `Search()` returns a slice of interface{}, each of which is either a `Human` or a `Droid`.  The `args` option says that the query takes one argument called "text".  The square brackets in the GraphQL return type (`[SearchResult]`) says that it is a list.
 
-The function that implements the `search` query is straightforward.  We just return a list of humans etc stored in a slice of `interface{}`.
+The function that implements the `search` query is straightforward.  We just return a list of humans etc. stored in a slice of `interface{}`.
 
 ```Go
 	http.Handle("/graphql", eggql.MustRun(gqlEnums,
@@ -1117,7 +1117,7 @@ func (h *Human) getHeight(unit int) float64 {
 
 ### Descriptions
 
-A GraphQL schema can have descriptions for its elements to assist the query designer.  This can be used by tools to interactively build queries - eg **PostMan** uses introspection to get the description and display information on query arguments etc.  (In my experience most GraphQL schemas do not contain many, or any, descriptions but adding them can make you service much more useful to its users.)
+A GraphQL schema can have descriptions for its elements to assist the query designer.  This can be used by tools to interactively build queries - e.g. **PostMan** uses introspection to get the description and display information on query arguments etc.  (In my experience most GraphQL schemas do not contain many, or any, descriptions but adding them can make you service much more useful to its users.)
 
 With **eggql** you can include descriptions to the following GraphQL elements in various ways (as discussed below). The description text always begins with a hash character (#).
 
@@ -1138,7 +1138,7 @@ This adds the description " The root query object" to the `Query` type in the Gr
 
 #### Fields
 
-For resolvers you just add the description to the tag (at the end of the egg: key string), preceded by a hash character (#).  For example, this adds the description " How tall they are" to the `height` field of the `Human` type.
+For resolvers, you just add the description to the tag (at the end of the egg: key string), preceded by a hash character (#).  For example, this adds the description " How tall they are" to the `height` field of the `Human` type.
 
 ```Go
 	Height  func(int) float64 `egg:"height(unit:LengthUnit=METER) # How tall they are"`
@@ -1420,7 +1420,7 @@ func (h *Human) getHeight(unit int) float64 {
 
 GraphQL supports the creation of custom scalar types.  You can easily add custom scalars in **eggql** which we'll demonstrate using a `ReviewTime` type, adding a field to the `Review` input type to record when a movie review was written.  Note that we could use the similar `eggql.Time` which implements the GraphQL `Time` type, but we'll create our own custom scalar type to demonstrate how it's done.
 
-All that is required to create a custom scalar is to define a Go type that implements the `UnmarshalEGGQL` method.  This method is used to convert a specially formatted string into a value of your type.  You may also want to implement a `MarshalEGGQL` method that performs the reverse operation, but some types can get by without this (eg if they implement a `String` method).
+All that is required to create a custom scalar is to define a Go type that implements the `UnmarshalEGGQL` method.  This method is used to convert a specially formatted string into a value of your type.  You may also want to implement a `MarshalEGGQL` method that performs the reverse operation, but some types can get by without this (e.g. if they implement a `String` method).
 
 In our case we will create a new struct type called `ReviewTime` that uses the standard Go `time.Time` type internally.  Here is the complete code for the new type:
 
@@ -1440,7 +1440,7 @@ func (prt *ReviewTime) UnmarshalEGGQL(in string) error {
 
 Note: for your type to be used as a custom scalar **you must provide a method with this exact signature**: `UnmarshalEGGQL(string) error`.
 
-For the above type we don't need to provide the inverse `MarshallEGGQL` method. The `ReviewTime` type has all the methods of `time.Time` becuase it is *embedded* in it, including the `String() string` method which is used for "marshalling".  But if we did provide a method it **must have this signature**: `MarshalEGGQL() (string, error)`.
+For the above type we don't need to provide the inverse `MarshallEGGQL` method. The `ReviewTime` type has all the methods of `time.Time` because it is *embedded* in it, including the `String() string` method which is used for "marshalling".  But if we did provide a method it **must have this signature**: `MarshalEGGQL() (string, error)`.
 
 To use the new type we just add a new `ReviewTime` field to `ReviewInput` and `EpisodeDetails`.
 

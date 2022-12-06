@@ -6,9 +6,9 @@ To use it you _don't_ need to create a GraphQL **schema**.  Simply declare Go st
 
 There are also special features that can create special resolvers based on Go slices, arrays and maps:
 
-* a resolver that returns a slice, array or map as a GraphQL list
+* a resolver that uses a Go slice, array or map as a GraphQL list
 * fabricate an **id** field for objects of the list where it's type is `Int!` for array/slice, or map key type (eg `String!`) for a map 
-* a resolver that can lookup a single list element (takes a single argument of **id**'s type)
+* a resolver that can lookup a single list element (resolver takes a single argument of **id**'s type)
 
 ## Getting Started
 
@@ -133,7 +133,7 @@ GraphQL errors, like the wrong query name, are handled for you but what about er
 
 ```graphql
 {
-    random(high:6, low:1)
+    random(high:1, low:6)
 }
 ```
 
@@ -291,7 +291,7 @@ TODO: add example code
 
 To make it even easier to allow your data to be accessed from GraphQL, **eggql** adds a "subscript" option (not to be confused with subscriptions).  This automatically generates GraphQL queries to access individual elements of slices, and arrays by their index or maps by their key.
 
-This is a unique capability of **eggql** AFAIK.  Other GraphQL packages (at least all the ones I have tried in Go and other lanaguages) allow you to get a list from an array or slice but have no such facility for maps and do not allow you to "subscript" into a list to retrieve individual elements.
+This is a unique capability of **eggql** AFAIK.  Other GraphQL packages (at least all the ones I have tried in Go and other languages) allow you to get a list from an array or slice but have no such facility for maps and do not allow you to "subscript" into a list to retrieve individual elements.
 
 As an example, say you have a map of information on record albums like this:
 
@@ -350,7 +350,7 @@ There are two stages of error-handling when creating a GraphQL service:
 
 #### Viewing "startup" errors and the Schema
 
-The 1st case is common when starting out -- you make lots of coding mistakes when creating structs, their fields, field tags (egg: key), enums, etc.  I'm not sure about you but I always have to try to stay calm when I see "panic" on the screen or in the log.  Luckily, there is an alternative to using `MustRun()`.  Just call `eggql.New()`, then add things like enums etc, and call the `GetHandler()` method which returns an error instead of panicking if there is a problem.  This makes testing and debugging more pleasant.
+The 1st case is common when starting out -- you make lots of coding mistakes when creating structs, their fields, field tags (egg: key), enums, etc.  I'm not sure about you, but I always have to try to stay calm when I see "panic" on the screen or in the log.  Luckily, there is an alternative to using `MustRun()`.  Just call `eggql.New()`, then add things like enums etc., and call the `GetHandler()` method which returns an error instead of panicking if there is a problem.  This makes testing and debugging more pleasant.
 
 Another advantage is that you can also call `GetSchema()` to view the GraphQL schema that **eggql*** has generated.
 
