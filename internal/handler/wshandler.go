@@ -105,18 +105,11 @@ func (c wsConnection) init() bool {
 	// Get connection_init and send connection_ack or error
 	c.setTimeout(c.h.initialTimeout)
 	var message *wsMessage
+	// Note: we don't expect start/subscribe but ask for them from c.read() to generate the correct error response
 	if !c.newProtocol {
 		message = c.read("connection_init", "connection_terminate", "start")
-	} else {
-		message = c.read("connection_init", "subscribe")
-	}
 	if message == nil {
 		// At this point an error/ close message has been sent in c.read
-		return false
-	}
-	if message.Type == "subscribe" {
-		// New protocol: ERROR - subscribe received before connection_init
-		c.closeMessage(4409, "Unauthorized")
 		return false
 	}
 	if message.Type == "start" {
@@ -129,6 +122,18 @@ func (c wsConnection) init() bool {
 		// Old protocol: OK - client is allowed tor terminate immediately
 		c.closeMessage(websocket.CloseNormalClosure, "")
 		return false
+	}
+	} else {
+		message = c.read("connection_init", "subscribe")
+		if message == nil {
+			// At this point an error/ close message has been sent in c.read
+			return false
+		}
+		if message.Type == "subscribe" {
+			// New protocol: ERROR - subscribe received before connection_init
+			c.closeMessage(4409, "Unauthorized")
+			return false
+		}
 	}
 	// at this point we're OK to continue (got a "connection_init")
 	c.setTimeout(0) // clear timeout since we got the response before the deadline
