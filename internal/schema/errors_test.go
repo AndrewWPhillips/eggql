@@ -14,7 +14,7 @@ type (
 	Query        struct{ Message string }
 	SingleInt    struct{ I int }
 	QueryBadName struct {
-		S string `egg:"@9"`
+		S string `egg:"~9"`
 	}
 	Embedded      struct{ M string }
 	Union         struct{}
