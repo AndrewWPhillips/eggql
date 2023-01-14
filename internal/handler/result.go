@@ -23,11 +23,10 @@ const (
 type (
 	// gqlOperation controls an operation (query/mutation) of a GraphQL request
 	gqlOperation struct {
+		*Handler // required for resolver lookups, enums etc
+
 		isMutation, isSubscription bool
-		variables                  map[string]interface{}
-		enums                      map[string][]string       // forward lookup enum value (string) from int (slice index)
-		enumsReverse               map[string]map[string]int // allows reverse lookup int from enum value (map key = string)
-		resolverLookup             ResolverLookupTables
+		variables                  map[string]interface{} // varibale valid fr this op (extracted from the request)
 	}
 
 	// gqlValue contains the result of a query or queries, or an error, plus the name
@@ -268,7 +267,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		if len(astField.Arguments) != 1 || astField.Arguments[0].Name != fieldInfo.Subscript {
 			return &gqlValue{err: fmt.Errorf("subscript resolver %q must supply an argument called %q", fieldInfo.Name, fieldInfo.Subscript)}
 		}
-		arg, err := op.getValue(fieldInfo.ElementType, fieldInfo.Subscript, "", astField.Arguments[0].Value.Raw)
+		arg, err := op.getValue(fieldInfo.IndexType, fieldInfo.Subscript, "", astField.Arguments[0].Value.Raw)
 		if err != nil {
 			return &gqlValue{err: err}
 		}
