@@ -12,6 +12,7 @@ const (
 	defaultPongTimeout    = 5 * time.Second  // how long to wait for a pong after sending a ping
 )
 
+// SetOptions takes a slice of handler options (closures) and executes them
 func (h *Handler) SetOptions(options ...func(*Handler)) {
 	for _, option := range options {
 		option(h)
@@ -29,7 +30,37 @@ func (h *Handler) SetOptions(options ...func(*Handler)) {
 	}
 }
 
-// InitialTimeout set the length time to wait from when the websocket is opened until the
+// NoIntrospection turns off all introspection queries
+func NoIntrospection() func(h *Handler) {
+	return func(h *Handler) {
+		h.noIntrospection = true
+	}
+}
+
+// NoConcurrency turns off concurrent execution of queries
+func NoConcurrency() func(h *Handler) {
+	return func(h *Handler) {
+		h.noConcurrency = true
+	}
+}
+
+// NilResolverAllowed allows func resolvers to be nil, whence they return a null value (rather than return an error)
+func NilResolverAllowed() func(h *Handler) {
+	return func(h *Handler) {
+		h.nilResolver = true
+	}
+}
+
+// CacheOn turns on caching forever of the results of function resolvers, but not data (non-func) resolver fields
+// Values are cached indefinitely - but this can be set using the maxAge argument of @cacheControl directive.
+// This setting is overridden if a field uses the @cacheControl directive to enable caching or "nocache" to disable it.
+func CacheOn() func(h *Handler) {
+	return func(h *Handler) {
+		h.cacheOn = true
+	}
+}
+
+// InitialTimeout sets the length time to wait from when the websocket is opened until the
 // "connection_init" message is received. If the message is not received from the client
 // within the time limit then an error message is returned to the client and the WS is closed.
 func InitialTimeout(timeout time.Duration) func(h *Handler) {

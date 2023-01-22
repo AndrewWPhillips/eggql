@@ -5,19 +5,12 @@ package handler
 import (
 	"context"
 	"fmt"
+	"log"
 	"reflect"
 
 	"github.com/andrewwphillips/eggql/internal/field"
 	"github.com/dolmen-go/jsonmap"
 	"github.com/vektah/gqlparser/v2/ast"
-)
-
-const (
-	AllowIntrospection       = true
-	AllowConcurrentQueries   = true // allow independent queries (but not mutations) to run at the same time
-	ALlowNilResolverFunction = true // return NULL for an unimplemented (nil) resolver function
-
-	TypeNameQuery = "__typename" // Name of "introspection" query that can be performed at any level
 )
 
 type (
@@ -81,6 +74,7 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 				} else {
 					// Find and execute the "resolver" in the struct (or recursively in embedded structs)
 					if ch := op.FindSelection(ctx, astType, v); ch != nil {
+						log.Printf("QQQ: GetSelections chan len = %d\n", len(ch))
 						resultChans = append(resultChans, ch)
 						break dataLoop // we got a result so stop looking
 					}
@@ -129,6 +123,10 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 }
 
 // FindSelection returns resolved value in a chan (if found), or empty chan (if excluded), or nil (not found)
+// Parameters:
+//  - ctx: context that indicates if the request has been cancelled
+//  - astField: contains the query name, arguments etc to be resolved
+//  - v: struct which may contain the field required to resolve astField
 // Returns:
 //  - if found: closed chan containing a single value or error
 //  - if found but excluded by directive: closed chan with no values
@@ -139,11 +137,8 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 		panic("FindSelection: search of query field in non-struct")
 	}
 
-	//r := make(chan gqlValue) //
-	if astField.Name == TypeNameQuery {
-		// Special "introspection" field
+	if !op.noIntrospection && astField.Name == "__typename" { // __typename is a special introspection field (see GraphQL spec)
 		r := make(chan gqlValue, 1)
-		//r <- gqlValue{name: astField.Alias, value: v.Type().Name()}
 		r <- gqlValue{name: astField.Alias, value: astField.ObjectDefinition.Name}
 		close(r)
 		return r
@@ -182,7 +177,7 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 		}
 	}
 
-	if op.isMutation || !AllowConcurrentQueries { // Mutations are run sequentially
+	if op.isMutation || op.noConcurrency { // Mutations are run sequentially
 		ch := make(chan gqlValue, 1)
 		op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, ch)
 		return ch
@@ -308,7 +303,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 			}
 		} else if pt.Implements(reflect.TypeOf((*field.Marshaler)(nil)).Elem()) {
 			// In case Marshal method uses ptr receiver (value receiver preferred) ie: func (*T) MarshalEGGQL() (string, error)
-			tmp := reflect.New(t) // we have to make an addressable copy of v so we can call with ptr receiver
+			tmp := reflect.New(t) // we have to make an addressable copy of v, so that we can call with ptr receiver
 			tmp.Elem().Set(v)
 			valueString, err = tmp.Interface().(field.Marshaler).MarshalEGGQL()
 			if err != nil {

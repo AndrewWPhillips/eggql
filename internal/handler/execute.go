@@ -21,7 +21,7 @@ type (
 		// These are decoded from the http request body (JSON)
 		Query         string
 		OperationName string
-		Variables     map[string]interface{}
+		Variables     map[string]interface{} // raw variables from the JSON request
 	}
 
 	// gqlResult contains the result (or errors) of the request to be encoded in JSON

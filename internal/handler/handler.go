@@ -45,6 +45,12 @@ type (
 		mData            []interface{}
 		subscriptionData []interface{}
 
+		// resolver options
+		noIntrospection bool // Disallows introspection queries
+		noConcurrency   bool // Disables concurrent processing of queries (though mutations are never processed concurrently)
+		nilResolver     bool // If a resolver is a nil func then the resolver returns null instead of an error
+		cacheOn         bool // In the absence of cache directives results of resolver functions are cached (forever)
+
 		// websocket options
 		initialTimeout time.Duration // how long to wait for connection_init after the WS is opened
 		pingFrequency  time.Duration // how often to send a ping (ka in old protocol) message to the client
@@ -85,7 +91,7 @@ func New(schemaStrings []string, enums map[string][]string, qms [3][]interface{}
 	h.mData = qms[1]
 	h.subscriptionData = qms[2]
 
-	if AllowIntrospection {
+	if !h.noIntrospection {
 		// Add data for introspection
 		h.qData = append(h.qData, NewIntrospectionData(h.schema))
 		for enumName, list := range IntroEnums {
@@ -128,7 +134,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Decode the GET or POST request (JSON)
-	g := gqlRequest{h: h}
+	g := gqlRequest{Handler: h}
 	if r.Method == http.MethodGet {
 		// if it's a GET we assume the GraphQL query is passed as a "query" query parameter
 		values := r.URL.Query()
