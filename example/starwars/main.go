@@ -42,8 +42,8 @@ type (
 		// We need to reference the `Character` struct so that eggql can find it (using reflection) and can generate
 		// the GraphQL Character "interface" for the schema.  This is necessary as Hero() has to return a Go interface
 		// in order to return anything that implements the Character GraphQL interface (ie, Human or Droid objects).
-		// NOTE: unnamed fields (ie, with name "_") cannot be used except with reflection and since this one is the
-		// 1st field of the struct and is declared as a zero-length array it uses no memory.
+		// NOTE: unnamed fields (ie, with name "_") cannot be used (except  as eggql uses if to reflect on the type),
+		// and since this field is declared as a zero-length array (and not at the end of the struct) it uses no memory.
 		_ [0]Character
 
 		// Me demonstrates use of the GraphQL "deprecated" directive

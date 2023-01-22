@@ -66,6 +66,7 @@ func (g *gql) GetSchema() (string, error) {
 	return schemaString, nil
 }
 
+// GetHandler uses the previously added Query, Enums, options, etc to build the schema and return the HTTP handler
 func (g *gql) GetHandler() (http.Handler, error) {
 	var schemaStrings []string
 	var schemaQMS [3][]interface{}

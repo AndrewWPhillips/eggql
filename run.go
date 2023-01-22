@@ -10,19 +10,20 @@ import (
 )
 
 // MustRun creates an http handler that handles GraphQL requests.
-// It is a variadic function so can take any number of parameters but to be useful
-// you need to supply at least one parameter - a struct used as the root query resolver.
-// The parameters are optional but should be supplied in this order:
-//  map[string][]string = all the enums that are used in the resolvers
-//  *struct = pointer to struct used to generate the GraphQL query (may be nil)
-//  *struct = pointer to struct used to generate the GraphQL mutation (may be nil)
-//  *struct = pointer to struct used to generate the GraphQL subscription
-// Note that for the 3 (query/mutation/subscription) struct pointers you must provide the
-// previous value(s) even if nil - eg if you just want to provide a mutation struct then
-// the parameter preceding it (ie the query) must be nil.
-// (The types of the structs, including metadata from field tag strings, are used
-// to generate a GraphQL schema, whereas the actual value of these parameters are the
-// GraphQL "resolvers" used to obtain query results.)
+// It is a variadic function taking these parameters in this order:
+//  enums (opt)  - map[string][]string = all the enums that are used in the resolvers
+//  query        - *struct = pointer to a struct used to generate the GraphQL query
+//  mutation     - *struct = pointer to struct used to generate the GraphQL mutation
+//  subscription - *struct = pointer to struct used to generate the GraphQL subscription
+// Notes
+// 1) If the 1st parameter is not a map (ie, no enums required) then it is assumed it is the query
+// 2) The next (1 to 3) parameters must be pointers to structs (or nil) for query/mutation/subscription
+// 3) It is pointless not to have at least one (non-nil) struct ptr
+// 4) If you only require a mutation you must still provide the previous query parameter (as nil)
+// 5) If only a subscription still provide the query and mutations parameters (as nil)
+// (The *types* of the query/mutation/subscription structs, including metadata from field "egg:" tag
+// strings, are used to generate a GraphQL schema, whereas the actual *values* of these parameters
+// are the GraphQL "resolvers" used to obtain query results.)
 func MustRun(params ...interface{}) http.Handler {
 	var enums map[string][]string
 	var qms [3][]interface{}
