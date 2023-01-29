@@ -61,6 +61,7 @@ type Info struct {
 	Embedded bool // embedded struct (which we use as a template for a GraphQL "interface")
 	Empty    bool // embedded struct has no fields (which we use for a GraphQL "union")
 	Nullable bool // pointers (plus slice/map if "nullable" option was specified)
+	NoCache  bool // never cache this resolver
 	IsChan   bool // field must be/return a channel for subscription fields (only)
 
 	Directives []string // directives to apply to the field (eg "@deprecated")

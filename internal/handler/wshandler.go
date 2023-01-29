@@ -335,8 +335,10 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 					c.write(out)
 					return false
 				}
+				if _, ok := r.Data.Data[k]; !ok {
+					r.Data.Order = append(r.Data.Order, k) // only append to order if not already in the map
+				}
 				r.Data.Data[k] = result.Data[k]
-				r.Data.Order = append(r.Data.Order, k)
 			}
 			break // don't look for the same selection(s) in the next data
 		}

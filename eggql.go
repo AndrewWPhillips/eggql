@@ -1,6 +1,11 @@
 package eggql
 
 // eggql.go provides the gql type for generating a GraphQL HTTP handler or schema
+// Using it is more complicated than just calling eggql.Mustrun, but allows
+// more capabilities such as returning the generated schema as a string.
+// Call eggql.New() to obtain an instance of the type, then call its methods
+// (SetEnums, Add, etc), if needed, then call the GetHandler() method to generate
+// the HTTP handler or call GetSchema() to obtain the schema as a string.
 
 import (
 	"net/http"

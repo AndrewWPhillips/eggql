@@ -5,6 +5,7 @@ package handler
 import (
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/andrewwphillips/eggql/internal/field"
 )
@@ -12,13 +13,14 @@ import (
 // makeEnumTables returns 2 maps that allows quick lookup of enums in both directions - ie allowing you to:
 //  1. get an enum value's name (string) from its index (int)
 //  2. get an enum value (int) from its name (string)
+//
 // Using the Episode and LengthUnit enums (see example/starwars/main.go) as an example:
-//  - at the top level both returned maps have a key of the enum name
-//     - both maps will have 2 elements with keys of "Episode" and "LengthUnit" (the enum type name)
-//  - for the 1st return value each map element is a slice of strings
-//     - eg []string{ "NEWHOPE", "EMPIRE", "JEDI" } and []string{"METER", "FOOT"}
-//  - for the 2nd return value each map element is a map with all the enum values (keyed by name)
-//     - eg map[string]int{"NEWHOPE": 0, "EMPIRE": 1, "JEDI": 2 } and map[string]int{"METER": 0, "FOOT": 1}
+//   - at the top level both returned maps have a key of the enum name
+//   - both maps will have 2 elements with keys of "Episode" and "LengthUnit" (the enum type name)
+//   - for the 1st return value each map element is a slice of strings
+//   - eg []string{ "NEWHOPE", "EMPIRE", "JEDI" } and []string{"METER", "FOOT"}
+//   - for the 2nd return value each map element is a map with all the enum values (keyed by name)
+//   - eg map[string]int{"NEWHOPE": 0, "EMPIRE": 1, "JEDI": 2 } and map[string]int{"METER": 0, "FOOT": 1}
 func makeEnumTables(enums map[string][]string) (map[string][]string, map[string]map[string]int) {
 	byIndex := make(map[string][]string, len(enums))
 	byName := make(map[string]map[string]int, len(enums))
@@ -43,9 +45,9 @@ func makeEnumTables(enums map[string][]string) (map[string][]string, map[string]
 // This allows us to quickly find the index of a field (resolver) given the struct type and resolver name.
 // At the top level we have a map indexed by all the struct's (its reflect.Type) used for the schema, then
 // for each struct we have a map indexed by the resolver name and giving the index of the field in the struct.
-func makeResolverTables(qms ...[]interface{}) ResolverLookupTables {
-	lt := make(ResolverLookupTables)
-	for _, q := range qms {
+func (h *Handler) makeResolverTables() {
+	h.resolverLookup = make(ResolverLookupTables)
+	for _, q := range [][]interface{}{h.qData, h.mData, h.subscriptionData} {
 		if q == nil {
 			continue
 		}
@@ -53,13 +55,15 @@ func makeResolverTables(qms ...[]interface{}) ResolverLookupTables {
 			if v == nil {
 				continue
 			}
-			lt.addLookup(reflect.TypeOf(v))
+			h.addLookup(reflect.TypeOf(v))
 		}
 	}
-	return lt
 }
 
-func (lt ResolverLookupTables) addLookup(t reflect.Type) {
+// addLookup gets info on all resolvers (public fields) in the parameter t.
+// If t is not struct it does nothing.
+// For each resolver in the struct it saves the field index (for fast lookups) and creates a cache
+func (h *Handler) addLookup(t reflect.Type) {
 	// Get "base" type to see if it's a struct
 	for k := t.Kind(); k == reflect.Ptr; k = t.Kind() {
 		t = t.Elem()
@@ -73,12 +77,12 @@ func (lt ResolverLookupTables) addLookup(t reflect.Type) {
 	if t.Kind() != reflect.Struct {
 		return
 	}
-	if _, ok := lt[t]; ok {
+	if _, ok := h.resolverLookup[t]; ok {
 		return // already done (or being done if nil)
 	}
-	lt[t] = nil // Reserve this entry so we don't do it again
+	h.resolverLookup[t] = nil // Reserve this entry so we don't do it again
 
-	r := make(map[string]int, t.NumField())
+	r := make(map[string]ResolverData, t.NumField())
 	// Find all the fields that are resolvers
 	for i := 0; i < t.NumField(); i++ {
 		tField := t.Field(i)
@@ -91,7 +95,7 @@ func (lt ResolverLookupTables) addLookup(t reflect.Type) {
 		}
 		if tField.Name == "_" {
 			// ignored field may have been included for the type declaration
-			lt.addLookup(fieldInfo.ResultType)
+			h.addLookup(fieldInfo.ResultType)
 			continue
 		}
 
@@ -109,13 +113,40 @@ func (lt ResolverLookupTables) addLookup(t reflect.Type) {
 				if tf2.Name == "_" || fieldInfo2 == nil {
 					continue // ignore unexported field
 				}
-				r[fieldInfo2.Name] = i
-				lt.addLookup(fieldInfo2.ResultType)
+				r[fieldInfo2.Name] = ResolverData{Index: i}
+				h.addLookup(fieldInfo2.ResultType)
 			}
 		} else {
-			r[fieldInfo.Name] = i
+			var cache ResolverCache
+			// We leave the cache field nil unless we want a cache for this field
+			if h.wantCache(&tField, fieldInfo) {
+				cache.Mtx = &sync.Mutex{}
+				cache.Saved = make(map[CacheKey]reflect.Value)
+			}
+			r[fieldInfo.Name] = ResolverData{
+				Index: i,
+				Cache: cache,
+			}
 		}
-		lt.addLookup(fieldInfo.ResultType)
+		h.addLookup(fieldInfo.ResultType)
 	}
-	lt[t] = r
+	h.resolverLookup[t] = r
+}
+
+// wantCache checks if we want to cache the values of a field
+func (h *Handler) wantCache(tField *reflect.StructField, fieldInfo *field.Info) bool {
+	if fieldInfo.NoCache {
+		return false // no cache ever
+	}
+	// Check if the field has a cacheControl directive
+	for _, directive := range fieldInfo.Directives {
+		if strings.HasPrefix(directive, "@cacheControl") {
+			// TODO: return false if maxAge argument = 0
+			return true // we do cache it
+		}
+	}
+
+	// In the absence of the above flags and directives:
+	// - return true if the global func cache option is on + resolver is a func
+	return h.funcCache && tField.Type.Kind() == reflect.Func
 }

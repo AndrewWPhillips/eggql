@@ -53,6 +53,7 @@ var q = Query{
 }
 
 func main() {
+    rand.Seed(time.Now().UnixNano())
 	http.Handle("/graphql", eggql.MustRun(q))
 	http.ListenAndServe(":8080", nil)
 }
@@ -166,6 +167,7 @@ var q = Query{
 }
 
 func main() {
+    rand.Seed(time.Now().UnixNano())
 	http.Handle("/graphql", eggql.MustRun(q))
 	http.ListenAndServe(":8080", nil)
 }
@@ -212,12 +214,73 @@ var q = Query{
 }
 
 func main() {
+    rand.Seed(time.Now().UnixNano())
 	http.Handle("/graphql", http.TimeoutHandler(eggql.MustRun(q), 2*time.Second, `{"errors":[{"message":"timeout"}]}`))
 	http.ListenAndServe(":8080", nil)
 }
 ```
 
 Note that there are further ways to increase the robustness of your service, such as adding a timeouts, graceful shutdown, HTTPS, etc.  These are easily incorporated into the above code and discussed in many places.
+
+### Options
+
+Several options are supported by adding them to the end of the `MustRun` function.  These are very easily added using [Functional Options](https://dave.cheney.net/2014/10/17/functional-options-for-friendly-apis).  For an example of the use of the **FuncCache** option see the next section below.
+
+#### eggql.FuncCache(on bool)
+
+This turns on caching of the results from func resolvers (non-func resolvers are not cached as they are already in memory).  To turn off caching for individual fields use the **no_cache** option of the egg: tag string.
+
+#### eggql.NoIntrospection(on bool)
+
+This disables all introspection queries.  This is sometimes done in production for security.
+
+#### eggql.NoConcurrency(on bool)
+
+By default, queries are executed concurrently (whenever possible - a nested resolver cannot be executed until its parent resolver has completed.)  This turns off concurrent execution of queries.  This may be useful to track down race conditions in your resolvers.
+
+#### eggql.NilResolver(on bool)
+
+By default, an error is returned for a resolver that is not implemented (nil func).  This option causes null to be returned for a resolver func that is nil.   
+
+#### eggql.InitialTimeout(timeout time.Duration)
+
+This sets the initial timeout for a subscription to be setup.  Technically, it is the time that the server waits for a "connection_init" message to be received after a websocket has been opened, before an error is generated and the websocket closed.
+
+#### eggql.PingFrequency(freq time.Duration)
+
+For subscriptions, this is how often a "ping" message is sent on the websocket (or "ka" if the client is using the old GraphQL websocket protocol).
+
+#### eggql.PongTimeout(timeout time.Duration)
+
+For subscriptions, this is how long to wait for a "pong" message after sending a "ping" to the client, before an error is generated and the websocket is closed.  (This only applies to the "new" GraphQL websocket protocol.)
+
+### Caching
+
+The result of func resolvers can be cached automatically using the `eggql.FuncCache` function.  By default, there is no caching.
+
+As an example, add the `FuncCache()` call to the end of the `MustRun()` call in the `main()` function of the above random number server like this
+
+```go
+func main() {
+    rand.Seed(time.Now().UnixNano())
+	http.Handle("/graphql", eggql.MustRun(q, **eggql.FuncCache(true)**))
+	http.ListenAndServe(":8080", nil)
+}
+```
+
+Now whenever you invoke the random query you will get the same number.
+
+```sh
+$ curl -XPOST -d '{"query": "{ random }"}' localhost:8080/graphql
+```
+
+Obviously, this is not desireable in this case (since the `Random` method is not a **pure** function).  for these cases you can turn caching off using the **no_cache** option of the egg: tag string like this:
+
+```go
+type Query struct {
+	Random func(context.Context, int, int) (int, error) `egg:"(low=1,high=6),no_cache"`
+}
+```
 
 ## Go GraphQL Packages
 

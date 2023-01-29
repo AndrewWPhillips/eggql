@@ -86,6 +86,7 @@ func (g *gqlRequest) ExecuteHTTP(ctx context.Context) (r gqlResult) {
 			})
 			return
 		}
+		// Add all the results to the map to be returned, checking for duplicates
 		for _, k := range result.Order {
 			if _, ok := r.Data.Data[k]; ok {
 				r.Errors = append(r.Errors, &gqlerror.Error{
@@ -96,6 +97,7 @@ func (g *gqlRequest) ExecuteHTTP(ctx context.Context) (r gqlResult) {
 			}
 			r.Data.Data[k] = result.Data[k]
 		}
+		// Add all the corresponding map keys
 		r.Data.Order = append(r.Data.Order, result.Order...)
 		if len(r.Data.Order) != len(r.Data.Data) {
 			panic("map and slice in the jsonmap.Ordered should be the same size")
