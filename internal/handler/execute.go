@@ -16,12 +16,12 @@ import (
 type (
 	// gqlRequest decodes and handles each GraphQL request
 	gqlRequest struct {
-		h *Handler
+		*Handler
 
 		// These are decoded from the http request body (JSON)
 		Query         string
 		OperationName string
-		Variables     map[string]interface{}
+		Variables     map[string]interface{} // raw variables from the JSON request
 	}
 
 	// gqlResult contains the result (or errors) of the request to be encoded in JSON
@@ -38,7 +38,7 @@ type (
 // ExecuteHTTP parses and runs the request (Query field) and returns the result
 func (g *gqlRequest) ExecuteHTTP(ctx context.Context) (r gqlResult) {
 	// Get the analysed and validated query from the query text
-	query, errors := gqlparser.LoadQuery(g.h.schema, g.Query)
+	query, errors := gqlparser.LoadQuery(g.schema, g.Query)
 	if errors != nil {
 		r.Errors = errors
 		return
@@ -48,14 +48,13 @@ func (g *gqlRequest) ExecuteHTTP(ctx context.Context) (r gqlResult) {
 	r.Data.Data = make(map[string]interface{})
 	for _, operation := range query.Operations {
 		op := gqlOperation{
-			enums: g.h.enums, enumsReverse: g.h.enumsReverse,
-			resolverLookup: g.h.resolverLookup,
+			Handler: g.Handler,
 		}
 
 		// Get variables associated with this operation if any
 		if len(operation.VariableDefinitions) > 0 {
 			var pgqlError *gqlerror.Error
-			if op.variables, pgqlError = validator.VariableValues(g.h.schema, operation, g.Variables); pgqlError != nil {
+			if op.variables, pgqlError = validator.VariableValues(g.schema, operation, g.Variables); pgqlError != nil {
 				r.Errors = append(r.Errors, pgqlError)
 				continue // skip this op if we can't get the vars
 			}
@@ -64,10 +63,10 @@ func (g *gqlRequest) ExecuteHTTP(ctx context.Context) (r gqlResult) {
 		var data []interface{}
 		switch operation.Operation {
 		case ast.Query:
-			data = g.h.qData
+			data = g.qData
 		case ast.Mutation:
 			op.isMutation = true
-			data = g.h.mData
+			data = g.mData
 		case ast.Subscription:
 			op.isSubscription = true
 			// Subscriptions cannot be handled here (needs websocket handler)
@@ -87,6 +86,7 @@ func (g *gqlRequest) ExecuteHTTP(ctx context.Context) (r gqlResult) {
 			})
 			return
 		}
+		// Add all the results to the map to be returned, checking for duplicates
 		for _, k := range result.Order {
 			if _, ok := r.Data.Data[k]; ok {
 				r.Errors = append(r.Errors, &gqlerror.Error{
@@ -97,6 +97,7 @@ func (g *gqlRequest) ExecuteHTTP(ctx context.Context) (r gqlResult) {
 			}
 			r.Data.Data[k] = result.Data[k]
 		}
+		// Add all the corresponding map keys
 		r.Data.Order = append(r.Data.Order, result.Order...)
 		if len(r.Data.Order) != len(r.Data.Data) {
 			panic("map and slice in the jsonmap.Ordered should be the same size")

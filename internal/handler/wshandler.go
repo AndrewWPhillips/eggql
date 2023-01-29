@@ -30,7 +30,7 @@ import (
 type (
 	// wsConnection handles one websocket connection
 	wsConnection struct {
-		h *Handler // we need this for the schema etc
+		*Handler // we need this for the schema etc
 
 		// writeMu is required to protect writes to the WS (*webscoket.Conn) which may come from different go-routines
 		writeMu         *sync.Mutex // protect concurrent writes to the websocket
@@ -85,7 +85,7 @@ func (h *Handler) serveWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := wsConnection{
-		h:                  h,
+		Handler:            h,
 		writeMu:            &sync.Mutex{},
 		Conn:               conn,
 		cancelSubscription: make(map[string]context.CancelFunc, 1),
@@ -103,26 +103,26 @@ func (h *Handler) serveWS(w http.ResponseWriter, r *http.Request) {
 // init performs the high-level (sub-protocol) handshake by receiving an "init" message and sending an "ack"
 func (c wsConnection) init() bool {
 	// Get connection_init and send connection_ack or error
-	c.setTimeout(c.h.initialTimeout)
+	c.setTimeout(c.initialTimeout)
 	var message *wsMessage
 	// Note: we don't expect start/subscribe but ask for them from c.read() to generate the correct error response
 	if !c.newProtocol {
 		message = c.read("connection_init", "connection_terminate", "start")
-	if message == nil {
-		// At this point an error/ close message has been sent in c.read
-		return false
-	}
-	if message.Type == "start" {
-		// Old protocol: ERROR - start received before connection_init
-		c.write(wsMessage{Type: "connection_error"})
-		c.closeMessage(websocket.CloseProtocolError, "start received before connection_init")
-		return false
-	}
-	if message.Type == "connection_terminate" {
-		// Old protocol: OK - client is allowed tor terminate immediately
-		c.closeMessage(websocket.CloseNormalClosure, "")
-		return false
-	}
+		if message == nil {
+			// At this point an error/ close message has been sent in c.read
+			return false
+		}
+		if message.Type == "start" {
+			// Old protocol: ERROR - start received before connection_init
+			c.write(wsMessage{Type: "connection_error"})
+			c.closeMessage(websocket.CloseProtocolError, "start received before connection_init")
+			return false
+		}
+		if message.Type == "connection_terminate" {
+			// Old protocol: OK - client is allowed tor terminate immediately
+			c.closeMessage(websocket.CloseNormalClosure, "")
+			return false
+		}
 	} else {
 		message = c.read("connection_init", "subscribe")
 		if message == nil {
@@ -152,8 +152,8 @@ func (c wsConnection) run(ctx context.Context) {
 	} else {
 		ch = c.GetWebsocketInputChannel("ping", "pong", "subscribe", "complete", "connection_init")
 	}
-	timer := time.NewTimer(c.h.pingFrequency) // used to keep the connection alive by sending a "ka"/"ping"
-	doneCh := ctx.Done()                      // used to check if we should close
+	timer := time.NewTimer(c.pingFrequency) // used to keep the connection alive by sending a "ka"/"ping"
+	doneCh := ctx.Done()                    // used to check if we should close
 
 	defer func() {
 		c.stopAll()
@@ -209,7 +209,7 @@ func (c wsConnection) run(ctx context.Context) {
 				c.write(wsMessage{Type: "ka"})
 			} else {
 				// Send a "ping" expecting a reply ("pong") within a certain time
-				c.setTimeout(c.h.pongTimeout)
+				c.setTimeout(c.pongTimeout)
 				c.write(wsMessage{Type: "ping"})
 			}
 
@@ -218,7 +218,7 @@ func (c wsConnection) run(ctx context.Context) {
 			return
 		}
 		_ = timer.Stop()
-		timer = time.NewTimer(c.h.pingFrequency) // start next timer
+		timer = time.NewTimer(c.pingFrequency) // start next timer
 	}
 }
 
@@ -261,7 +261,7 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 
 	FixNumberVariables(message.Payload.Variables)
 
-	query, errors := gqlparser.LoadQuery(c.h.schema, message.Payload.Query)
+	query, errors := gqlparser.LoadQuery(c.schema, message.Payload.Query)
 	if errors != nil {
 		out := wsMessage{
 			Type: "error", ID: message.ID,
@@ -280,13 +280,12 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 
 	for _, operation := range query.Operations {
 		op := gqlOperation{
-			enums: c.h.enums, enumsReverse: c.h.enumsReverse,
-			resolverLookup: c.h.resolverLookup,
+			Handler: c.Handler,
 		}
 
 		if len(operation.VariableDefinitions) > 0 {
 			var pgqlError *gqlerror.Error
-			if op.variables, pgqlError = validator.VariableValues(c.h.schema, operation, message.Payload.Variables); pgqlError != nil {
+			if op.variables, pgqlError = validator.VariableValues(c.schema, operation, message.Payload.Variables); pgqlError != nil {
 				r.Errors = append(r.Errors, pgqlError)
 				continue // skip this op if we can't get the vars
 			}
@@ -295,13 +294,13 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 		var data []interface{} // one (or more) structs containing resolver(s)
 		switch operation.Operation {
 		case ast.Query:
-			data = c.h.qData // TODO: test this once we can send query on WS - no tools support it AFAIK! (GraphIQL, Postman etc)
+			data = c.qData // TODO: test this once we can send query on WS - no tools support it AFAIK! (GraphIQL, Postman etc)
 		case ast.Mutation:
 			op.isMutation = true
-			data = c.h.mData
+			data = c.mData
 		case ast.Subscription:
 			op.isSubscription = true
-			data = c.h.subscriptionData
+			data = c.subscriptionData
 		default:
 			panic("unknown operation: " + string(operation.Operation))
 		}
@@ -336,8 +335,10 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 					c.write(out)
 					return false
 				}
+				if _, ok := r.Data.Data[k]; !ok {
+					r.Data.Order = append(r.Data.Order, k) // only append to order if not already in the map
+				}
 				r.Data.Data[k] = result.Data[k]
-				r.Data.Order = append(r.Data.Order, k)
 			}
 			break // don't look for the same selection(s) in the next data
 		}
