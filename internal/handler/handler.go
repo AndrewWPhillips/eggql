@@ -106,13 +106,16 @@ type (
 //		  handler.PongTimeout
 func New(schemaStrings []string, enums map[string][]string, qms [3][]interface{}, options ...func(*Handler),
 ) http.Handler {
-	var sources []*ast.Source
+	h := &Handler{}
+	h.SetOptions(options...)
 
+	// Build the list of source (text) schemas - typically just one (but LoadSchemas can handle more than one)
+	var sources []*ast.Source
 	for i, str := range schemaStrings {
 		sources = append(sources, &ast.Source{Name: "schema " + strconv.Itoa(i+1), Input: str})
 	}
 
-	h := &Handler{}
+	// Generate the "binary" schema from the "source" schema(s)
 	var pgqlError *gqlerror.Error
 	h.schema, pgqlError = gqlparser.LoadSchema(sources...)
 	if pgqlError != nil {
@@ -140,7 +143,6 @@ func New(schemaStrings []string, enums map[string][]string, qms [3][]interface{}
 		}
 	}
 
-	h.SetOptions(options...)
 	h.makeResolverTables()
 
 	return h

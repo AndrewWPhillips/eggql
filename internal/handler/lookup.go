@@ -80,7 +80,7 @@ func (h *Handler) addLookup(t reflect.Type) {
 	if _, ok := h.resolverLookup[t]; ok {
 		return // already done (or being done if nil)
 	}
-	h.resolverLookup[t] = nil // Reserve this entry so we don't do it again
+	h.resolverLookup[t] = nil // Reserve this entry, so we don't do it again in recursive calls
 
 	r := make(map[string]ResolverData, t.NumField())
 	// Find all the fields that are resolvers
@@ -88,7 +88,7 @@ func (h *Handler) addLookup(t reflect.Type) {
 		tField := t.Field(i)
 		fieldInfo, err := field.Get(&tField)
 		if err != nil {
-			continue // TODO: check error
+			panic(err)
 		}
 		if fieldInfo == nil {
 			continue // ignore unexported field

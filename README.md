@@ -53,7 +53,7 @@ var q = Query{
 }
 
 func main() {
-    rand.Seed(time.Now().UnixNano())
+	rand.Seed(time.Now().UnixNano())
 	http.Handle("/graphql", eggql.MustRun(q))
 	http.ListenAndServe(":8080", nil)
 }
@@ -167,7 +167,7 @@ var q = Query{
 }
 
 func main() {
-    rand.Seed(time.Now().UnixNano())
+	rand.Seed(time.Now().UnixNano())
 	http.Handle("/graphql", eggql.MustRun(q))
 	http.ListenAndServe(":8080", nil)
 }
@@ -214,7 +214,7 @@ var q = Query{
 }
 
 func main() {
-    rand.Seed(time.Now().UnixNano())
+	rand.Seed(time.Now().UnixNano())
 	http.Handle("/graphql", http.TimeoutHandler(eggql.MustRun(q), 2*time.Second, `{"errors":[{"message":"timeout"}]}`))
 	http.ListenAndServe(":8080", nil)
 }
@@ -262,8 +262,8 @@ As an example, add the `FuncCache()` call to the end of the `MustRun()` call in 
 
 ```go
 func main() {
-    rand.Seed(time.Now().UnixNano())
-	http.Handle("/graphql", eggql.MustRun(q, **eggql.FuncCache(true)**))
+	rand.Seed(time.Now().UnixNano())
+	http.Handle("/graphql", eggql.MustRun(q, eggql.FuncCache(true)))
 	http.ListenAndServe(":8080", nil)
 }
 ```
@@ -278,7 +278,7 @@ Obviously, this is not desireable in this case (since the `Random` method is not
 
 ```go
 type Query struct {
-	Random func(context.Context, int, int) (int, error) `egg:"(low=1,high=6),no_cache"`
+	Random func(int, int) int `egg:"(low=1,high=6),no_cache"`
 }
 ```
 

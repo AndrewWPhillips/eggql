@@ -85,7 +85,7 @@ func TestFuncCache(t *testing.T) {
 				handler.NoConcurrency(true), // simplifies tests (concurrent execution can affect order)
 			)
 
-			// Make the request body and the HTTP request that uses it
+			// Build the request body and the HTTP request that uses it
 			body := strings.Builder{}
 			body.WriteString(`{"query":"`)
 			body.WriteString(testData.query)
