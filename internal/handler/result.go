@@ -256,6 +256,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		// Check if we have a cached value that we can return
 		key = CacheKey{
 			fieldValue: v,
+			args:       argsKey(astField.Arguments),
 		}
 		cache.Mtx.Lock()
 		result, ok := cache.Saved[key]

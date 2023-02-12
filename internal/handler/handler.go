@@ -43,9 +43,14 @@ type (
 	}
 
 	// CacheKey allows us to uniquely identify a cached value for a resolver
+	// Note that the arguments are not enough as we could have two resolvers of the same type that use different data
+	// We also need to use the resolver args but can't use a string slice (not comparable - can't be map key), so we
+	// convert all the args to strings and put them in a single string separated by a nul byte.
+	// TODO check if SHA1, SHA3 or CRC64 of the strings would be better (but ensure args("a","bc") is different to args("ab","c")
 	CacheKey struct {
 		fieldValue reflect.Value // the Go data (struct field) holding the resolver value
-		// TODO: allow for private cache by also including a connection (string?) in the key, also check if we need args in the key
+		args       string        // arguments (zero or more) as strings separated by nul (\x00) bytes
+		// TODO: allow for private cache by also including a connection (string?) in the key
 	}
 	// ResolverCache contains a map (see CacheKey above) and a mutex to protect concurrent access to it
 	ResolverCache struct {

@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/andrewwphillips/eggql/internal/field"
+	"github.com/vektah/gqlparser/v2/ast"
 )
 
 // makeEnumTables returns 2 maps that allows quick lookup of enums in both directions - ie allowing you to:
@@ -149,4 +150,20 @@ func (h *Handler) wantCache(tField *reflect.StructField, fieldInfo *field.Info) 
 	// In the absence of the above flags and directives:
 	// - return true if the global func cache option is on + resolver is a func
 	return h.funcCache && tField.Type.Kind() == reflect.Func
+}
+
+// argsKey takes the arguments for a resolver and returns a string that uniquely encodes them
+// This is used for the cache key so that the same resolver called with different args give different cache values
+func argsKey(args ast.ArgumentList) string {
+	length := len(args)
+	for _, arg := range args {
+		length += len(arg.Value.Raw)
+	}
+	var sb strings.Builder
+	sb.Grow(length)
+	for _, arg := range args {
+		sb.WriteString(arg.Value.Raw)
+		sb.WriteByte(0) // sep. args with nul byte to avoid ambiguities
+	}
+	return sb.String()
 }
