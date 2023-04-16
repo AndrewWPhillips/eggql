@@ -81,8 +81,9 @@ func TestFuncCache(t *testing.T) {
 					nil,
 					nil,
 				},
-				handler.FuncCache(true),     // turn on function result cachi
-				handler.NoConcurrency(true), // simplifies tests (concurrent execution can affect order)
+				handler.FuncCache(true),       // turn on function result cachi
+				handler.NoConcurrency(true),   // simplifies tests (concurrent execution can affect order)
+				handler.NoIntrospection(true), // makes tests faster and debugging easier
 			)
 
 			// Build the request body and the HTTP request that uses it
@@ -187,7 +188,8 @@ func TestObjectCache(t *testing.T) {
 					nil,
 				},
 				handler.FuncCache(!testData.noCache),
-				handler.NoConcurrency(true), // simplifies tests (concurrent execution can affect order)
+				handler.NoConcurrency(true),   // simplifies tests (concurrent execution can affect order)
+				handler.NoIntrospection(true), // makes tests faster and debugging easier
 			)
 
 			// Make the request body and the HTTP request that uses it
@@ -325,7 +327,7 @@ func TestCacheArgs(t *testing.T) {
 				},
 				handler.FuncCache(true),       // turn on function result cachi
 				handler.NoConcurrency(true),   // simplifies tests (concurrent execution can affect order)
-				handler.NoIntrospection(true), // aids debugging
+				handler.NoIntrospection(true), // makes tests faster and debugging easier
 			)
 
 			// Build the request body and the HTTP request that uses it

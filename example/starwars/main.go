@@ -42,7 +42,7 @@ type (
 		// We need to reference the `Character` struct so that eggql can find it (using reflection) and can generate
 		// the GraphQL Character "interface" for the schema.  This is necessary as Hero() has to return a Go interface
 		// in order to return anything that implements the Character GraphQL interface (ie, Human or Droid objects).
-		// NOTE: unnamed fields (ie, with name "_") cannot be used (except  as eggql uses if to reflect on the type),
+		// NOTE: unnamed fields (ie, with name "_") cannot be used except (as eggql does) to reflect on the field type,
 		// and since this field is declared as a zero-length array (and not at the end of the struct) it uses no memory.
 		_ [0]Character
 
@@ -149,7 +149,7 @@ type (
 	}
 
 	Subscription struct {
-		NewReviews func(ctx context.Context, episode int) <-chan Review
+		NewReviews func(ctx context.Context, episode int) <-chan Review `egg:"(episode:Episode)"`
 	}
 
 	// The following are for pagination of a list of friends
@@ -419,8 +419,9 @@ const feetPerMeter = 3.28084
 
 // getHeight returns the height of a human
 // Parameters
-//  h (receiver) is a pointer to the Human
-//  unit is the unit for the return value (FOOT or METER)
+//
+//	h (receiver) is a pointer to the Human
+//	unit is the unit for the return value (FOOT or METER)
 func (h *Human) getHeight(unit int) (float64, error) {
 	switch unit {
 	case METER:
@@ -434,8 +435,9 @@ func (h *Human) getHeight(unit int) (float64, error) {
 
 // getLength returns the length of a Starship
 // Parameters
-//  ss (receiver) is a pointer to the Starship
-//  unit is the unit for the return value (FOOT or METER)
+//
+//	ss (receiver) is a pointer to the Starship
+//	unit is the unit for the return value (FOOT or METER)
 func (ss *Starship) getLength(unit int) (float64, error) {
 	switch unit {
 	case METER:
@@ -451,10 +453,11 @@ func (ss *Starship) getLength(unit int) (float64, error) {
 // Note that to be compatible with the official Star Wars demo it does not return an error (eg if 'after' is not a valid
 // "cursor") but returns empty edges and friends lists and null startCursor/endCursor.
 // Parameters
-//  c (receiver) is the character for which friends are wanted
-//  first = max friends to return, -1 (default) means get all (ie from after 'after' till end of list)
-//  after is the "cursor" indicating the 1st friend required
-//  TODO: check defaults for 'first' and 'after' in Star Wars JS demo
+//
+//	c (receiver) is the character for which friends are wanted
+//	first = max friends to return, -1 (default) means get all (ie from after 'after' till end of list)
+//	after is the "cursor" indicating the 1st friend required
+//	TODO: check defaults for 'first' and 'after' in Star Wars JS demo
 func (c *Character) getFriendsConnection(first int, after string) FriendsConnection {
 	r := FriendsConnection{
 		TotalCount: len(c.Friends),

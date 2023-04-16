@@ -95,6 +95,7 @@ func PingFrequency(freq time.Duration) func(*Handler) {
 // PongTimeout set the length time to wait for a "pong" message from the client after
 // a "ping" message is sent. If the message is not received from the client
 // within the time limit then an error message is returned to the client and the WS is closed.
+// This is *not* used for clients that connect using the old protocol (since "ping" is not sent).
 func PongTimeout(timeout time.Duration) func(*Handler) {
 	return func(h *Handler) {
 		h.pongTimeout = timeout
