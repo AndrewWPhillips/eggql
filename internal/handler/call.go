@@ -24,7 +24,7 @@ import (
 func (op *gqlOperation) fromFunc(ctx context.Context, astField *ast.Field, v reflect.Value, fieldInfo *field.Info,
 ) (vReturn reflect.Value, err error) {
 	if v.IsNil() {
-		if !ALlowNilResolverFunction {
+		if !op.nilResolver {
 			err = fmt.Errorf("function for %q is not implemented (nil)", astField.Name)
 		}
 		return

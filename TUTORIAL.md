@@ -1,6 +1,6 @@
 ## Star Wars Tutorial
 
-This tutorial will show you how to implement a GraphQL service using Go and **eggql**.  (See the corresponding GraphQL [Star Wars Frontend Tutorial](https://graphql.org/learn/) for how you can query this service.)  It shows how to implement every feature of a GraphQL service except for subscriptions.  (Subscriptions are also not covered in the **Star Wars** frontend tutorial.)
+This tutorial will show you how to implement a GraphQL service using Go and **eggql**.  (See the corresponding GraphQL [Star Wars Frontend Tutorial](https://graphql.org/learn/) for how you can query this service.)  It shows how to implement every feature of a GraphQL service, now including subscriptions.
 
 Remember, this tutorial is about implementing the backend (a GraphQL service), so I'll focus on creating the service, not on using it.  It's mainly Go code with a few test queries.  We **won't** look at aliases, fragments, inline fragments, variables, directives, schemas and introspection, but rest assured they work.  These things are all covered in the GraphQL **Star Wars** frontend tutorial if you want to try the queries from that.
 

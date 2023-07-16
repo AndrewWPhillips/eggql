@@ -61,9 +61,17 @@ type Info struct {
 	Embedded bool // embedded struct (which we use as a template for a GraphQL "interface")
 	Empty    bool // embedded struct has no fields (which we use for a GraphQL "union")
 	Nullable bool // pointers (plus slice/map if "nullable" option was specified)
+	NoCache  bool // never cache this resolver
 	IsChan   bool // field must be/return a channel for subscription fields (only)
 
 	Directives []string // directives to apply to the field (eg "@deprecated")
+
+	// Note: Subscript and FieldID are only used if the struct field is a container (slice/array/map) and
+	//       either the "subscript" or the "field_id" option has been used in the field's egg: tag string.
+	// subscript: the GraphQL schema field represents a single element of the container and the resolver
+	//            takes a single parameter of Int! type (for slice/array) or key type (for a map)
+	// field_id: the container is presented as a GraphQL list with a fabricated field for the integer index
+	//           for slice/array (with optional offset - see BaseIndex) or the map key
 
 	// Subscript holds the result of the "subscript" option (for a slice/array/map)
 	Subscript string // name of resolver arg (default is "id")
@@ -73,8 +81,8 @@ type Info struct {
 	// Eg if BaseIndex is 10 then ID 10 refers to element 0, ID 11 => element 1, etc
 	// This is only used in conjunction with Subscript or FieldID options (on slices/arrays, but not maps)
 	BaseIndex int
-	// ElementType is the type of elements if the field is a map/slice/array - only used if FieldID or Subscript are not empty
-	ElementType reflect.Type //  int for slice/array, type of the key for maps
+	// IndexType is the type used to index into a map/slice/array - only used if FieldID or Subscript are used
+	IndexType reflect.Type //  int for slice/array, type of the key for maps
 	// Description is text used as a GraphQL description for the field - taken from the tag string after any # character (outside brackets)
 	Description string // All text in the tag after the first hash (#) [unless the # is in brackets or in a string]
 }
@@ -237,11 +245,11 @@ func Get(f *reflect.StructField) (fieldInfo *Info, err error) {
 
 	if fieldInfo.FieldID != "" || fieldInfo.Subscript != "" {
 		// Get the "subscript" type - int (for slice/array) or scalar type for map key
-		fieldInfo.ElementType = reflect.TypeOf(1)
+		fieldInfo.IndexType = reflect.TypeOf(1)
 		if t.Kind() == reflect.Map {
-			fieldInfo.ElementType = t.Key()
-			if (fieldInfo.ElementType.Kind() < reflect.Int || fieldInfo.ElementType.Kind() > reflect.Float64) &&
-				fieldInfo.ElementType.Kind() != reflect.String {
+			fieldInfo.IndexType = t.Key()
+			if (fieldInfo.IndexType.Kind() < reflect.Int || fieldInfo.IndexType.Kind() > reflect.Float64) &&
+				fieldInfo.IndexType.Kind() != reflect.String {
 				// for now we only allow string or int types for map subscripts
 				return nil, errors.New("map key for subscript option " + f.Name + " must be an integer or string")
 			}

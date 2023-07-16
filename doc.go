@@ -7,6 +7,7 @@
 // builds a GraphQL schema for you based on your data structures.
 // For example, here is the code for a complete GraphQL server:
 
+///////////////////////////////////////////////////////////////////////////////
 //package main
 //
 //import (
@@ -14,9 +15,10 @@
 //    "github.com/andrewwphillips/eggql"
 //)
 //func main() {
-//	http.Handle("/graphql", eggql.New(struct{ Message string }{"hello, world"}))
-//	http.ListenAndServe(":8080", nil)
+//	   http.Handle("/graphql", eggql.New(struct{ Message string }{"hello, world"}))
+//	   http.ListenAndServe(":8080", nil)
 //}
+///////////////////////////////////////////////////////////////////////////////
 
 // This creates a GraphQL root "Query" containing a field called "message".
 // If you send a query (to http://localhost:8080/graphql) like this:
@@ -33,7 +35,7 @@
 
 // Of course, you can do much more sophisticated stuff, usually very easily, such
 // as mutations with query parameters.  In fact, you can do most normal GraphQL
-// stuff (apart from subscriptions and a few other things - see TO-DO list below)
+// stuff (including mutations and subscriptions).
 // To create bullet-proof servers, resolver functions also (optionally) support a
 // context parameter (of context.Context type) and error returns (of error type).
 
@@ -42,15 +44,12 @@
 package eggql
 
 // TODO:
-// allow multiple schemas - stitching?
-// subscriptions
 // complexity limiting:
 //   - add complexity(len, <int>, <arg>, <arg>) option
 //     where len = length for field returning a list and the value *can* be precalculated
 //           <int> = integer literal (eg 10)
 //           <arg> = integer argument
 //   -  calc complexity (recursively) before running a root query (if below option on) (eg <int>*<arg>*<arg>)
-//   -  add complexity limit option
-// caching of requests?
+//   -  add complexity throttling option - so complex queries are not even attempted
 // dataloader
-// finish introspection (__type.interfaces, directives)
+// introspection of directives

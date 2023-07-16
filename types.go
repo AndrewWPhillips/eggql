@@ -21,7 +21,8 @@ type ID = field.ID
 // to allow attaching metadata to the parent struct.)  This is currently just used to attach a
 // comment to Go structs that are used to generate a "description" (in the GraphQL schema) for
 // objects, interfaces and unions.  See the "Star Wars" tutorial for an example.
-// Note: An empty struct will not add to the size of the containing struct if declared at the start.
+// Note: A TagHolder, because it is an empty struct, will not add to the size of the containing
+// struct if declared at the start.
 type TagHolder struct{}
 
 // Time is a custom scalar for representing a point in time

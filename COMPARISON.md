@@ -139,7 +139,7 @@ type Query {
 `
 
 func (_ *query) Random(args struct{ Low, High int32 }) int32 {
-	return int32(rand.Intn(int(args.High+1-args.Low))) + args.Low
+	return args.Low + int32(rand.Intn(int(args.High+1-args.Low)))
 }
 
 func main() {
@@ -172,7 +172,7 @@ import (
 )
 
 func (r *queryResolver) Random(ctx context.Context, low int, high int) (int, error) {
-	return rand.Intn(high-low) + low, nil
+	return low + rand.Intn(high+1-low), nil
 }
 
 // Query returns generated.QueryResolver implementation.
@@ -199,7 +199,7 @@ func main() {
 	builder := schemabuilder.NewSchema()
 	obj := builder.Query()
 	obj.FieldFunc("random", func(args struct{ Low, High int64 }) int {
-		return int(args.Low) + rand.Intn(int(args.High-args.Low+1))
+		return int(args.Low) + rand.Intn(int(args.High+1-args.Low))
 	})
 	schema := builder.MustBuild()
 	introspection.AddIntrospectionToSchema(schema)

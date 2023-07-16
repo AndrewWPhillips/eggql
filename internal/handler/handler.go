@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/vektah/gqlparser/v2"
@@ -22,9 +23,40 @@ import (
 )
 
 type (
-	// ResolverLookupTables allows us to quickly find the index of a resolver in a struct  type (reflect.Type) based on its name (string).
-	// Without this we would have to do a linear search by iterating all the fields of the object (struct).
-	ResolverLookupTables map[reflect.Type]map[string]int
+	// ResolverLookupTables - store info on the all resolvers of all query structs
+	// The key to the outer map is the type of the struct type containing the resolver
+	// The key of the inner map is the name of the resolver (based on the field name or metadata)
+	// The info currently has 2 parts
+	//  - index of the resolver field within the struct
+	//  - a cache of the resolver values returned so far
+	ResolverLookupTables map[reflect.Type]map[string]ResolverData
+
+	// ResolverData stores info related to a resolver (field of q query struct)
+	//  - index of the resolver field  (to avoid a linear search of the fields to find the resolver by name)
+	//  - cache of values of the resolver
+	ResolverData struct {
+		Index int // index of the resolver field in the parent struct
+		// ResolverCache contains cached values of the resolver or is nil if the reeolver does not allow caching
+		// Note: the map is created (or set to nil) before handling of queries so reading the map itself is safe
+		// to do concurrently but modifying its contents (adding entries, etc) must be protected with the mutex
+		Cache ResolverCache // cached values of this resolver
+	}
+
+	// CacheKey allows us to uniquely identify a cached value for a resolver
+	// Note that the arguments are not enough as we could have two resolvers of the same type that use different data
+	// We also need to use the resolver args but can't use a string slice (not comparable - can't be map key), so we
+	// convert all the args to strings and put them in a single string separated by a nul byte.
+	// TODO check if SHA1, SHA3 or CRC64 of the strings would be better (but ensure args("a","bc") is different to args("ab","c")
+	CacheKey struct {
+		fieldValue reflect.Value // the Go data (struct field) holding the resolver value
+		args       string        // arguments (zero or more) as strings separated by nul (\x00) bytes
+		// TODO: allow for private cache by also including a connection (string?) in the key
+	}
+	// ResolverCache contains a map (see CacheKey above) and a mutex to protect concurrent access to it
+	ResolverCache struct {
+		Mtx   *sync.Mutex                // protects concurrent access of the following map
+		Saved map[CacheKey]reflect.Value // cached values of the resolver
+	}
 
 	// Handler stores the invariants (schema and structs) used in the GraphQL requests
 	Handler struct {
@@ -33,8 +65,10 @@ type (
 		enumsReverse map[string]map[string]int // allows reverse lookup - int value given enum value (string)
 
 		// resolverLookup provides a lookup map for every struct used in a query/mutation/subscription.
-		// At the top level we have a map where each key is the type os such a struct and the value is the lookup map
-		// For each lookup map the key is the resolver name (string) and the value is the field index into the struct (int)
+		// At the top level we have a map where each key is the type of the struct and the value is the lookup map
+		// For each lookup map the key is the resolver name (string) and the value is info about the resolver
+		//  - index of the field in the struct that is used to resolve the query
+		//  - cache of previously seen values for this resolver
 		resolverLookup ResolverLookupTables
 
 		// qData, mData and subscriptionData provide the resolvers for queries, mutations and subscriptions
@@ -45,6 +79,12 @@ type (
 		mData            []interface{}
 		subscriptionData []interface{}
 
+		// resolver options
+		funcCache       bool // In the absence of cache directives results of resolver functions are cached (forever)
+		noIntrospection bool // Disallows introspection queries
+		noConcurrency   bool // Disables concurrent processing of queries (though mutations are never processed concurrently)
+		nilResolver     bool // If a resolver is a nil func then the resolver returns null instead of an error
+
 		// websocket options
 		initialTimeout time.Duration // how long to wait for connection_init after the WS is opened
 		pingFrequency  time.Duration // how often to send a ping (ka in old protocol) message to the client
@@ -54,25 +94,33 @@ type (
 
 // New creates a new handler with the given schema(s) and query/mutation/subscription struct(s)
 // Parameters:
-//   schemaStrings - a slice of strings containing the GraphQL schema(s) - typically only 1
-//   enums - a map of enum names to a slice of strings containing the enum values for all the schemas
-//   qms - a slice of query/mutation/subscription structs where:
-//     qms[0] - query struct(s)
-//     qms[1] - mutation struct(s)
-//     qms[2] - subscription struct(s)
-//   options - zero or more options returned by calls to:
-//     handler.InitialTimeout
-//     handler.PingFrequency
-//     handler.PongTimeout
+//
+//		schemaStrings - a slice of strings containing the GraphQL schema(s) - typically only 1
+//		enums - a map of enum names to a slice of strings containing the enum values for all the schemas
+//		qms - a slice of query/mutation/subscription structs where:
+//		  qms[0] - query struct(s)
+//		  qms[1] - mutation struct(s)
+//		  qms[2] - subscription struct(s)
+//		options - zero or more options returned by calls to:
+//	      handler.FuncCache
+//	      handler.NoIntrospection
+//	      handler.NoConcurrency
+//	      handler.NilResolver
+//		  handler.InitialTimeout
+//		  handler.PingFrequency
+//		  handler.PongTimeout
 func New(schemaStrings []string, enums map[string][]string, qms [3][]interface{}, options ...func(*Handler),
 ) http.Handler {
-	var sources []*ast.Source
+	h := &Handler{}
+	h.SetOptions(options...)
 
+	// Build the list of source (text) schemas - typically just one (but LoadSchemas can handle more than one)
+	var sources []*ast.Source
 	for i, str := range schemaStrings {
 		sources = append(sources, &ast.Source{Name: "schema " + strconv.Itoa(i+1), Input: str})
 	}
 
-	h := &Handler{}
+	// Generate the "binary" schema from the "source" schema(s)
 	var pgqlError *gqlerror.Error
 	h.schema, pgqlError = gqlparser.LoadSchema(sources...)
 	if pgqlError != nil {
@@ -85,7 +133,7 @@ func New(schemaStrings []string, enums map[string][]string, qms [3][]interface{}
 	h.mData = qms[1]
 	h.subscriptionData = qms[2]
 
-	if AllowIntrospection {
+	if !h.noIntrospection {
 		// Add data for introspection
 		h.qData = append(h.qData, NewIntrospectionData(h.schema))
 		for enumName, list := range IntroEnums {
@@ -99,9 +147,8 @@ func New(schemaStrings []string, enums map[string][]string, qms [3][]interface{}
 			h.enumsReverse[enumName] = enumInt
 		}
 	}
-	h.resolverLookup = makeResolverTables(h.qData, h.mData, h.subscriptionData)
 
-	h.SetOptions(options...)
+	h.makeResolverTables()
 
 	return h
 }
@@ -128,7 +175,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Decode the GET or POST request (JSON)
-	g := gqlRequest{h: h}
+	g := gqlRequest{Handler: h}
 	if r.Method == http.MethodGet {
 		// if it's a GET we assume the GraphQL query is passed as a "query" query parameter
 		values := r.URL.Query()

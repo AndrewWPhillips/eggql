@@ -363,7 +363,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 
 		var idField *objectField
 		if fieldInfo.FieldID != "" {
-			idField = &objectField{name: fieldInfo.FieldID, typ: fieldInfo.ElementType}
+			idField = &objectField{name: fieldInfo.FieldID, typ: fieldInfo.IndexType}
 		}
 
 		// Use resolver return type from the tag (if any) and assume it's not a scalar
@@ -425,7 +425,7 @@ const paramStart, paramSep, paramEnd = "(", ", ", ")"
 
 // getSubscript creates the arg list (just one arg) for "subscript" option on a slice/array/map
 func (s schema) getSubscript(fieldInfo *field.Info) (string, error) {
-	typeName, isScalar, err := s.getTypeName(fieldInfo.ElementType, false)
+	typeName, isScalar, err := s.getTypeName(fieldInfo.IndexType, false)
 	if err != nil {
 		return "", fmt.Errorf("%w getting subscript type for %q", err, fieldInfo.Name)
 	}

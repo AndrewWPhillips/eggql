@@ -12,22 +12,13 @@ import (
 	"github.com/vektah/gqlparser/v2/ast"
 )
 
-const (
-	AllowIntrospection       = true
-	AllowConcurrentQueries   = true // allow independent queries (but not mutations) to run at the same time
-	ALlowNilResolverFunction = true // return NULL for an unimplemented (nil) resolver function
-
-	TypeNameQuery = "__typename" // Name of "introspection" query that can be performed at any level
-)
-
 type (
 	// gqlOperation controls an operation (query/mutation) of a GraphQL request
 	gqlOperation struct {
+		*Handler // required for resolver lookups, enums etc
+
 		isMutation, isSubscription bool
-		variables                  map[string]interface{}
-		enums                      map[string][]string       // forward lookup enum value (string) from int (slice index)
-		enumsReverse               map[string]map[string]int // allows reverse lookup int from enum value (map key = string)
-		resolverLookup             ResolverLookupTables
+		variables                  map[string]interface{} // varibale valid fr this op (extracted from the request)
 	}
 
 	// gqlValue contains the result of a query or queries, or an error, plus the name
@@ -46,15 +37,18 @@ type (
 
 // GetSelections resolves the selections in a query by finding and evaluating the corresponding resolver(s)
 // Returns a jsonmap.Ordered (a map of values and a slice that remembers the order they were added) that contains an
-//     entry for each selection, where the map "key" is the name of the entry/resolver and the value is:
-//     a) scalar value (stored in an interface})
-//     b) a nested jsonmap.Ordered if the resolver is a nested struct
-//     c) a slice (ie []interface{}) if the resolver is a slice or array.
+//
+//	entry for each selection, where the map "key" is the name of the entry/resolver and the value is:
+//	a) scalar value (stored in an interface})
+//	b) a nested jsonmap.Ordered if the resolver is a nested struct
+//	c) a slice (ie []interface{}) if the resolver is a slice or array.
+//
 // Parameters:
-//   ctx = a Go context that could expire at any time
-//   set = list of selections from a GraphQL query to be resolved
-//   data = slice of Go structs with the resolvers (usually has just one struct unless using schema stitching)
-//   idField = name/type of fabricated "id" field (see "field_id" option for lists of objects)
+//
+//	ctx = a Go context that could expire at any time
+//	set = list of selections from a GraphQL query to be resolved
+//	data = slice of Go structs with the resolvers (usually has just one struct unless using schema stitching)
+//	idField = name/type of fabricated "id" field (see "field_id" option for lists of objects)
 func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet, data []interface{}, id *idField,
 ) (jsonmap.Ordered, error) {
 	resultChans := make([]<-chan gqlValue, 0, len(set))
@@ -116,8 +110,10 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 				if v.err != nil {
 					return jsonmap.Ordered{}, v.err
 				}
+				if _, ok := r.Data[v.name]; !ok {
+					r.Order = append(r.Order, v.name) // only append to order if not already in the map
+				}
 				r.Data[v.name] = v.value
-				r.Order = append(r.Order, v.name)
 				if len(r.Order) != len(r.Data) {
 					panic("map and slice in the jsonmap.Ordered should be the same size (map element replaced?)")
 				}
@@ -130,36 +126,37 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 }
 
 // FindSelection returns resolved value in a chan (if found), or empty chan (if excluded), or nil (not found)
+// Parameters:
+//   - ctx: context that indicates if the request has been cancelled
+//   - astField: contains the query name, arguments etc to be resolved
+//   - v: struct which may contain the field required to resolve astField
+//
 // Returns:
-//  - if found: closed chan containing a single value or error
-//  - if found but excluded by directive: closed chan with no values
-//  - if not found: nil
+//   - if found: closed chan containing a single value or error
+//   - if found but excluded by directive: closed chan with no values
+//   - if not found: nil
 func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, v reflect.Value) <-chan gqlValue {
 	if v.Type().Kind() != reflect.Struct { // struct = 25
 		// param. 'v' validation - note that this is a bug that should have been caught during schema building
 		panic("FindSelection: search of query field in non-struct")
 	}
 
-	//r := make(chan gqlValue) //
-	if astField.Name == TypeNameQuery {
-		// Special "introspection" field
+	if !op.noIntrospection && astField.Name == "__typename" { // __typename is a special introspection field (see GraphQL spec)
 		r := make(chan gqlValue, 1)
-		//r <- gqlValue{name: astField.Alias, value: v.Type().Name()}
 		r <- gqlValue{name: astField.Alias, value: astField.ObjectDefinition.Name}
 		close(r)
 		return r
 	}
 
-	// get the index of the field that is the resolver we need
-	//	log.Println("QQQ getting", v.Type().Name(), v.Type().Kind().String())
-	i, ok := op.resolverLookup[v.Type()][astField.Name]
+	// get the index of the resolver field then the type and value of that field
+	resolverInfo, ok := op.resolverLookup[v.Type()][astField.Name]
 	if !ok {
-		// TODO: scan to double-check that we don't have a bug
+		// TODO: scan to double-check that we don't have a field with the correct name (= bug)
 		// No matching field so close chan without writing
 		return nil
 	}
-	tField := v.Type().Field(i)
-	vField := v.Field(i)
+	tField := v.Type().Field(resolverInfo.Index)
+	vField := v.Field(resolverInfo.Index)
 
 	fieldInfo, _ := field.Get(&tField)
 	// Recursively check fields of embedded struct
@@ -183,21 +180,26 @@ func (op *gqlOperation) FindSelection(ctx context.Context, astField *ast.Field, 
 		}
 	}
 
-	if op.isMutation || !AllowConcurrentQueries { // Mutations are run sequentially
+	var cache ResolverCache
+	if resolverInfo.Cache.Saved != nil {
+		cache = resolverInfo.Cache
+	}
+	if op.isMutation || op.noConcurrency { // Mutations are run sequentially
 		ch := make(chan gqlValue, 1)
-		op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, ch)
+		op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, cache, ch)
 		return ch
 	} else {
 		ch := make(chan gqlValue)
 		// Calling wrapResolve as a go routine allows resolvers to run in parallel
-		go op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, ch)
+		go op.wrapResolve(ctx, astField, vField, reflect.Value{}, fieldInfo, cache, ch)
 		return ch
 	}
 }
 
 // wrapResolve calls resolve putting the return value on a chan and converting any panic to an error
 func (op *gqlOperation) wrapResolve(
-	ctx context.Context, astField *ast.Field, v, vID reflect.Value, fieldInfo *field.Info, ch chan<- gqlValue,
+	ctx context.Context, astField *ast.Field, v, vID reflect.Value, fieldInfo *field.Info, cache ResolverCache,
+	ch chan<- gqlValue,
 ) {
 	defer func() {
 		// Convert any panics in resolvers into an (internal) error
@@ -206,7 +208,7 @@ func (op *gqlOperation) wrapResolve(
 		}
 		close(ch)
 	}()
-	if value := op.resolve(ctx, astField, v, vID, fieldInfo); value != nil {
+	if value := op.resolve(ctx, astField, v, vID, fieldInfo, cache); value != nil {
 		ch <- *value
 	}
 }
@@ -235,15 +237,43 @@ func (op *gqlOperation) FindFragments(ctx context.Context, set ast.SelectionSet,
 // Resolvers are often dynamic (where the resolver is a Go function) in which case the function is called to get the value.
 // Returns a pointer to a value (or error) or nil if nothing results (eg if excluded by directive)
 // Parameters:
-//   ctx = a Go context that could expire at any time
-//   astField = a query or sub-query - a field of a GraphQL object
-//   v = value of the resolver (field of Go struct)
-//   vID = value of "id" (only supplied if an element of a list)
-//   fieldInfo = metadata for the resolver (eg parameter name) obtained from the struct field tag
+//
+//	ctx = a Go context that could expire at any time
+//	astField = a query or sub-query - a field of a GraphQL object
+//	v = value of the resolver (field of Go struct)
+//	vID = value of "id" (only supplied if an element of a list)
+//	fieldInfo = metadata for the resolver (eg parameter name) obtained from the struct field tag
 func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID reflect.Value, fieldInfo *field.Info,
-) *gqlValue {
+	cache ResolverCache,
+) (retval *gqlValue) {
+	var key CacheKey
 	if op.directiveBypass(astField) {
 		return nil
+	}
+
+	// If this resolver has an active cache...
+	if cache.Saved != nil {
+		// Check if we have a cached value that we can return
+		key = CacheKey{
+			fieldValue: v,
+			args:       argsKey(astField.Arguments),
+		}
+		cache.Mtx.Lock()
+		result, ok := cache.Saved[key]
+		cache.Mtx.Unlock()
+		if ok {
+			retval = &gqlValue{name: astField.Alias, value: result.Interface()}
+			return
+		}
+
+		// If not in cache save any valid return in the cache
+		defer func() {
+			if retval.err == nil && retval.value != nil {
+				cache.Mtx.Lock()
+				cache.Saved[key] = reflect.ValueOf(retval.value)
+				cache.Mtx.Unlock()
+			}
+		}()
 	}
 
 	if v.Type().Kind() == reflect.Func {
@@ -268,7 +298,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		if len(astField.Arguments) != 1 || astField.Arguments[0].Name != fieldInfo.Subscript {
 			return &gqlValue{err: fmt.Errorf("subscript resolver %q must supply an argument called %q", fieldInfo.Name, fieldInfo.Subscript)}
 		}
-		arg, err := op.getValue(fieldInfo.ElementType, fieldInfo.Subscript, "", astField.Arguments[0].Value.Raw)
+		arg, err := op.getValue(fieldInfo.IndexType, fieldInfo.Subscript, "", astField.Arguments[0].Value.Raw)
 		if err != nil {
 			return &gqlValue{err: err}
 		}
@@ -309,7 +339,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 			}
 		} else if pt.Implements(reflect.TypeOf((*field.Marshaler)(nil)).Elem()) {
 			// In case Marshal method uses ptr receiver (value receiver preferred) ie: func (*T) MarshalEGGQL() (string, error)
-			tmp := reflect.New(t) // we have to make an addressable copy of v so we can call with ptr receiver
+			tmp := reflect.New(t) // we have to make an addressable copy of v, so that we can call with ptr receiver
 			tmp.Elem().Set(v)
 			valueString, err = tmp.Interface().(field.Marshaler).MarshalEGGQL()
 			if err != nil {
@@ -358,7 +388,8 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 			// resolve for all values in the map
 			results = make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
 			for it := v.MapRange(); it.Next(); {
-				if value := op.resolve(ctx, astField, it.Value(), it.Key(), fieldInfo); value != nil {
+				// TODO: allow list elements to be cached
+				if value := op.resolve(ctx, astField, it.Value(), it.Key(), fieldInfo, ResolverCache{}); value != nil {
 					results = append(results, value.value)
 				}
 			}
@@ -376,7 +407,8 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 			// resolve for all values in the list
 			results = make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
 			for i := 0; i < v.Len(); i++ {
-				if value := op.resolve(ctx, astField, v.Index(i), reflect.ValueOf(i), fieldInfo); value != nil {
+				// TODO: allow list elements to be cached
+				if value := op.resolve(ctx, astField, v.Index(i), reflect.ValueOf(i), fieldInfo, ResolverCache{}); value != nil {
 					if value.err != nil {
 						return value
 					}

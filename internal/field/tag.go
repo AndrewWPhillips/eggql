@@ -66,6 +66,10 @@ func GetInfoFromTag(tag string) (*Info, error) {
 			fieldInfo.Nullable = true
 			continue
 		}
+		if part == "no_cache" || part == "nocache" {
+			fieldInfo.NoCache = true
+			continue
+		}
 		if strings.HasPrefix(part, "args") {
 			return nil, errors.New(`args option is no longer supported - add arguments (in brackets) after resolver name`)
 		}
