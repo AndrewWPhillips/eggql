@@ -1,37 +1,183 @@
 # EGGQL
 
-The **eggql** package allows you to very easily create a GraphQL service using Go.  It supports all standard GraphQL features, now including subscriptions.
+With EGGQL you don't need to worry about schemas or configuration files.  All you need is a struct (used to represent a GraphQL query) plus maybe a few "tag" strings.
 
-To use it you _don't_ need to create a GraphQL **schema**.  Simply declare Go structs with fields that act as the GraphQL **resolvers**.  For some things, like resolver arguments, you need to use a tag string (metadata attached to a field of a struct type), like the tags used to control JSON encoding.
+Some of the things you can do with a few lines of code:
 
-There are also features (unique to eggql) that allow you to easily create resolvers based on Go slices, arrays and maps.  That is:
+* serve static data such as strings, numbers, dates (see **Hello** example)
+* serve existing maps, slices an arrays as GraphQl lists (**Friends** example)
+* serve map, slice, array elements using (auto-generated) ID parameter
+* nested queries using nested structs (or pointers), slices or maps
+* create dynamic data using a func (closure) including query parameters
+* handle errors, timeouts and panics gracefully
 
-* a resolver that returns a slice, array or map as a GraphQL list
-* fabricate an **id** field for objects of the list where it's type is `Int!` for array/slice, or map key type (eg `String!`) for a map
-* a resolver that can lookup a single list element (takes a single argument of **id**'s type)
+# Examples
 
-## Getting Started
+To give you a better idea, here are some complete examples:
 
-To create a GraphQL service you must declare a struct, representing the root query object.  Each exported field (ie, having a capitalized name) of this struct represents a GraphQL query.  Each such field can be
+## 1. Hello
 
-- a scalar type (int, string, etc.) that represents a GraphQL scalar (Int!, String!, etc.)
-- eggql.ID type that represents a GraphQL ID!, or *eggql.ID (ptr) to get a nullable ID
-- for an enumeration: any integer type (int, int8, uint, etc.)
-- a nested struct that represents a GraphQL nested query
-- a slice/array/map representing a GraphQL list for any of these types
-- a slice/array/map for which a "subscript" (single element) resolver is automatically generated
-- a pointer to one of the above types, in which case the value is nullable
-- a **function** that *returns* one of the above types.
+This server has a single GraphQL query of a static string.  Note that the query name "message" is automatically generated from the field name `Message` of the struct.
 
-A function is the commonly used type of resolver, except for simple, static data.  Using a function means the result does not have to be calculated until required.  Also, one of the most powerful features of GraphQL is that resolvers can accept arguments to control their behaviour.  You have to use a function if the GraphQL resolver requires arguments.  We shall see a resolver that takes two arguments in the example below.
+```go
+package main
 
-To use **eggql** you just need to call `eggql.MustRun()` passing an instance of the root query type.  (You can also create mutations and subscriptions - see the [Star Wars Tutorial](https://github.com/AndrewWPhillips/eggql/blob/main/TUTORIAL.md) for examples.)  `MustRun()` returns an `http.Handler` which can be used like any other `http.Handler` of the Go standard `net/http` package.  In the example below we use a path of `/graphql` and port `8080` -- so that, when you run the service, you can test it by posting queries to the local address `http://localhost:8080/graphql`.
+import (
+	"github.com/andrewwphillips/eggql"
+	"net/http"
+)
 
-Note that the **Must** part of `MustRun()` indicates that no errors are returned - ie, it panics if anything goes wrong.  (You can instead get errors returned, as discussed below, which makes debugging easier.)  Importantly, it will only panic on problems detected at startup.  Once the service is up and running all errors are diagnosed and returned as part of the query response.  Even panics in your resolver functions are caught and returned as an "internal error:" followed by the panic message/data.
+func main() {
+    http.Handle("/graphql", eggql.MustRun(struct{ Message string }{"hello"}))
+    http.ListenAndServe(":8080", nil)
+}
+```
 
-### Example
+### Testing with Curl
 
-Here is a simple GraphQL service that returns random integers within a range.  The range defaults to 1 to 6, possibly representing the sides of dice, but you can provide arguments to change the range.
+GraphQL requests are usually sent as an HTTP POST message.  You can easily the server like this: 
+
+```sh
+$ curl -d '{"query": "{ message }"}' localhost:8080/graphql
+```
+
+### Testing with Postman
+
+If you prefer you can use Postman for testing your service.  Just create a new **POST** request using an address of `http://localhost:8080/graphql`. Under the **Body** section select **GraphQL** and enter this query:
+
+```graphql
+{
+    message
+}
+```
+
+you should see a response like this:
+
+```json
+{
+    "data": {
+        "message": "hello"
+    }
+}
+```
+
+## 2. Friends
+
+This example serves a slice as a GraphQL list.
+
+```go
+package main
+
+import (
+	"github.com/andrewwphillips/eggql"
+	"net/http"
+)
+
+type Friend struct{ Name string }
+
+// Create a query for a list of friends
+var q = struct{ Friends []Friend }{
+	Friends: []Friend{{"Alice"}, {"Bob"}, {"Carol"}},
+}
+
+func main() {
+	http.Handle("/graphql", eggql.MustRun(q))
+	http.ListenAndServe(":8080", nil)
+}
+```
+
+To test:
+
+```sh
+$ curl -d '{"query": "{ friends { name} }"}' localhost:8080/graphql
+```
+
+The query's list name "friends" is derived from the struct field name `Friends` (with first letter changed to lower-case). Similarly, the nested query name "name" comes from the `Name` field of the `Friend` struct.
+
+The result is a list of friends with their names.
+
+```json
+{
+  "data": {
+    "friends": [
+      {
+        "name": "Alice"
+      },
+      {
+        "name": "Bob"
+      },
+      {
+        "name": "Carol"
+      }
+    ]
+  }
+}
+```
+
+## 3. Better Friends
+
+Let's step it up a notch, with a map (instead of slice), and using the friend's name as the map "key".
+
+This demonstrates:
+
+* using "egg" tags on struct fields
+* override default names for `friends` and `friend` queries
+* using a map for a GraphQL list
+* using the "field_id" option so the map key appears as the friend's `name`
+* using the same map to query individual elements in the list of friends
+* using the "subscript" option to use `name` as the query parameter
+* using `eggql.Date` type to display dates
+
+```go
+package main
+
+import (
+	"github.com/andrewwphillips/eggql"
+	"net/http"
+	"time"
+)
+
+type Friend struct {
+	Dob   eggql.Time
+	Email string
+}
+
+var friends = map[string]*Friend{
+	"Alice": {Dob: Date(2006, 1, 2), Email: "alice@example.com"},
+	"Bob":   {Dob: Date(1964, 2, 21)},
+	"Carol": {Dob: Date(1996, 4, 16)},
+}
+
+// Create a queries for list of friends and individual friends (given name)
+var q = struct {
+	List   map[string]*Friend `egg:"friends,field_id=name"`
+	Single map[string]*Friend `egg:"friend,subscript=name"`
+}{
+	List:   friends,
+	Single: friends,
+}
+
+func main() {
+	http.Handle("/graphql", eggql.MustRun(q))
+	http.ListenAndServe(":8080", nil)
+}
+
+func Date(y, m, d int) eggql.Time {
+	return eggql.Time(time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC))
+}
+```
+
+Here are some queries and the resulting JSON:
+
+| query                             | result (JSON)                                                                                                                        |
+|------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| { friends { name } }               | {"friends": [{"name": "Alice"}, {"name": "Bob"}, {"name": "Carol"}]}                                                                 |
+| { friend(name:"Alice") { email } } | {"friend": { "email": "alice@example.com"}}                                                                                          |
+| { friends { name dob } }           | {"friends":[{"name":"Alice","dob":"2006-01-02"},<br/>&nbsp; &nbsp;{"name":"Bob","dob":"1964-02-21"}, {"name":"Carol","dob":"1996-04-16"}]} |
+
+## 4. Random Numbers
+
+In this example we generate dynamic values using a Go `func`. This GraphQL service returns random integers within a range.  The range defaults to 1 to 6, possibly representing the sides of dice, but the query accepts arguments to change the range.
 
 ```go
 package main
@@ -43,7 +189,7 @@ import (
 )
 
 type Query struct {
-	Random func(int, int) int `egg:"(low=1,high=6)"`
+	Random func(int, int) int `egg:"random(low=1,high=6)"`
 }
 
 var q = Query{
@@ -59,50 +205,19 @@ func main() {
 }
 ```
 
-To test it, just send a query like the following to http://localhost:8080/graphql
 
-```graphql
-{
-    random
-}
-```
-
-Note that the query name `random` is derived from the struct's field name `Random`.  Only exported fields (those with an upper-case first letter) are used and the generated GraphQL name is derived from it - using a lower-case first letter.  You can also provide your own name, such as **rnd** in the tag string like this `egg:"rnd(low=1,high=6)"`.
-
-Also note the two resolver arguments (`low` and `high`) in brackets.  There *must* be two corresponding Go function parameters (both `int` in this case).  (You can also have an optional 1st `Context` function parameter that is not related to the query arguments - see below for an example.)
-
-I usually test using Postman, but you can just use **curl** to post a GraphQL query like this:
+Note that there must be two `func` parameters (`low` and `high`) since the resolver takes two arguments. (You can also have an optional 1st `Context` function parameter that's not used as a query argument - see the **Context Parameters** example below.)
 
 ```sh
 $ curl -XPOST -d '{"query": "{ random }"}' localhost:8080/graphql
 ```
 
-and you should get a response like this:
+gives this response:
 
 ```json
 {
     "data": {
         "random": 5
-    }
-}
-```
-
-### Testing with Postman
-
-To use Postman for testing your service just create a new **POST** request using an address of `http://localhost:8080/graphql`. Under the **Body** section select **GraphQL** and enter this query:
-
-```graphql
-{
-    random(high:1000)
-}
-```
-
-Each time you click the **Send** button in Postman you should see a new number between 1 and 1000 (inclusive) like this:
-
-```json
-{
-    "data": {
-        "random": 467
     }
 }
 ```
@@ -128,17 +243,17 @@ The **eggql** package automatically detects the problem and returns an error res
 }
 ```
 
-### Returning an Error
+## 5. Handling Errors
 
-Errors in the GraphQL query, like the wrong query name, are handled for you but what about errors that only your resolver can detect?  What if the caller of the query made a mistake with the arguments, as below?
+GraphQL errors, like the wrong query name, are handled for you but what about errors that only your resolve can detect?  What if the caller of the query made a mistake with the arguments?
 
 ```graphql
 {
-    random(low:6, high:1)
+    random(high:1, low:6)
 }
 ```
 
-With the Go code above this will cause `rand.Intn()` to panic (because it's given a value of -4) and the query will return this error:
+With the Go code above this will cause `rand.Intn()` to panic (because it's given a -ve value) and the query will return this error:
 
 ```json
 {
@@ -150,7 +265,7 @@ With the Go code above this will cause `rand.Intn()` to panic (because it's give
 }
 ```
 
-This error message is not that useful to the client.  The resolver function could handle this better by returning an `error`.  (A resolver function must have either one or two return values, the 2nd one must be an `error` if provided.)
+This error message is not that useful to the client.  The server could handle this better by returning an `error`.  (A resolver function must have either one or two return values, the 2nd one must be an `error` if provided.)
 
 ```go
 type Query struct {
@@ -166,7 +281,7 @@ var q = Query{
 	},
 }
 
-func main() {
+func main() {   
 	rand.Seed(time.Now().UnixNano())
 	http.Handle("/graphql", eggql.MustRun(q))
 	http.ListenAndServe(":8080", nil)
@@ -185,11 +300,11 @@ Now the erroneous query will produce this result:
 }
 ```
 
-### Context Parameters
+## 6. Context Parameters
 
-For resolvers that may take a long time to run and/or block on I/O you should also provide a **context** parameter.  In the code below I have added `context.Context` as the 1st parameter of the `Random()` function and added a loop with a call to `Sleep()` to simulate a lengthy process.  A `context.Context` provided as the first parameter of the resolver function is handled specially: it's not used as one of the resolver arguments, but used for cancellation.
+For resolvers that may take a long time to run and/or block on I/O you should also provide a **context** parameter.  In the code below I have added `context.Context` as the 1st parameter of the `Random()` function and added a loop with a call to `Sleep()` to simulate a lengthy process.  An initial `context.Context` parameter is handled specially; it's not one of the resolver arguments.
 
-For example, using the `http.TimeOutHandler()` middleware in the code below means that the context will be cancelled after 2 seconds.  When the `ctx` parameter is cancelled (after 2 seconds) the function detects this (after at most 1 second) and returns (with an error).
+To enable the context I use the `http.TimeOutHandler()` specifying a time limit of 2 seconds.  When the resolver function is still running after 2 seconds the context `ctx` will be cancelled and the function will return (with an error) as soon as it discovers that it's result is no longer required.
 
 ```go
 type Query struct {
@@ -220,47 +335,67 @@ func main() {
 }
 ```
 
-Note that there are further ways to increase the robustness of your service, such as adding a timeouts, graceful shutdown, using encryption (HTTPS), etc.  These are easily incorporated into the above code and discussed in many places.
+Note that there are further ways to increase the robustness of your service, such as adding a ReadTimeout, graceful shutdown, etc.  These are easily incorporated into the above code.
 
-### Options
+
+# Details
+
+To create a GraphQL service you must declare a struct, representing the root query object.  Each exported field (ie, having a capitalized name) of this struct represents a GraphQL query.  Each such field can be
+
+- a scalar type (int, string, etc.) that represents a GraphQL scalar (Int!, String!, etc.)
+- eggql.ID type that represents a GraphQL ID!, or *eggql.ID (ptr) to get a nullable ID
+- an integer type (int, int8, uint, etc.) that represents an enumeration
+- a nested struct that represents a GraphQL nested query
+- a slice/array/map that represents a GraphQL list of any of the above types
+- a slice/array/map for which a "subscript" resolver is automatically generated
+- a pointer to one of the above types, in which case the value is nullable
+- a **function** that *returns* one of the above types.
+
+A function is the most commonly used type of resolver, except for simple, static data.  Using a function means the resolver result does not have to be calculated until required.  Also, one of the most powerful features of GraphQL is that resolvers can accept arguments to control their behaviour.  You have to use a function if the GraphQL resolver needs to take arguments.  See the above **Random Numbers** example which has a resolver that takes two arguments.
+
+To use **eggql** you just need to call `eggql.MustRun()` passing an instance of the root query type.  You can also add mutations and subscriptions using the 2nd and 3rd parameters (see the [Star Wars Tutorial](https://github.com/AndrewWPhillips/eggql/blob/main/TUTORIAL.md) for an example.)  `MustRun()` returns an `http.Handler` which can be used like any other handler with the Go standard `net/http` package.
+
+Note that the **Must** part of `MustRun()` indicates that no errors are returned - ie, it panics if anything goes wrong.  (You can instead get errors returned, as discussed below, which makes debugging easier.)  Importantly, it will only panic on problems detected at startup.  Once the service is up and running all errors are diagnosed and returned as part of the query response.  Even panics in your resolver functions are caught and returned as an "internal error:" followed by the panic message/data.
+
+## Options
 
 Several options are supported by adding them as parameters to the end of the `MustRun` function.  These are very easily added using [Functional Options](https://dave.cheney.net/2014/10/17/functional-options-for-friendly-apis).  For example, see the use of the **FuncCache** option in the next section.
 
-#### eggql.FuncCache(on bool)
+### eggql.FuncCache(on bool)
 
 This turns on caching of the results from func resolvers (non-func resolvers are not cached as they are already in memory).  To turn off caching for individual fields use the **no_cache** option of the egg: tag string.
 
 Note that if a resolver takes arguments then different values are cached for each combination of used arguments.  As an example (from the Star Wars example) `Hero(NEWHOPE)` would cache _Luke Skywalker_, while `Hero(JEDI)` caches _R2D2_.
 
-#### eggql.NoIntrospection(on bool)
+### eggql.NoIntrospection(on bool)
 
 This disables all introspection queries.  This is sometimes done in production for security reasons.
 
-#### eggql.NoConcurrency(on bool)
+### eggql.NoConcurrency(on bool)
 
 By default, queries are executed concurrently.  This is always done when possible (subject to MAXPROCS), but, for example, a nested resolver cannot be executed until its parent resolver has completed.  Turning this option on means that resolvers (in a single query request) are executed sequentially.
 
 Of course, requests from different clients (or even different requests from the same client) will still execute concurrently, so you cannot use this to avoid race conditions.  However, this option may be useful in testing to run a single query in order to find and track down race conditions in your resolvers.
 
-#### eggql.NilResolver(on bool)
+### eggql.NilResolver(on bool)
 
 By default, an error is returned for a resolver that is not implemented (nil func).  This option causes null to be returned for a resolver func that is nil.
 
 This option is useful during development to stub resolver that have not yet been implemented.
 
-#### eggql.InitialTimeout(timeout time.Duration)
+### eggql.InitialTimeout(timeout time.Duration)
 
 This sets the initial timeout for a subscription to be setup.  Technically, it is the time that the server waits for a "connection_init" message to be received after a websocket has been opened.  If the time is exceeded an error is generated and the websocket closed.
 
-#### eggql.PingFrequency(freq time.Duration)
+### eggql.PingFrequency(freq time.Duration)
 
 For subscriptions, this is how often a "ping" message is sent on the websocket (or "ka" (keep alive) message, if the client is using the old GraphQL websocket protocol).
 
-#### eggql.PongTimeout(timeout time.Duration)
+### eggql.PongTimeout(timeout time.Duration)
 
 For subscriptions, this is how long to wait for a "pong" message after sending a "ping" to the client, before an error is generated and the websocket is closed.  (This only applies to the "new" GraphQL websocket protocol.)
 
-### Caching
+## Caching
 
 The result of func resolvers can be cached automatically using the `eggql.FuncCache` option.  By default, there is no caching.
 
@@ -288,9 +423,9 @@ type Query struct {
 }
 ```
 
-## Go GraphQL Packages
+# Go GraphQL Packages
 
-### Alternatives
+## Alternatives
 
 There are other excellent, mature GraphQL packages for Go which may suit you better.
 
@@ -300,6 +435,7 @@ There are other excellent, mature GraphQL packages for Go which may suit you bet
 | [graphql-go](https://github.com/graph-gophers/graphql-go) | graph-gophers                                                       |
 |       [gqlgen](https://github.com/99designs/gqlgen)       | 99 Designs                                                          |
 |      [thunder](https://github.com/samsarahq/thunder)      | Samsara Networks                                                    |
+|         [jaal](https://github.com/appointy/jaal)          | Appointy                                                            |
 
 I particularly like **gqlgen** of **99 Designs** as it uses "go generate" to avoid the inefficiencies of reflection and the lack of type safety that is inevitable when using `interface{}` for polymorphism.
 
@@ -309,27 +445,27 @@ The "pros" for **eggql** are, I believe, that it is simple to use (though I may 
 
 The "cons" for **eggql** are that it *may not* be as performant as other packages [Ed: tests using **k6** seem to show that **eggql** is resolves simple queries as fast or faster than the other packages mentioned above]. such as **gqlgen** as it uses reflection and does not have performance options such as caching and data-loader (database support).  Also, resolver lookups currently use O(n) linear searches  [Ed: now fixed - using a map O(1)].  Custom scalars and a **date** type are not supported [Ed: they are now!].
 
-### Performance Comparison
+## Performance Comparison
 
 Out of interest, I recently did a performance comparison of the different packages using the **jMeter** and **k6**.  The results for **eggql** were surprisingly good, though take it with a grain of salt, until I have had independent confirmation.
 
 See [COMPARISON.md](https://github.com/AndrewWPhillips/eggql/blob/main/COMPARISON.md)
 
-### Vektah's gqlparser
+## Vektah's gqlparser
 
 I should also give a special shout-out to the Go **gqlparser** package upon which **eggql** is built.  This is an excellent library that I use to parse the GraphQL schemas that **eggql** generates and analyse and validate queries.  This package does all the hard work making implementing **eggql** a breeze.
 
 * [gqlparser](https://github.com/vektah/gqlparser) by Vektah
 
-## Highlights
+# Highlights
 
 Here are some important things not mentioned above.
 
-### Tutorial
+## Tutorial
 
 **Eggql** is a complete GraphQL implementation.  To see how easy it is to use there is a [Star Wars Tutorial](https://github.com/AndrewWPhillips/eggql/blob/main/TUTORIAL.md).  This explains how to implement a service for the **Star Wars** demo which almost all packages (in Go and other languages) have as an example.  It nicely shows how to use all standard features of GraphQL using **eggql**.  Unlike examples for other packages this one shows how to use **subscriptions**.
 
-### Code-first GraphQL
+## Code-first GraphQL
 
 My experience with many GraphQL packages/libaries is that they are confusing to set up (even the Go ones!), and it's hard to understand what is happening.  As a beginner I often mixed up the syntax of:
 
@@ -343,11 +479,11 @@ My real issue is with *schemas*; they seemed unnecessary since Go data structure
 
 My prime motivation, in creating **eggql** was to make it simpler to create a GraphQL service by bypassing the need to write a schema.  I have since discovered that others feel the same way leading to the "code-first" (schema-less) movement - for example see this recent post from the excellent LogRocket blog: [Code First vs Schema First GraphQL Development](https://blog.logrocket.com/code-first-vs-schema-first-development-graphql/):
 
-### Reflection
+## Reflection
 
 Due to the way it works **eggql** makes extensive use of reflection, even though this may make the code a little slower.  [There are *many* things I like about Go but the main one is the emphasis on simplicity, even when it might affect performance a little, which is why Go code is usually 20% slower than equivalent C, Rust or Zig (but not 100-1000% slower like Python is :)].  I believe **eggql** is in the spirit of Go, by keeping things simple at the expense of a little performance.
 
-### Lists and id Field
+## Lists and id Field
 
 Many Go packages allow you to use an array as a GraphQL list.  With **eggql** you can also use a Go **map** as a GraphQL list field.  (Note that since the order of elements in a Go map is indeterminate the client should be aware that the order of the list is indeterminate and may even change for consecutive queries.)
 
@@ -454,14 +590,14 @@ you will see this result:
 }
 ```
 
-### Error-handling
+## Error-handling
 
 There are two stages of error-handling when creating a GraphQL service:
 
 1. coding/config errors that cause initial setup to fail, in which case `MustRun()` will panic
 2. errors encountered when a query (or mutation) is running, whence an error message is returned to the client
 
-#### Viewing "startup" errors and the Schema
+### Viewing "startup" errors and the Schema
 
 The 1st case is common when starting out -- you make lots of coding mistakes when creating structs, their fields, field tags (egg: key), enums, etc.  I'm not sure about you, but I always have to try to stay calm when I see "panic" on the screen or in the log.  Luckily, there is an alternative to using `MustRun()`.  Just call `eggql.New()`, then add things like enums etc. and call the `GetHandler()` method which returns an error instead of panicking if there is a problem.  This makes testing and debugging more pleasant.
 
@@ -508,7 +644,7 @@ func main() {
 ```
 As an explanation of the code - it provides a `len` query with an optional `unit` argument which can have values `METER` (default) or `FOOT` (see *** 1 *** ).  It also writes the generated schema to the log (*** 2 *** ).  Finally, it gets the handler (*** 3 *** ) and either logs the error or starts the server (*** 4 *** )
 
-#### Handling "runtime" errors
+### Handling "runtime" errors
 
 For the 2nd case of errors mentioned above (errors encountered during query execution), an error message is returned as part of the response to the client.
 

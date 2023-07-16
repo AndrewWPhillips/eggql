@@ -29,8 +29,6 @@ var q = struct {
 func main() {
 	http.Handle("/graphql", eggql.MustRun(q))
 	http.ListenAndServe(":8080", nil)
-	//gql := eggql.New(q)
-	//log.Println(gql.GetSchema())
 }
 
 func Date(y, m, d int) eggql.Time {
