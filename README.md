@@ -1,19 +1,30 @@
 # EGGQL
 
-With EGGQL you don't need to worry about schemas or configuration files.  All you need is a struct (used to represent a GraphQL query) plus maybe a few "tag" strings.
+## Why GraphQL?
 
-Some of the things you can do with a few lines of code:
+You are probably already aware of the advantages of GraphQL.  In brief, it greatly facilitates **decoupling** of the backend (server) from clients.  You create flexible building blocks (called **resolvers** in GraphQL) that allow queries to be constructed to (efficiently) access the data.
 
-* serve static data such as strings, numbers, dates (see **Hello** example)
-* serve existing maps, slices an arrays as GraphQl lists (**Friends** example)
-* serve map, slice, array elements using (auto-generated) ID parameter
-* nested queries using nested structs (or pointers), slices or maps
-* create dynamic data using a func (closure) including query parameters
-* handle errors, timeouts and panics gracefully
+## Why Go?
+
+Go simplifies creating any sort of software, but is particularly useful for writing server software due to its unequaled concurrecny support.
+
+Unfortunately, createing a GraphQL service can be cumbersome, even from Go.
+
+## Why EGGQL?
+
+With EGGQL you don't need to worry about schemas, configuration files, transports, etc.  All you need is a struct (used to represent a GraphQL query) plus maybe a few field tags.
 
 # Examples
 
-To give you a better idea, here are some complete examples:
+Some of the things you can do with a few lines of code:
+
+* serve static data such as strings, numbers, dates, etc (see **1. Hello** example)
+* serve existing maps, slices and arrays as GraphQL lists (see **2. Friends**)
+* auto-generate ID field for lists (map key, slice index) (**3. BetterFriends**)
+* nested queries using nested structs (or pointers), slices or maps
+* create dynamic data including query parameters (**4. Dynamic Data**)
+* return meaningful errors, handle panics gracefully (**5. Handling Errors**)
+* use context.Context for timeouts and cancelation (**6. Context Parameters**)
 
 ## 1. Hello
 
@@ -175,7 +186,7 @@ Here are some queries and the resulting JSON:
 | { friend(name:"Alice") { email } } | {"friend": { "email": "alice@example.com"}}                                                                                          |
 | { friends { name dob } }           | {"friends":[{"name":"Alice","dob":"2006-01-02"},<br/>&nbsp; &nbsp;{"name":"Bob","dob":"1964-02-21"}, {"name":"Carol","dob":"1996-04-16"}]} |
 
-## 4. Random Numbers
+## 4. Dynamic Data with Query Arguments
 
 In this example we generate dynamic values using a Go `func`. This GraphQL service returns random integers within a range.  The range defaults to 1 to 6, possibly representing the sides of dice, but the query accepts arguments to change the range.
 
