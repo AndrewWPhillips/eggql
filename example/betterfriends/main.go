@@ -7,8 +7,8 @@ import (
 )
 
 type Friend struct {
-	Dob   eggql.Time `egg:"dob"`
-	Email string     `egg:"email"`
+	Dob   eggql.Date
+	Email string
 }
 
 var friends = map[string]*Friend{
@@ -31,6 +31,7 @@ func main() {
 	http.ListenAndServe(":8080", nil)
 }
 
-func Date(y, m, d int) eggql.Time {
-	return eggql.Time(time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC))
+// Date creates an eggql.Date given (numeric) year, month and day
+func Date(y, m, d int) eggql.Date {
+	return eggql.Date(time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC))
 }

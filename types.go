@@ -46,6 +46,27 @@ func (t Time) MarshalEGGQL() (string, error) {
 	return time.Time(t).Format(timeFormat), nil
 }
 
+// Date is a custom scalar for a date (no time of day or timezone)
+type Date time.Time
+
+// dateFormat is used for encoding/decoding a Date (as a string)
+const dateFormat = "2006-01-02"
+
+// UnmarshalEGGQL is called when eggql needs to decode a string to a Date
+func (pd *Date) UnmarshalEGGQL(in string) error {
+	tmp, err := time.Parse(dateFormat, in)
+	if err != nil {
+		return fmt.Errorf("%w error in UnmarshalEGGQL for custom scalar Date", err)
+	}
+	*pd = Date(tmp) // cast from time.Time to eggql.Date
+	return nil
+}
+
+// MarshalEGGQL encodes a Date object to a string
+func (d Date) MarshalEGGQL() (string, error) {
+	return time.Time(d).Format(dateFormat), nil
+}
+
 // BigInt is a custom scalar for representing a big.Int
 // Note that we embed a big.Int so that we can use the standard big.Int methods
 type BigInt struct{ big.Int }

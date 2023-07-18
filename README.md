@@ -2,33 +2,33 @@
 
 ## Why GraphQL?
 
-You are probably already aware of the advantages of GraphQL.  In brief, it greatly facilitates **decoupling** of the backend (server) from clients.  You create flexible building blocks (called **resolvers** in GraphQL) that allow queries to be constructed to (efficiently) access the data.
+You are probably already aware of the advantages of GraphQL.  In brief, it greatly facilitates **decoupling** of the backend (server) from clients.  The backend implements flexible building blocks (called **resolvers** in GraphQL) that allow queries to be constructed to (efficiently) access the data.
 
 ## Why Go?
 
-Go simplifies creating any sort of software, but is particularly useful for writing server software due to its unequaled concurrecny support.
+Go simplifies creating any sort of software, but is particularly useful for writing server software due to its unequaled concurrency support.
 
-Unfortunately, createing a GraphQL service can be cumbersome, even from Go.
+Unfortunately, creating a GraphQL service can be cumbersome, even with Go, until now...
 
 ## Why EGGQL?
 
 With EGGQL you don't need to worry about schemas, configuration files, transports, etc.  All you need is a struct (used to represent a GraphQL query) plus maybe a few field tags.
 
-# Examples
+Some things you can do with just a few lines of code:
 
-Some of the things you can do with a few lines of code:
-
-* serve static data such as strings, numbers, dates, etc (see **1. Hello** example)
-* serve existing maps, slices and arrays as GraphQL lists (see **2. Friends**)
+* serve static data (strings, numbers, etc) - see example below (**1. Hello**)
+* serve existing maps, slices and arrays as GraphQL lists (**2. Friends**)
 * auto-generate ID field for lists (map key, slice index) (**3. BetterFriends**)
 * nested queries using nested structs (or pointers), slices or maps
 * create dynamic data including query parameters (**4. Dynamic Data**)
 * return meaningful errors, handle panics gracefully (**5. Handling Errors**)
 * use context.Context for timeouts and cancelation (**6. Context Parameters**)
 
+# Examples
+
 ## 1. Hello
 
-This server has a single GraphQL query of a static string.  Note that the query name "message" is automatically generated from the field name `Message` of the struct.
+This demonstrates a single GraphQL query of a static string.  Note that the query name "message" is automatically generated from the name of the `Message` field of the struct literal.
 
 ```go
 package main
@@ -46,7 +46,7 @@ func main() {
 
 ### Testing with Curl
 
-GraphQL requests are usually sent as an HTTP POST message.  You can easily the server like this: 
+GraphQL requests are usually sent as an HTTP POST message.  You can easily query the server like this: 
 
 ```sh
 $ curl -d '{"query": "{ message }"}' localhost:8080/graphql
@@ -127,14 +127,14 @@ The result is a list of friends with their names.
 
 ## 3. Better Friends
 
-Let's step it up a notch, with a map (instead of slice), and using the friend's name as the map "key".
+Let's step it up a notch, with a map (instead of slice), using the friend's name as the map "key".  This has two queries one returning a list (of friends) and the retrieves individual friends given their ID (name in this case).
 
 This demonstrates:
 
 * using "egg" tags on struct fields
-* override default names for `friends` and `friend` queries
+* overriding default names for the 2 queries (`friends` and `friend`)
 * using a map for a GraphQL list
-* using the "field_id" option so the map key appears as the friend's `name`
+* using the "field_id" option - map key becomes field `name`
 * using the same map to query individual elements in the list of friends
 * using the "subscript" option to use `name` as the query parameter
 * using `eggql.Date` type to display dates
@@ -149,20 +149,20 @@ import (
 )
 
 type Friend struct {
-	Dob   eggql.Time
+	Dob   eggql.Date
 	Email string
 }
 
-var friends = map[string]*Friend{
+var friends = map[string]Friend{
 	"Alice": {Dob: Date(2006, 1, 2), Email: "alice@example.com"},
 	"Bob":   {Dob: Date(1964, 2, 21)},
 	"Carol": {Dob: Date(1996, 4, 16)},
 }
 
-// Create a queries for list of friends and individual friends (given name)
+// Create a query for a list of friends
 var q = struct {
-	List   map[string]*Friend `egg:"friends,field_id=name"`
-	Single map[string]*Friend `egg:"friend,subscript=name"`
+	List   map[string]Friend `egg:"friends,field_id=name"`
+	Single map[string]Friend `egg:"friend,subscript=name"`
 }{
 	List:   friends,
 	Single: friends,
@@ -173,22 +173,26 @@ func main() {
 	http.ListenAndServe(":8080", nil)
 }
 
-func Date(y, m, d int) eggql.Time {
-	return eggql.Time(time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC))
+// Date creates an eggql.Date given (numeric) year, month and day
+func Date(y, m, d int) eggql.Date {
+	return eggql.Date(time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC))
 }
 ```
 
 Here are some queries and the resulting JSON:
 
-| query                             | result (JSON)                                                                                                                        |
-|------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
-| { friends { name } }               | {"friends": [{"name": "Alice"}, {"name": "Bob"}, {"name": "Carol"}]}                                                                 |
-| { friend(name:"Alice") { email } } | {"friend": { "email": "alice@example.com"}}                                                                                          |
-| { friends { name dob } }           | {"friends":[{"name":"Alice","dob":"2006-01-02"},<br/>&nbsp; &nbsp;{"name":"Bob","dob":"1964-02-21"}, {"name":"Carol","dob":"1996-04-16"}]} |
+| query                                 | result (JSON)                                                                                                                                                                                |
+|---------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| { friends { name } }                  | {"friends": [{"name": "Alice"}, {"name": "Bob"}, {"name": "Carol"}]}                                                                                                                         |
+| { friend(name:"Alice") { email } }    | {"friend": { "email": "alice@example.com"}}                                                                                                                                                  |
+| { friend(name:"Carol") { name dob } } | {"friend": { "name": "Carol", "dob": "1996-04-16"}}                                                                                                                                 |
+| { friends { name dob } }              | {"friends": [{<br/>&nbsp; &nbsp;"name": "Alice", "dob": "2006-01-02"},<br/>&nbsp; &nbsp;{"name": "Bob", "dob":" 1964-02-21"},<br/>&nbsp; &nbsp;{"name": "Carol", "dob": "1996-04-16"}<br/>]} |
 
-## 4. Dynamic Data with Query Arguments
+## 4. Dynamic Data
 
-In this example we generate dynamic values using a Go `func`. This GraphQL service returns random integers within a range.  The range defaults to 1 to 6, possibly representing the sides of dice, but the query accepts arguments to change the range.
+GraphQL queries usually don't return fixed data.  For example, many queries take arguments that affect what is returned.  For dynamic data you must use a Go `func` to generate the query results.
+
+This example shows a query with two (optional) arguments that returns a random number.  The arguments specify the range of values, defaulting to a range of 1 to 6 (inclusive), possibly representing the sides of dice.
 
 ```go
 package main
@@ -216,19 +220,18 @@ func main() {
 }
 ```
 
-
-Note that there must be two `func` parameters (`low` and `high`) since the resolver takes two arguments. (You can also have an optional 1st `Context` function parameter that's not used as a query argument - see the **Context Parameters** example below.)
+Note that the Go `func` must have two parameters (`low` and `high`) since the resolver takes two arguments. (You can also have an optional initial `Context` function parameter that's not used as a query argument - see the **Context Parameters** example below.)
 
 ```sh
-$ curl -XPOST -d '{"query": "{ random }"}' localhost:8080/graphql
+$ curl -d '{"query": "{ random(high:999) }"}' localhost:8080/graphql
 ```
 
-gives this response:
+gives a random response like this:
 
 ```json
 {
     "data": {
-        "random": 5
+        "random": 555
     }
 }
 ```
@@ -238,7 +241,7 @@ gives this response:
 Try this to see what happens when you use the wrong query name:
 
 ```sh
-$ curl -XPOST -d '{"query": "{ rnd }"}' localhost:8080/graphql
+$ curl -d '{"query": "{ rnd }"}' localhost:8080/graphql
 ```
 
 The **eggql** package automatically detects the problem and returns an error response like this:
@@ -276,7 +279,7 @@ With the Go code above this will cause `rand.Intn()` to panic (because it's give
 }
 ```
 
-This error message is not that useful to the client.  The server could handle this better by returning an `error`.  (A resolver function must have either one or two return values, the 2nd one must be an `error` if provided.)
+This error message is not that useful to the client.  The resolver `func` could handle this better by returning an `error`.  (A resolver function must have either one or two return values, the 2nd one must be an `error` if provided.)
 
 ```go
 type Query struct {
@@ -313,7 +316,7 @@ Now the erroneous query will produce this result:
 
 ## 6. Context Parameters
 
-For resolvers that may take a long time to run and/or block on I/O you should also provide a **context** parameter.  In the code below I have added `context.Context` as the 1st parameter of the `Random()` function and added a loop with a call to `Sleep()` to simulate a lengthy process.  An initial `context.Context` parameter is handled specially; it's not one of the resolver arguments.
+For resolvers that may take a long time to run and/or block on I/O you should also provide a **context** parameter.  In the code below I have added a `context.Context` as the 1st parameter of the `Random()` function and added a loop with a call to `Sleep()` to simulate a lengthy process.  An initial `context.Context` parameter is handled specially; it's not one of the resolver arguments.
 
 To enable the context I use the `http.TimeOutHandler()` specifying a time limit of 2 seconds.  When the resolver function is still running after 2 seconds the context `ctx` will be cancelled and the function will return (with an error) as soon as it discovers that it's result is no longer required.
 
@@ -423,7 +426,7 @@ func main() {
 Now whenever you invoke the random query you will get the same number.
 
 ```sh
-$ curl -XPOST -d '{"query": "{ random }"}' localhost:8080/graphql
+$ curl -d '{"query": "{ random }"}' localhost:8080/graphql
 ```
 
 Obviously, this is not desireable in this case (since the `Random` method is not a **pure** function).  You can turn caching off for specific resolvers, using the **no_cache** option of the egg: tag string like this:
@@ -498,7 +501,7 @@ Due to the way it works **eggql** makes extensive use of reflection, even though
 
 Many Go packages allow you to use an array as a GraphQL list.  With **eggql** you can also use a Go **map** as a GraphQL list field.  (Note that since the order of elements in a Go map is indeterminate the client should be aware that the order of the list is indeterminate and may even change for consecutive queries.)
 
-***Eggql** can also generate an extra field for each object in an array/slice/map if you add the `id_field` option in the field's metadata tag.  For arrays and slices this represents the index of the element hence the generated field is of `Int!` type.  For a map, it is the map element's key type which must be an integer or string.
+**Eggql** can also generate an extra field for each object in an array/slice/map if you add the `id_field` option in the field's metadata tag.  For arrays and slices this represents the index of the element hence the generated field is of `Int!` type.  For a map, it is the map element's key type which must be an integer or string.
 
 Here's a simple example server:
 ```go

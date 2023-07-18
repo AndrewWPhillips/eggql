@@ -52,16 +52,16 @@ func newSchemaTypes() schema {
 }
 
 // add creates a GraphQL object/input/interface as a string to be added to the schema and adds it
-//   to the declaration map (using the type name as the key) avoiding adding the same type twice.
+// to the declaration map (using the type name as the key) avoiding adding the same type twice.
 // Parameters:
 //   name = preferred name for the type (if an empty string the Go type name is used)
-//   t = the Go type used to generate the GraphQL type declaration
-//   enums = enums map (just used to make sure an enum name is valid)
-//   gqlType = "type" (for a GraphQL object), "input", "interface", etc
-//   idField = info for "id" field to be added to an object (or nil if not in a list)
+//     t = the Go type used to generate the GraphQL type declaration
+//     enums = enums map (just used to make sure an enum name is valid)
+//     gqlType = "type" (for a GraphQL object), "input", "interface", etc
+//     idField = info for "id" field to be added to an object (or nil if not in a list)
 // Returns an error if the type could not be added - this may happen if the same struct is
-//   used as an "input" type (ie resolver parameter) and as an "object" or "interface" type or
-//   there is an error with the field declarations
+// used as an "input" type (ie resolver parameter) and as an "object" or "interface" type or
+// there is an error with the field declarations
 func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlType string, idField *objectField,
 ) error {
 	needName := name == ""
@@ -109,12 +109,12 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 	if idField != nil {
 		if previous, ok := s.idFieldName[name]; ok {
 			if previous != idField.name {
-				// id_field used in previous declaration has a different name
-				return fmt.Errorf("id_field on %q must have the same name (not %q and %q)", name, previous, idField.name)
+				// field_id used in previous declaration has a different name
+				return fmt.Errorf("field_id on %q must have the same name (not %q but %q)", name, previous, idField.name)
 			}
 			// no need to force regeneration as it will be the same
 		} else {
-			force = true // force regeneration so we also get the fabricated "id" field
+			force = true // force regeneration, so that we also get the fabricated "id" field
 		}
 		s.idFieldName[name] = idField.name
 	}
@@ -228,15 +228,15 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 // includes any fields of an embedded (anon) struct which are added as resolvers and also remembered as "interface" names.
 // Nested resolvers (named nested structs) are handled by a recursive call to s.add().
 // Parameters:
-//  parentType = name of the struct type
-//  t = the struct type containing the fields
-//  enums = enums map (just used to make sure an enum name is valid)
-//  inputType = "type" for a GraphQL object or "input" for an input type
+//	parentType = name of the struct type
+//	t = the struct type containing the fields
+//	enums = enums map (just used to make sure an enum name is valid)
+//	inputType = "type" for a GraphQL object or "input" for an input type
 // Returns:
-//  map of resolvers: key is the resolver name; value is the rest of the GraphQL resolver declaration
-//  names of GraphQL interface(s) that the type implements (using Go embedded structs)
-//  text to be added (to the GraphQL schema) as a "description" of the type
-//  error: non-nil if something went wrong
+//	map of resolvers: key is the resolver name; value is the rest of the GraphQL resolver declaration
+//	names of GraphQL interface(s) that the type implements (using Go embedded structs)
+//	text to be added (to the GraphQL schema) as a "description" of the type
+//	error: non-nil if something went wrong
 func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string][]string, gqlType string,
 ) (r map[string]string, iface []string, desc string, err error) {
 	r = make(map[string]string)
@@ -306,7 +306,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			// Get the resolvers from the embedded struct (GraphQL "interface")
 			resolvers, interfaces, _, err2 := s.getResolvers(parentType, tf.Type, enums, gqlType)
 			if err2 != nil {
-				// We should't ever get to here - getResolvers for this struct has already been called w/o error in above s.add() method call
+				// We shouldn't ever get to here - getResolvers for this struct has already been called w/o error in above s.add() method call
 				//err = fmt.Errorf("%w adding embedded resolvers for %q", err2, f.Name); return
 				return nil, nil, "", err2
 			}
@@ -329,6 +329,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			resolverDesc = `  """` + fieldInfo.Description + `"""` + "\n"
 		}
 
+		var idField *objectField
 		var params string
 		var effectiveType reflect.Type
 		if fieldInfo.Subscript != "" {
@@ -339,6 +340,7 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 				return
 			}
 			effectiveType = fieldInfo.ResultType
+			idField = &objectField{name: fieldInfo.Subscript, typ: fieldInfo.IndexType}
 		} else if tf.Type.Kind() == reflect.Func {
 			// Get resolver arguments (if any) from the "args" option - eg "(p1:String!, p2:Int!=42)"
 			params, err2 = s.getParams(tf.Type, enums, fieldInfo)
@@ -361,8 +363,10 @@ func (s schema) getResolvers(parentType string, t reflect.Type, enums map[string
 			effectiveType = tf.Type
 		}
 
-		var idField *objectField
 		if fieldInfo.FieldID != "" {
+			if idField != nil {
+				panic("can't use both subscript and field_id on the same map/slice field")
+			}
 			idField = &objectField{name: fieldInfo.FieldID, typ: fieldInfo.IndexType}
 		}
 

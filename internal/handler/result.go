@@ -293,7 +293,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		v = v.Elem() // follow indirection
 	}
 
-	// For "subscript" option if v is a map/slice convert it to an element using the "subscript" to index into the container
+	// For "subscript" option if v is a map/slice/array convert it to an element using the "subscript" to index into the container
 	if fieldInfo.Subscript != "" {
 		if len(astField.Arguments) != 1 || astField.Arguments[0].Name != fieldInfo.Subscript {
 			return &gqlValue{err: fmt.Errorf("subscript resolver %q must supply an argument called %q", fieldInfo.Name, fieldInfo.Subscript)}
@@ -308,6 +308,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 			if !v.IsValid() {
 				return &gqlValue{err: fmt.Errorf("index '%s' (value %q) is not valid for field %s", fieldInfo.Subscript, arg.Interface(), fieldInfo.Name)}
 			}
+			vID = arg // remember the value of the "subscript" (map key)
 
 		case reflect.Slice, reflect.Array:
 			idx, ok := arg.Interface().(int)
@@ -315,6 +316,8 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 				//return &gqlValue{err: fmt.Errorf("subscript %q for resolver %q must be an integer to index a list", fieldInfo.Subscript, fieldInfo.Name)}
 				panic(fmt.Sprintf("subscript %q for resolver %q must be an integer to index a list", fieldInfo.Subscript, fieldInfo.Name))
 			}
+			vID = reflect.ValueOf(idx) // retain the value of the subscript (index into slice/array)
+
 			idx -= fieldInfo.BaseIndex
 			if idx < 0 || idx >= v.Len() {
 				return &gqlValue{err: fmt.Errorf(`%s (with %s of %d) not found`, fieldInfo.Name, fieldInfo.Subscript, idx+fieldInfo.BaseIndex)}
@@ -359,6 +362,11 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		return &gqlValue{name: astField.Alias, value: valueString}
 	}
 
+	// Get "base" type
+	for k := t.Kind(); k == reflect.Ptr; k = t.Kind() {
+		t = t.Elem()
+	}
+
 	switch t.Kind() {
 	case reflect.Struct:
 		// Check if we have to fabricate an "id" field
@@ -369,6 +377,9 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 				tmp := vID.Interface().(int)
 				id.value = reflect.ValueOf(tmp + fieldInfo.BaseIndex)
 			}
+		} else if fieldInfo.Subscript != "" {
+			id = &idField{name: fieldInfo.Subscript, value: vID}
+			// Note that for subscripts (of slice/array) the id passed from the client includes the BaseIndex
 		}
 		// Look up all sub-queries in this object
 		if result, err := op.GetSelections(ctx, astField.SelectionSet, []interface{}{v.Interface()}, id); err != nil {
@@ -450,6 +461,8 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		case int32:
 			idx = int(value)
 		case int64:
+			idx = int(value)
+		case uint:
 			idx = int(value)
 		case uint8:
 			idx = int(value)
