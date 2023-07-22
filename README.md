@@ -358,14 +358,14 @@ To create a GraphQL service you must declare a struct, representing the root que
 
 - a scalar type (int, string, etc.) that represents a GraphQL scalar (Int!, String!, etc.)
 - eggql.ID type that represents a GraphQL ID!, or *eggql.ID (ptr) to get a nullable ID
-- an integer type (int, int8, uint, etc.) that represents an enumeration
+- for an enumeration: any integer type (int, int8, uint, etc.)
 - a nested struct that represents a GraphQL nested query
 - a slice/array/map that represents a GraphQL list of any of the above types
-- a slice/array/map for which a "subscript" resolver is automatically generated
+- a slice/array/map for which a "subscript" (single element) resolver is automatically generated
 - a pointer to one of the above types, in which case the value is nullable
 - a **function** that *returns* one of the above types.
 
-A function is the most commonly used type of resolver, except for simple, static data.  Using a function means the resolver result does not have to be calculated until required.  Also, one of the most powerful features of GraphQL is that resolvers can accept arguments to control their behaviour.  You have to use a function if the GraphQL resolver needs to take arguments.  See the above **Random Numbers** example which has a resolver that takes two arguments.
+A function is the most common resolver, except for simple, static data.  Using a function means the resolver result does not have to be calculated until required.  Also, one of the most powerful features of GraphQL is that resolvers can accept arguments to control their behaviour.  You have to use a function if the GraphQL resolver needs to take arguments.  See the above **Random Numbers** example which has a resolver that takes two arguments.
 
 To use **eggql** you just need to call `eggql.MustRun()` passing an instance of the root query type.  You can also add mutations and subscriptions using the 2nd and 3rd parameters (see the [Star Wars Tutorial](https://github.com/AndrewWPhillips/eggql/blob/main/TUTORIAL.md) for an example.)  `MustRun()` returns an `http.Handler` which can be used like any other handler with the Go standard `net/http` package.
 
@@ -449,7 +449,6 @@ There are other excellent, mature GraphQL packages for Go which may suit you bet
 | [graphql-go](https://github.com/graph-gophers/graphql-go) | graph-gophers                                                       |
 |       [gqlgen](https://github.com/99designs/gqlgen)       | 99 Designs                                                          |
 |      [thunder](https://github.com/samsarahq/thunder)      | Samsara Networks                                                    |
-|         [jaal](https://github.com/appointy/jaal)          | Appointy                                                            |
 
 I particularly like **gqlgen** of **99 Designs** as it uses "go generate" to avoid the inefficiencies of reflection and the lack of type safety that is inevitable when using `interface{}` for polymorphism.
 
