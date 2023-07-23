@@ -1,9 +1,12 @@
 package main
 
+// This is the "Better Friends" example from the README.md file
+
 import (
-	"github.com/andrewwphillips/eggql"
 	"net/http"
 	"time"
+
+	"github.com/andrewwphillips/eggql"
 )
 
 type Friend struct {
@@ -13,7 +16,7 @@ type Friend struct {
 
 var friends = map[string]*Friend{
 	"Alice": {Dob: Date(2006, 1, 2), Email: "alice@example.com"},
-	"Bob":   {Dob: Date(1964, 2, 21)},
+	"Bob":   {Dob: Date(1964, 2, 21), Email: "bob@example.com"},
 	"Carol": {Dob: Date(1996, 4, 16)},
 }
 

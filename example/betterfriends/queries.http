@@ -1,0 +1,26 @@
+###
+GRAPHQL http://localhost:8080/graphql
+
+query{
+    friend(name:"Alice") { name dob email }
+}
+
+###
+GRAPHQL http://localhost:8080/graphql
+
+query FriendDetails($who: String!) {
+    friend(name: $who) { name dob email }
+}
+
+{ "who": "Alice" }
+
+###
+GRAPHQL http://localhost:8080/graphql
+
+query {
+    friends {
+        name
+    }
+
+}
+###

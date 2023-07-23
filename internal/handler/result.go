@@ -341,7 +341,14 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		if len(astField.Arguments) != 1 || astField.Arguments[0].Name != fieldInfo.Subscript {
 			return &gqlValue{err: fmt.Errorf("subscript resolver %q must supply an argument called %q", fieldInfo.Name, fieldInfo.Subscript)}
 		}
-		arg, err := op.getValue(fieldInfo.IndexType, fieldInfo.Subscript, "", astField.Arguments[0].Value.Raw)
+		var value interface{}
+		if astField.Arguments[0].Value.VariableDefinition != nil {
+			// if the "subscript" argument is supplied as a variable we need to look it up in the map
+			value = op.variables[astField.Arguments[0].Value.VariableDefinition.Variable]
+		} else {
+			value = astField.Arguments[0].Value.Raw
+		}
+		arg, err := op.getValue(fieldInfo.IndexType, fieldInfo.Subscript, "", value)
 		if err != nil {
 			return &gqlValue{err: err}
 		}
