@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 
 	"github.com/andrewwphillips/eggql/internal/field"
 	"github.com/dolmen-go/jsonmap"
@@ -18,7 +19,7 @@ type (
 		*Handler // required for resolver lookups, enums etc
 
 		isMutation, isSubscription bool
-		variables                  map[string]interface{} // varibale valid fr this op (extracted from the request)
+		variables                  map[string]interface{} // valid variables for this op (extracted from the request)
 	}
 
 	// gqlValue contains the result of a query or queries, or an error, plus the name
@@ -39,7 +40,7 @@ type (
 // Returns a jsonmap.Ordered (a map of values and a slice that remembers the order they were added) that contains an
 //
 //	entry for each selection, where the map "key" is the name of the entry/resolver and the value is:
-//	a) scalar value (stored in an interface})
+//	a) scalar value (stored in an interface{})
 //	b) a nested jsonmap.Ordered if the resolver is a nested struct
 //	c) a slice (ie []interface{}) if the resolver is a slice or array.
 //
@@ -128,7 +129,7 @@ func (op *gqlOperation) GetSelections(ctx context.Context, set ast.SelectionSet,
 // FindSelection returns resolved value in a chan (if found), or empty chan (if excluded), or nil (not found)
 // Parameters:
 //   - ctx: context that indicates if the request has been cancelled
-//   - astField: contains the query name, arguments etc to be resolved
+//   - astField: contains the query name, arguments etc. to be resolved
 //   - v: struct which may contain the field required to resolve astField
 //
 // Returns:
@@ -233,16 +234,58 @@ func (op *gqlOperation) FindFragments(ctx context.Context, set ast.SelectionSet,
 	return ch
 }
 
+// valueSlice attaches the methods of Interface to []reflect.Value, where the slice values (reflect.Value) must all
+// be of the same type - allowed key types (string or number) that can be used for a GraphQL list
+type valueSlice []reflect.Value
+
+func (x valueSlice) Len() int { return len(x) }
+func (x valueSlice) Less(i, j int) bool {
+	// switch on type of x[i] - handle all int, uint and string (underlying types)
+	switch x[i].Interface().(type) {
+	case int:
+		return x[i].Interface().(int) < x[j].Interface().(int)
+	case int8:
+		return x[i].Interface().(int8) < x[j].Interface().(int8)
+	case int16:
+		return x[i].Interface().(int16) < x[j].Interface().(int16)
+	case int32:
+		return x[i].Interface().(int32) < x[j].Interface().(int32)
+	case int64:
+		return x[i].Interface().(int64) < x[j].Interface().(int64)
+	case uint:
+		return x[i].Interface().(uint) < x[j].Interface().(uint)
+	case uint8:
+		return x[i].Interface().(uint8) < x[j].Interface().(uint8)
+	case uint16:
+		return x[i].Interface().(uint16) < x[j].Interface().(uint16)
+	case uint32:
+		return x[i].Interface().(uint32) < x[j].Interface().(uint32)
+	case uint64:
+		return x[i].Interface().(uint64) < x[j].Interface().(uint64)
+	case uintptr:
+		return x[i].Interface().(uintptr) < x[j].Interface().(uintptr)
+	case float32:
+		return x[i].Interface().(float32) < x[j].Interface().(float32)
+	case float64:
+		return x[i].Interface().(float64) < x[j].Interface().(float64)
+	case string:
+		return x[i].Interface().(string) < x[j].Interface().(string)
+	default:
+		panic("map used as GraphQL list must have comparable key")
+	}
+}
+func (x valueSlice) Swap(i, j int) { x[i], x[j] = x[j], x[i] }
+
 // resolve calls a resolver given a query to obtain the results of the query (incl. listed and nested queries)
 // Resolvers are often dynamic (where the resolver is a Go function) in which case the function is called to get the value.
-// Returns a pointer to a value (or error) or nil if nothing results (eg if excluded by directive)
+// Returns a pointer to a value (or error) or nil if nothing results (e.g. if excluded by directive)
 // Parameters:
 //
 //	ctx = a Go context that could expire at any time
 //	astField = a query or sub-query - a field of a GraphQL object
 //	v = value of the resolver (field of Go struct)
 //	vID = value of "id" (only supplied if an element of a list)
-//	fieldInfo = metadata for the resolver (eg parameter name) obtained from the struct field tag
+//	fieldInfo = metadata for the resolver (e.g. parameter name) obtained from the struct field tag
 func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID reflect.Value, fieldInfo *field.Info,
 	cache ResolverCache,
 ) (retval *gqlValue) {
@@ -398,9 +441,15 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		} else {
 			// resolve for all values in the map
 			results = make([]interface{}, 0, v.Len()) // to distinguish empty slice from nil slice
-			for it := v.MapRange(); it.Next(); {
+			keys := valueSlice(v.MapKeys())
+			sort.Sort(keys)
+			for _, eKey := range keys {
+				eVal := v.MapIndex(eKey) // eVal is the map value for the element at eKey
+				if !eVal.IsValid() {
+					panic("keys returned from MapKeys() should always be found/valid")
+				}
 				// TODO: allow list elements to be cached
-				if value := op.resolve(ctx, astField, it.Value(), it.Key(), fieldInfo, ResolverCache{}); value != nil {
+				if value := op.resolve(ctx, astField, eVal, eKey, fieldInfo, ResolverCache{}); value != nil {
 					results = append(results, value.value)
 				}
 			}

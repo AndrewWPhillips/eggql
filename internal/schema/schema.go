@@ -36,7 +36,8 @@ const (
 	gqlUnionKeyword      = "union"
 )
 
-// MustBuild is the same as Build but panics on error
+// MustBuild calls Build but panics on error
+// It takes an (optional) map of enums followed by (up to) 3 root objects (query, mutation, subscription)
 func MustBuild(qms ...interface{}) string {
 	enums, ok := qms[0].(map[string][]string) // check if enums given
 	if ok {
@@ -50,12 +51,13 @@ func MustBuild(qms ...interface{}) string {
 }
 
 // Build generates a string containing a GraphQL schema.
-// The 1st parameter (rawEnums) is a map of enums where each map entry is a slice of
-//   strings - each string is an enum value opt. followed by hash (#) and a description.
-//   It can be nil if no enums are needed.
-// The 2nd, 3rd and 4th parameters represent the root query, mutation and subscription.
-//   Each struct is scanned for public fields (scalars, nested structs, etc) to be used
-//   as queries.  They can be nil if not implemented.
+//   - rawEnums: map of enums where each map entry is a slice of strings - each string (incl.
+//     map keys) is a name opt. followed by hash (#) and a description.
+//     It can be nil if no enums are supplied.
+//   - 2nd, 3rd and 4th parameters represent the root query, mutation and subscription and
+//     *must* be structs (or nil). Each struct is scanned for exported fields to be used to
+//     generate the query fields.
+//     Any of the 3 can be nil if not implemented, but you must supply at least one.
 func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 	enums, err := validateEnums(rawEnums)
 	if err != nil {
@@ -78,9 +80,13 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 			return "", errors.New("parameters to schema.Build must be structs")
 		}
 
-		// Note call getTypeName to get the type name, but we don't care about the other returns as we know it's not a scalar
-		// and there can be no error if it's a struct.  We pass nullable = true to not get the trailing exclamation mark (!)
-		entry[i], _, _ = schemaTypes.getTypeName(t, true)
+		// Note: we call getTypeName just for the root type name.  We don't care about the other return
+		// values since we know it's a struct (2nd return value will always be false, 3rd will be nil).
+		// We pass nullable = true as we don't want the trailing exclamation mark (!)
+		entry[i], _, err = schemaTypes.getTypeName(t, true)
+		if err != nil {
+			panic("type of root object (struct) should always be valid")
+		}
 
 		if entry[i] == "" { // if given an unnamed struct we use the default name
 			switch EntryPoint(i) {
@@ -91,14 +97,17 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 			case Subscription:
 				entry[i] = "Subscription"
 			default:
-				return "", errors.New("More than 3 structs provided for schema (can only have query, mutation, subscription)")
+				return "", errors.New("More than 3 structs provided (at most should have: query, mutation, subscription)")
 			}
 		}
+
+		// *** Add root type and (recursively) any contained types ***
 		if err := schemaTypes.add(entry[i], t, enums, gqlObjectTypeKeyword, nil); err != nil {
 			return "", fmt.Errorf("%w adding entry point %d %q", err, i, entry[i])
 		}
 	}
 
+	// Build the schema from the found types (and supplied enums) and return it as text
 	return schemaTypes.build(rawEnums, entry)
 }
 
@@ -108,7 +117,10 @@ func (s schema) build(rawEnums map[string][]string, entry [3]string) (string, er
 	builder.Grow(256)             // Even simple schemas are at least this big
 
 	// First write schema definition if using any non-std entry names
-	if entry[0] != "" && entry[0] != "Query" || entry[1] != "" && entry[1] != "Mutation" { // TODO subscription
+	if entry[0] != "" && entry[0] != "Query" ||
+		entry[1] != "" && entry[1] != "Mutation" ||
+		entry[2] != "" && entry[2] != "Subscription" {
+		// then
 		builder.WriteString("schema ")
 		builder.WriteString(openString)
 		for i := range entry {
