@@ -95,20 +95,21 @@ type (
 // New creates a new handler with the given schema(s) and query/mutation/subscription struct(s)
 // Parameters:
 //
-//		schemaStrings - a slice of strings containing the GraphQL schema(s) - typically only 1
-//		enums - a map of enum names to a slice of strings containing the enum values for all the schemas
-//		qms - a slice of query/mutation/subscription structs where:
-//		  qms[0] - query struct(s)
-//		  qms[1] - mutation struct(s)
-//		  qms[2] - subscription struct(s)
-//		options - zero or more options returned by calls to:
-//	      handler.FuncCache
-//	      handler.NoIntrospection
-//	      handler.NoConcurrency
-//	      handler.NilResolver
-//		  handler.InitialTimeout
-//		  handler.PingFrequency
-//		  handler.PongTimeout
+//			schemaStrings - a slice of strings containing the GraphQL schema(s) - typically only 1
+//			enums - a map of enum names to a slice of strings containing the enum values for all the schemas
+//	       can be nil if there are no enums
+//			qms - a slice of query/mutation/subscription structs where:
+//			  qms[0] - query struct(s)
+//			  qms[1] - mutation struct(s)
+//			  qms[2] - subscription struct(s)
+//			options - zero or more options returned by calls to:
+//		      handler.FuncCache
+//		      handler.NoIntrospection
+//		      handler.NoConcurrency
+//		      handler.NilResolver
+//			  handler.InitialTimeout
+//			  handler.PingFrequency
+//			  handler.PongTimeout
 func New(schemaStrings []string, enums map[string][]string, qms [3][]interface{}, options ...func(*Handler),
 ) http.Handler {
 	h := &Handler{}

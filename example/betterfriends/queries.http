@@ -8,7 +8,7 @@ query{
 ###
 GRAPHQL http://localhost:8080/graphql
 
-query FriendDetails($who: String!) {
+query ($who: String!) {
     friend(name: $who) { name dob email }
 }
 

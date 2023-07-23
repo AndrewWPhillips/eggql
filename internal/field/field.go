@@ -36,8 +36,9 @@ type (
 // UnmarshalerType is the dynamic type of the Unmarshaler interface
 // It's used to check if a type has an UnmarshalEGGQL method, which indicates it is a custom scalar type.
 // The way it is obtained is a little tricky - you first get the type of a ptr to an Unmarshaler (which
-//   here is nil but that does not matter as we are only concerned with types not values) then get
-//   the type of what it points to (using reflect.Type.Elem()).
+//
+//	here has a value of nil but that does not matter as we are only concerned with types not values) then
+//	get the type of what it points to (using reflect.Type.Elem()).
 var UnmarshalerType = reflect.TypeOf((*Unmarshaler)(nil)).Elem()
 
 // Info is returned from Get() with info extracted from a struct field to be used as a GraphQL query resolver.
@@ -94,13 +95,15 @@ var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
 var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
 // Get checks if a field (of a Go struct) is exported and, if so, returns the GraphQL field info. incl. the
-//   field name, derived from the Go field name (with 1st char lower-cased) or taken from the tag (metadata).
-//   It also returns other stuff like whether the result is nullable and GraphQL parameters (and default
-//   parameter values) if the resolver is a function.
+//
+//	field name, derived from the Go field name (with 1st char lower-cased) or taken from the tag (metadata).
+//	It also returns other stuff like whether the result is nullable and GraphQL parameters (and default
+//	parameter values) if the resolver is a function.
+//
 // Returns
-// - ptr to field.Info, or nil if the field is not used (ie: not exported or metadata is just a dash (-))
-//   A special case is a field name of underscore (_) which return field.Info but only with the Description field set
-// - error for different reasons such as:
+//   - ptr to field.Info, or nil if the field is not used (ie: not exported or metadata is just a dash (-))
+//     A special case is a field name of underscore (_) which return field.Info but only with the Description field set
+//   - error for different reasons such as:
 //   - malformed metadata such as an unknown option (not one of args, nullable, subscript, field_id, base)
 //   - type of the field is invalid (eg resolver function with no return value)
 //   - inconsistency between the type and metadata (eg function parameters do not match the "args" option)

@@ -55,7 +55,7 @@ func GetInfoFromTag(tag string) (*Info, error) {
 			continue
 		}
 		if strings.Contains(part, "id") {
-			// detect common mistake (id_field)
+			// detect common mistake (id_field instead of field_id)
 			return nil, fmt.Errorf(`unknown option %q, - did you mean "field_id"?`, part)
 		}
 		if baseIndex := getBaseIndex(part); baseIndex > 0 {
@@ -87,9 +87,10 @@ func GetInfoFromTag(tag string) (*Info, error) {
 }
 
 // getMain handles the first part of the tag which may just be the resolver name (or even empty), but can
-//   also include a type after a colon (:) and resolvers arguments (comma-separated and within brackets), where
-//   each argument can have a name, type (after :) and default value (after =).  Note that many of these things
-//   can be deduced (from the GO field name/type) and left out (except for the names of arguments).
+//
+//	also include a type after a colon (:) and resolvers arguments (comma-separated and within brackets), where
+//	each argument can have a name, type (after :) and default value (after =).  Note that many of these things
+//	can be deduced (from the GO field name/type) and left out (except for the names of arguments).
 func getMain(s string) (r *Info, err error) {
 	r = &Info{}
 

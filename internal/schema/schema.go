@@ -112,6 +112,9 @@ func Build(rawEnums map[string][]string, qms ...interface{}) (string, error) {
 }
 
 // build creates the full schema text from the type declarations and unions members + enum param
+// - rawEnums: each map key is the enum name and the corresp. slice contains the enum values (starting at zero)
+// - entry: contains the name of the 3 root object types (if empty string then that object type is not used)
+// returns: schema as a string or an error
 func (s schema) build(rawEnums map[string][]string, entry [3]string) (string, error) {
 	builder := &strings.Builder{} // where the (text) schema is generated
 	builder.Grow(256)             // Even simple schemas are at least this big

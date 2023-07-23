@@ -156,8 +156,9 @@ func (p *ParentRef) valueFunc() int {
 	return p.private
 }
 
-// JsonObject is what json.Unmarshaler produces when it decodes a JSON object.  Not that we use a type alias here,
-//   hence the equals sing (=) rather than a type definition otherwise reflect.DeepEqual does not work.
+// JsonObject is what json.Unmarshaler produces when it decodes a JSON object.  Note that we use a type alias here,
+//
+//	hence the equals sign (=), rather than a type definition - otherwise reflect.DeepEqual does not work.
 type JsonObject = map[string]interface{}
 
 // TestQuery runs test for "normal" GrqphQL queries (ie no errors, no special types, etc)

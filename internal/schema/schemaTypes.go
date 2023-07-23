@@ -54,11 +54,12 @@ func newSchemaTypes() schema {
 // add creates a GraphQL object/input/interface as a string to be added to the schema and adds it
 // to the declaration map (using the type name as the key) avoiding adding the same type twice.
 // Parameters:
-//   name = preferred name for the type (if an empty string the Go type name is used)
+//   - name = preferred name for the type (if an empty string the Go type name is used)
 //     t = the Go type used to generate the GraphQL type declaration
 //     enums = enums map (just used to make sure an enum name is valid)
 //     gqlType = "type" (for a GraphQL object), "input", "interface", etc
 //     idField = info for "id" field to be added to an object (or nil if not in a list)
+//
 // Returns an error if the type could not be added - this may happen if the same struct is
 // used as an "input" type (ie resolver parameter) and as an "object" or "interface" type or
 // there is an error with the field declarations
@@ -228,11 +229,14 @@ func (s schema) add(name string, t reflect.Type, enums map[string][]string, gqlT
 // includes any fields of an embedded (anon) struct which are added as resolvers and also remembered as "interface" names.
 // Nested resolvers (named nested structs) are handled by a recursive call to s.add().
 // Parameters:
+//
 //	parentType = name of the struct type
 //	t = the struct type containing the fields
 //	enums = enums map (just used to make sure an enum name is valid)
 //	inputType = "type" for a GraphQL object or "input" for an input type
+//
 // Returns:
+//
 //	map of resolvers: key is the resolver name; value is the rest of the GraphQL resolver declaration
 //	names of GraphQL interface(s) that the type implements (using Go embedded structs)
 //	text to be added (to the GraphQL schema) as a "description" of the type

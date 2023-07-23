@@ -20,7 +20,7 @@ var albums = map[string]Album{
 }
 
 var q = struct {
-	// This works with latest "id_field" code but only if the Album (struct) is seen in the field with "field_id" specified.
+	// This works with latest "field_id" code but only if the Album (struct) is seen in the field with "field_id" specified.
 	// If the order of fields below is reversed then the "Album" type is added to the schema without any "id" field.
 	// But there is a bigger problem with "field_id": if we use the same struct as element of different maps/slices
 	//  - we can have different names for the fabricated "id" field but can only have one name in the schema
