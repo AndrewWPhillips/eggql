@@ -164,13 +164,9 @@ func TestQuery(t *testing.T) {
 
 			// decode the response
 			var result struct {
-				Data interface {
-				}
-				Errors []struct {
-					Message string
-				}
+				Data   interface{}
+				Errors []struct{ Message string }
 			}
-			//json.Unmarshal(writer.Body.Bytes(), &result)
 			decoder := json.NewDecoder(resp.Body)
 			if err := decoder.Decode(&result); err != nil {
 				t.Logf("Error decoding JSON: %v", err)

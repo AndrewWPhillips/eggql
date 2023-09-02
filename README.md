@@ -19,10 +19,11 @@ Some things you can do with just a few lines of code:
 * serve static data (strings, numbers, etc) - see example below (**1. Hello**)
 * serve existing maps, slices and arrays as GraphQL lists (**2. Friends**)
 * auto-generate ID field for lists (map key, slice index) (**3. BetterFriends**)
+* auto-generate list query with id argument (map key, slice index)  (**3. BetterFriends**)
 * nested queries using nested structs (or pointers), slices or maps
 * create dynamic data including query parameters (**4. Dynamic Data**)
 * return meaningful errors, handle panics gracefully (**5. Handling Errors**)
-* use context.Context for timeouts and cancelation (**6. Context Parameters**)
+* use context.Context for timeouts and cancellation (**6. Context Parameters**)
 
 # Examples
 
@@ -74,7 +75,7 @@ you should see a response like this:
 
 ## 2. Friends
 
-This example serves a slice as a GraphQL list.
+This example serves a Go slice as a GraphQL list.
 
 ```go
 package main
@@ -100,7 +101,7 @@ func main() {
 To test:
 
 ```sh
-$ curl -d '{"query": "{ friends { name} }"}' localhost:8080/graphql
+$ curl -d '{"query": "{ friends { name } }"}' localhost:8080/graphql
 ```
 
 The query's list name "friends" is derived from the struct field name `Friends` (with first letter changed to lower-case). Similarly, the nested query name "name" comes from the `Name` field of the `Friend` struct.
@@ -365,7 +366,7 @@ To create a GraphQL service you must declare a struct, representing the root que
 - a pointer to one of the above types, in which case the value is nullable
 - a **function** that *returns* one of the above types.
 
-A function is the most common resolver, except for simple, static data.  Using a function means the resolver result does not have to be calculated until required.  Also, one of the most powerful features of GraphQL is that resolvers can accept arguments to control their behaviour.  You have to use a function if the GraphQL resolver needs to take arguments.  See the above **Random Numbers** example which has a resolver that takes two arguments.
+A function is the most common type of resolver, except for simple, static data.  Using a function means the resolver result does not have to be calculated until required.  Also, one of the most powerful features of GraphQL is that resolvers can accept arguments to control their behaviour.  You have to use a function if the GraphQL resolver needs to take arguments.  See the above **Random Numbers** example which has a resolver that takes two arguments.
 
 To use **eggql** you just need to call `eggql.MustRun()` passing an instance of the root query type.  You can also add mutations and subscriptions using the 2nd and 3rd parameters (see the [Star Wars Tutorial](https://github.com/AndrewWPhillips/eggql/blob/main/TUTORIAL.md) for an example.)  `MustRun()` returns an `http.Handler` which can be used like any other handler with the Go standard `net/http` package.
 
@@ -498,7 +499,7 @@ Due to the way it works **eggql** makes extensive use of reflection, even though
 
 ## Lists and id Field
 
-Many Go packages allow you to use an array as a GraphQL list.  With **eggql** you can also use a Go **map** as a GraphQL list field.  (Note that since the order of elements in a Go map is indeterminate the client should be aware that the order of the list is indeterminate and may even change for consecutive queries.)
+Many Go packages allow you to use an array as a GraphQL list.  With **eggql** you can also use a Go **map** as a GraphQL list field.  (Note that since the order of elements in a Go map is indeterminate the client should be aware that the order of the list is indeterminate and may even change for consecutive queries. [Ed: This was addressed in commit of 23/7/23 - a GraphQL list generated from a map is now (consistently) ordered by the key values (numerically or case-insensitively for string keys)]
 
 **Eggql** can also generate an extra field for each object in an array/slice/map if you add the `id_field` option in the field's metadata tag.  For arrays and slices this represents the index of the element hence the generated field is of `Int!` type.  For a map, it is the map element's key type which must be an integer or string.
 
@@ -655,7 +656,10 @@ func main() {
 	}
 }
 ```
-As an explanation of the code - it provides a `len` query with an optional `unit` argument which can have values `METER` (default) or `FOOT` (see *** 1 *** ).  It also writes the generated schema to the log (*** 2 *** ).  Finally, it gets the handler (*** 3 *** ) and either logs the error or starts the server (*** 4 *** )
+As an explanation of the code:
+1. `len` query with an optional `unit` argument which can have values `METER` (default) or `FOOT` (see *** 1 *** )  
+2. writes the generated schema to the log (*** 2 *** )  
+3. finally, it creates the handler (*** 3 *** ) and either logs the error or starts the server (*** 4 *** )  
 
 ### Handling "runtime" errors
 

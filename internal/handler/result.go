@@ -423,6 +423,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 		var id *idField
 		if fieldInfo.FieldID != "" {
 			id = &idField{name: fieldInfo.FieldID, value: vID}
+			// TODO: don't add BaseIndex for maps
 			if fieldInfo.BaseIndex > 0 {
 				tmp := vID.Interface().(int)
 				id.value = reflect.ValueOf(tmp + fieldInfo.BaseIndex)

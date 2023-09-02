@@ -47,7 +47,7 @@ func MustRun(params ...interface{}) http.Handler {
 	// Get query (and mutation/subscription if provided)
 	for i := 0; i < 3 && len(p) > 0; i++ {
 		if _, ok := p[0].(func(*options)); ok {
-			break
+			break // first option must be after query/mutation/subscription
 		}
 		qms[i] = []interface{}{p[0]}
 		schemaParams = append(schemaParams, p[0])
