@@ -119,6 +119,9 @@ func (g *gql) GetHandler() (http.Handler, error) {
 	return handler.New(schemaStrings, g.enums, schemaQMS, g.options...), nil
 }
 
+// SetInitialTimeout sets the initial websocket (subscription) timeout.  This is only used if manually setting
+// up a handler before calling the GetHandler method.  It's the same as creating the option passed to MustRun()
+// using the InitialTimeout() function - see InitialTimeout() function in options.go.
 func (g *gql) SetInitialTimeout(timeout time.Duration) {
 	g.options = append(g.options, handler.InitialTimeout(timeout))
 }

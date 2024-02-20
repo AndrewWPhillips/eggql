@@ -51,5 +51,7 @@ package eggql
 //           <arg> = integer argument
 //   -  calc complexity (recursively) before running a root query (if below option on) (eg <int>*<arg>*<arg>)
 //   -  add complexity throttling option - so complex queries are not even attempted
-// dataloader
-// introspection of directives
+// query aggregator to avoid N+1 problem (cf Apollo dataloader)
+// add hooks for OpenTelemetry
+// server-sent events for subscriptions
+// look at why some GraphQL tools can't introspect the schema
