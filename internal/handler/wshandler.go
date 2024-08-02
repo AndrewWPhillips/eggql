@@ -259,7 +259,11 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 		return false
 	}
 
-	FixNumberVariables(message.Payload.Variables)
+	// FixNumbers looks through all the (JSON-derived) data and changes all json.Number types
+	// to either int64 or float64 and returns the result.  Note that the returned value is
+	// an interface{} so we cast to map[string]interface{} - we can do this because we know we
+	// will get back the same type we passed in (Variables is of type map[stringinterface{})
+	message.Payload.Variables =	FixNumbers(message.Payload.Variables).(map[string]interface{})
 
 	query, errors := gqlparser.LoadQuery(c.schema, message.Payload.Query)
 	if errors != nil {

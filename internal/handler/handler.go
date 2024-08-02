@@ -214,7 +214,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Since variables are sent as JSON (which does not distinguish int/float) we need to decide
-	FixNumberVariables(g.Variables)
+	g.Variables = FixNumbers(g.Variables).(map[string]interface{})
 
 	// Execute it and write the result or error to the HTTP response
 	if buf, err := json.Marshal(g.ExecuteHTTP(r.Context())); err != nil {
@@ -225,9 +225,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+/*
 // FixNumberVariables goes through the structure created by the JSON decoder, converting any json.Number values to
 // either an int64 or a float64.  This assumes that all the JSON numbers were decoded into a json.Number type, rather
-// than int/float, by use of the json.Decode.UseNumber() method.
+// than int/float, by calling UseNumber() method before Decode() method (of json.Decoder type).
+// NOTE: this does not handle lists
 func FixNumberVariables(m map[string]interface{}) {
 	for key, val := range m {
 		switch v := val.(type) {
@@ -249,4 +251,36 @@ func FixNumberVariables(m map[string]interface{}) {
 			// TODO check if we need to handle JSON lists which decode as []interface{}
 		}
 	}
+}
+*/
+
+// FixNumbers processes the request variables (decoded from JSON variables map) converting json.Number fields
+// to either floats or ints. It recursively handles JSON lists ([]interface{}) and objects (map[string]interface{}).
+// This assumes that all the JSON numbers were decoded into a json.Number type, rather
+// than int/float, by calling UseNumber() method before Decode() method (of json.Decoder type).
+// TODO: it works but does a lot of memory allocs/copying for slices/maps - need to improve this as it is run on every request
+func FixNumbers(val interface{}) interface{} {
+	switch v := val.(type) {
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return i
+		} else if f, err := v.Float64(); err == nil {
+			return f
+		}
+
+	case []interface{}:
+		r := make([]interface{}, 0, len(v))
+		for _, e := range v {
+			r = append(r, FixNumbers(e))
+		}
+		return r
+
+	case map[string]interface{}:
+		r := make(map[string]interface{}, len(v))
+		for k, e := range v {
+			r[k] = FixNumbers(e)
+		}
+		return r
+	}
+	return val
 }
