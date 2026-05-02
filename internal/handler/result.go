@@ -311,7 +311,7 @@ func (op *gqlOperation) resolve(ctx context.Context, astField *ast.Field, v, vID
 
 		// If not in cache save any valid return in the cache
 		defer func() {
-			if retval.err == nil && retval.value != nil {
+			if retval != nil && retval.err == nil && retval.value != nil {
 				cache.Mtx.Lock()
 				cache.Saved[key] = reflect.ValueOf(retval.value)
 				cache.Mtx.Unlock()

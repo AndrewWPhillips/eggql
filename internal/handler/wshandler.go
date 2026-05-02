@@ -248,6 +248,7 @@ func (c wsConnection) GetWebsocketInputChannel(expected ...string) <-chan *wsMes
 func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 	if message.ID == "" {
 		c.closeMessage(websocket.CloseProtocolError, "no ID provided for subscribe")
+		return false
 	}
 	// Add to our map of operations active in this ws (first checking that the ID is not in use)
 	if _, ok := c.cancelSubscription[message.ID]; ok {
@@ -263,7 +264,7 @@ func (c wsConnection) start(ctx context.Context, message *wsMessage) bool {
 	// to either int64 or float64 and returns the result.  Note that the returned value is
 	// an interface{} so we cast to map[string]interface{} - we can do this because we know we
 	// will get back the same type we passed in (Variables is of type map[stringinterface{})
-	message.Payload.Variables =	FixNumbers(message.Payload.Variables).(map[string]interface{})
+	message.Payload.Variables = FixNumbers(message.Payload.Variables).(map[string]interface{})
 
 	query, errors := gqlparser.LoadQuery(c.schema, message.Payload.Query)
 	if errors != nil {
@@ -406,7 +407,7 @@ func (c wsConnection) process(ctx context.Context, ID string, k string, in inter
 		switch chosen {
 		case 0:
 			if !ok {
-				c.write(wsMessage{Type: "complete", ID: ID})
+				//c.write(wsMessage{Type: "complete", ID: ID})
 				return
 			}
 			out := wsMessage{
